@@ -124,65 +124,72 @@ export function TradePanel({
   const o = outcomeName(outcome);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Toggle value={side} options={[[OrderSide.Buy, "Buy"], [OrderSide.Sell, "Sell"]]} onChange={setSide} />
       <Toggle value={outcome} options={[[Outcome.Yes, "YES"], [Outcome.No, "NO"]]} onChange={onOutcome} />
       <Toggle value={kind} options={[["market", "Market"], ["limit", "Limit"]]} onChange={setKind} />
 
       <label className="block">
-        <span className="text-xs font-medium tracking-wide text-faint uppercase">Shares</span>
+        <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Shares</span>
         <input className="input num mt-1 w-full" inputMode="numeric" value={qtyText} onChange={(e) => setQtyText(e.target.value)} />
       </label>
       {kind === "limit" ? (
         <label className="block">
-          <span className="text-xs font-medium tracking-wide text-faint uppercase">Limit price (mUSD per share)</span>
+          <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Limit (mUSD)</span>
           <input className="input num mt-1 w-full" placeholder="0.0410" value={priceText} onChange={(e) => setPriceText(e.target.value)} />
         </label>
       ) : (
         <label className="block">
-          <span className="text-xs font-medium tracking-wide text-faint uppercase">Slippage (bps from the best price)</span>
+          <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Slippage (bps)</span>
           <input className="input num mt-1 w-full" inputMode="numeric" value={slipText} onChange={(e) => setSlipText(e.target.value)} />
         </label>
       )}
 
       {preview && qty > 0n && (
-        <div className="space-y-1.5 border border-line bg-bg-soft px-4 py-3 text-sm">
+        <div className="space-y-1 border border-line bg-bg-soft px-3 py-2.5 text-xs leading-snug">
           {preview.filledQty > 0n ? (
             <div>
-              <span className="num font-medium">{formatShares(preview.filledQty)}</span> fill now at an average of{" "}
+              <span className="num font-medium">{formatShares(preview.filledQty)}</span> @ avg{" "}
               <span className="num font-medium">{formatMusd(preview.avgPerShare ?? 0n, 4)}</span>
-              {kind === "market" && <span className="text-dim"> (worst {formatPrice(preview.limitPriceBps)})</span>}
+              {kind === "market" && <span className="text-dim"> · worst {formatPrice(preview.limitPriceBps)}</span>}
             </div>
           ) : (
-            <div className="text-dim">Nothing fills now{kind === "limit" ? "." : " within the worst price."}</div>
+            <div className="text-dim">No fill{kind === "limit" ? "" : " within worst price"}</div>
           )}
           {kind === "limit" && preview.restQty > 0n && (
             <div>
-              <span className="num font-medium">{formatShares(preview.restQty)}</span> rest at {formatPrice(preview.limitPriceBps)}
+              <span className="num font-medium">{formatShares(preview.restQty)}</span> rest @ {formatPrice(preview.limitPriceBps)}
+              <span className="text-dim">
+                {" · escrow "}
+                {side === OrderSide.Buy ? <span className="num">{formatMusd(preview.escrow.musd)} mUSD</span> : <span className="num">{formatShares(preview.escrow.shares)} {o}</span>}
+              </span>
             </div>
           )}
-          {kind === "market" && preview.restQty > 0n && preview.filledQty > 0n && <div className="text-dim">{formatShares(preview.restQty)} can't fill within the worst price and won't be sent.</div>}
-          {kind === "limit" && (
+          {kind === "market" && preview.restQty > 0n && preview.filledQty > 0n && (
+            <div className="text-dim">{formatShares(preview.restQty)} unfilled (not sent)</div>
+          )}
+          {kind === "limit" && preview.restQty === 0n && (
             <div className="text-dim">
-              Escrow at placement: {side === OrderSide.Buy ? <span className="num">{formatMusd(preview.escrow.musd)} mUSD</span> : <span className="num">{formatShares(preview.escrow.shares)} {o}</span>}
+              Escrow {side === OrderSide.Buy ? <span className="num">{formatMusd(preview.escrow.musd)} mUSD</span> : <span className="num">{formatShares(preview.escrow.shares)} {o}</span>}
             </div>
           )}
           {side === OrderSide.Buy ? (
             <div className="num text-dim">
-              Cost {formatMusd(kind === "limit" ? preview.escrow.musd : preview.filledQuote)} mUSD · max payout {formatMusd(kind === "limit" ? payout : preview.filledQty * PAYOUT_PER_SHARE)} mUSD (
-              {formatMusd(kind === "limit" ? invalidPayout : preview.filledQty * INVALID_PAYOUT_PER_SHARE)} on invalid) · max loss the cost
+              Cost {formatMusd(kind === "limit" ? preview.escrow.musd : preview.filledQuote)} · max {formatMusd(kind === "limit" ? payout : preview.filledQty * PAYOUT_PER_SHARE)}
+              {" · "}
+              {formatMusd(kind === "limit" ? invalidPayout : preview.filledQty * INVALID_PAYOUT_PER_SHARE)} if invalid
             </div>
           ) : (
             <div className="text-dim">
-              Receive <span className="num">{formatMusd(preview.filledQuote)} mUSD</span> now{kind === "limit" && preview.restQty > 0n ? ", more as the rest fills" : ""}. These shares would pay{" "}
-              {formatShares(kind === "limit" ? qty : preview.filledQty)} mUSD if {o} wins.
+              Get <span className="num">{formatMusd(preview.filledQuote)} mUSD</span>
+              {kind === "limit" && preview.restQty > 0n ? " + rest" : ""} · gives up {formatShares(kind === "limit" ? qty : preview.filledQty)} if {o} wins
             </div>
           )}
         </div>
       )}
 
-      {problems.length > 0 && qty > 0n && <div className="text-sm text-warn">{problems[0]}</div>}
-      {error && <div className="border border-down/30 bg-down-soft px-4 py-3 text-sm text-down">{error}</div>}
+      {problems.length > 0 && qty > 0n && <div className="text-xs text-warn">{problems[0]}</div>}
+      {error && <div className="border border-down/30 bg-down-soft px-3 py-2 text-xs text-down">{error}</div>}
 
       <button
         type="button"
@@ -190,7 +197,7 @@ export function TradePanel({
         disabled={USE_FIXTURES || !publicKey || !tradingOpen || busy || !preview || problems.length > 0 || qty === 0n}
         onClick={submit}
       >
-        {!publicKey ? "Connect a wallet to trade" : !tradingOpen ? "Trading has closed" : busy ? "Checking…" : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${o}`}
+        {!publicKey ? "Connect wallet" : !tradingOpen ? "Closed" : busy ? "Checking…" : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${o}`}
       </button>
       <InvalidDisclosure />
     </div>

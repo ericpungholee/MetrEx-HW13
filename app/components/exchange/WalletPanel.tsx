@@ -39,7 +39,7 @@ export function WalletPanel({
   const signer = useWalletSigner();
   const { run } = useTx();
   const [busy, setBusy] = useState<string | null>(null);
-  if (!publicKey) return <div className="py-6 text-sm text-dim">Connect a wallet to see your holdings and orders.</div>;
+  if (!publicKey) return <div className="py-4 text-sm text-dim">Connect a wallet.</div>;
 
   const mine = (orders ?? []).filter((o) => o.market === market.address);
   const reserved = reservedOf(mine);
@@ -74,14 +74,14 @@ export function WalletPanel({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-        <Stat label="YES shares">{have ? formatShares(have.yes) : "—"}</Stat>
-        <Stat label="NO shares">{have ? formatShares(have.no) : "—"}</Stat>
-        <Stat label="mUSD available">{have ? formatMusd(have.musd) : "—"}</Stat>
-        <Stat label="Reserved in orders">
-          {formatMusd(reserved.musd)} mUSD{reserved.yes ? ` · ${formatShares(reserved.yes)} YES` : ""}
-          {reserved.no ? ` · ${formatShares(reserved.no)} NO` : ""}
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Stat label="YES">{have ? formatShares(have.yes) : "—"}</Stat>
+        <Stat label="NO">{have ? formatShares(have.no) : "—"}</Stat>
+        <Stat label="mUSD">{have ? formatMusd(have.musd) : "—"}</Stat>
+        <Stat label="Reserved">
+          {formatMusd(reserved.musd)}{reserved.yes ? ` · ${formatShares(reserved.yes)} Y` : ""}
+          {reserved.no ? ` · ${formatShares(reserved.no)} N` : ""}
         </Stat>
       </div>
 

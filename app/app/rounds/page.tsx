@@ -26,7 +26,7 @@ export default function RoundsPage() {
   );
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <PageHeader title="Rounds" description={<ReplayDisclosure />} />
       {!rounds.data ? (
         rounds.error ? <Unavailable>Rounds unavailable: {rounds.error}</Unavailable> : <div className="h-64 animate-pulse bg-bg-soft" />

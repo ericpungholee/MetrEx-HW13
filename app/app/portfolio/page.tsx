@@ -62,7 +62,7 @@ export default function PortfolioPage() {
     6_000,
   );
 
-  if (!publicKey) return <PageHeader title="Portfolio" description="Connect a wallet to see your holdings, orders and redemptions." />;
+  if (!publicKey) return <PageHeader title="Portfolio" description="Connect a wallet." />;
   if (!data.data) return data.error ? <Unavailable>Portfolio unavailable: {data.error}</Unavailable> : <div className="h-96 animate-pulse bg-bg-soft" />;
   const { rounds, holdings, orders, fills, indexing } = data.data;
   const reserved = reservedOf(orders);
@@ -80,8 +80,8 @@ export default function PortfolioPage() {
   const claimable = rows.reduce((a, x) => a + x.claim, 0n);
 
   return (
-    <div className="space-y-12">
-      <PageHeader title="Portfolio" description="Holdings, resting orders and redemptions across the latest rounds. Prices are not forecasts, and P&L is not shown." />
+    <div className="space-y-8">
+      <PageHeader title="Portfolio" />
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
         <Stat label="mUSD available" large>
           {holdings ? formatMusd(holdings.musd) : "—"}
@@ -138,7 +138,7 @@ export default function PortfolioPage() {
             </tbody>
           </table>
         )}
-        {claimable > 0n && <p className="mt-3 text-sm text-dim">Redeem from each market page: one signature returns your resting orders and pays the winning shares.</p>}
+        {claimable > 0n && <p className="mt-2 text-xs text-faint">Redeem on each market page.</p>}
       </Panel>
 
       <Panel title="Open orders">

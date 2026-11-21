@@ -32,24 +32,24 @@ export function Price({ bps, className = "" }: { bps: number | null | undefined;
 }
 
 export function StateLabel({ state }: { state: MarketState }) {
-  return <span className={`text-sm font-medium ${STATE_TONE[state]}`}>{state}</span>;
+  return <span className={`text-xs font-medium ${STATE_TONE[state]}`}>{state}</span>;
 }
 
-/** §10.1: the trigger sentence on every market page. */
-export function TriggerSentence() {
-  return <p className="text-[15px] leading-relaxed text-ink-secondary">{TRIGGER_SENTENCE}</p>;
+/** §10.1: the trigger sentence on every market page (plain text, no pills). */
+export function TriggerSentence({ className = "" }: { className?: string }) {
+  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{TRIGGER_SENTENCE}</span>;
 }
 
 export function ReplayDisclosure({ className = "" }: { className?: string }) {
-  return <p className={`text-sm text-dim ${className}`}>{REPLAY_DISCLOSURE}</p>;
+  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{REPLAY_DISCLOSURE}</span>;
 }
 
 export function InvalidDisclosure() {
-  return <p className="text-xs leading-relaxed text-dim">{INVALID_DISCLOSURE}</p>;
+  return <p className="text-[11px] leading-snug text-faint">{INVALID_DISCLOSURE}</p>;
 }
 
 export function LiquidityDisclosure() {
-  return <p className="text-sm text-dim">{LIQUIDITY_DISCLOSURE}</p>;
+  return <p className="text-xs leading-snug text-faint">{LIQUIDITY_DISCLOSURE}</p>;
 }
 
 /** Quiet "unavailable" line: the UI never shows cached or invented data as live (§7.5). */

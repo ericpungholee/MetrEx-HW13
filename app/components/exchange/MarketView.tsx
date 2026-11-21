@@ -1,8 +1,8 @@
 "use client";
 
 // One market (spec-v2 §10.3), used by `/` for the featured market and by `/market/[id]`.
-// Every number comes from the §7.5 API (on-chain accounts and finalized events) or the wallet's
-// own token accounts.
+// Layout follows a Kalshi/Polymarket-style trading desk: question + YES/NO prices, chart and
+// book on the left, compact trade ticket on the right. Every number comes from the §7.5 API.
 import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -27,20 +27,42 @@ import { formatPrice, formatShares, marketState, marketTitle, outcomeName, quest
 import { explorerAddress, formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { PerimeterMap } from "@/components/PerimeterMap";
-import { Panel, Stat, TxLink } from "@/components/ui";
+import { Panel, TxLink } from "@/components/ui";
 import { LiquidityDisclosure, MakerLabel, MakersContext, ReplayDisclosure, StateLabel, TriggerSentence, Unavailable } from "./Labels";
 import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
 import { TradePanel, type TradePick } from "./TradePanel";
 import { WalletPanel } from "./WalletPanel";
 
-function HeadlinePrice({ label, h }: { label: string; h: Headline }) {
+function OutcomePrice({
+  label,
+  h,
+  selected,
+  onSelect,
+}: {
+  label: "YES" | "NO";
+  h: Headline;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const yes = label === "YES";
   return (
-    <div>
-      <div className="text-xs font-medium tracking-wide text-faint uppercase">{label}</div>
-      <div className="num mt-1 text-3xl font-medium tracking-tight text-ink">{h.source === "none" ? "—" : formatPrice(h.priceBps)}</div>
-      <div className="text-xs text-dim">{h.source === "mid" ? "mid" : h.source === "last" ? "last" : "no quotes"}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`flex min-w-0 flex-1 items-center justify-between gap-3 border px-4 py-3 text-left transition-colors ${
+        selected ? (yes ? "border-up bg-up-soft" : "border-down bg-down-soft") : "border-line hover:bg-bg-soft"
+      }`}
+    >
+      <span className={`text-sm font-semibold ${yes ? "text-up" : "text-down"}`}>{label}</span>
+      <span className="text-right">
+        <span className="num block text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+          {h.source === "none" ? "—" : formatPrice(h.priceBps)}
+        </span>
+        <span className="text-[11px] text-faint">{h.source === "mid" ? "mid" : h.source === "last" ? "last" : "no quotes"}</span>
+      </span>
+    </button>
   );
 }
 
@@ -71,20 +93,24 @@ function Settlement({ info }: { info: MarketInfo }) {
   }, [m.address, m.outcome, m.evidenceHash]);
 
   if (m.outcome === "unresolved") {
-    return <div className="text-sm text-dim">{info.round.state === "open" ? "Settles after the round closes. The oracle reads a dataset whose hash was committed on-chain before trading." : "Trading has closed. Waiting for the oracle."}</div>;
-  }
-  if (m.outcome === "invalid") return <div className="text-sm">Declared invalid. Every YES and NO share redeems for 0.50 mUSD.</div>;
-  return (
-    <div className="space-y-2 text-sm">
-      <div>
-        Resolved <span className="font-medium">{m.outcome === "yes" ? "YES" : "NO"}</span>. Each winning share redeems for {formatMusd(PAYOUT_PER_SHARE)} mUSD.
+    return (
+      <div className="text-sm text-dim">
+        {info.round.state === "open" ? "Settles after close from a pre-committed dataset hash." : "Trading closed. Waiting for the oracle."}
       </div>
-      <div className="num text-xs break-all text-dim">On-chain evidence hash {m.evidenceHash}</div>
-      {check === "pending" && <div className="text-xs text-warn">Evidence is published after finalized settlement. Checking again shortly.</div>}
-      {check === "failed" && <div className="text-xs text-warn">This browser could not verify the evidence hash.</div>}
+    );
+  }
+  if (m.outcome === "invalid") return <div className="text-sm">Invalid — every share redeems for 0.50 mUSD.</div>;
+  return (
+    <div className="space-y-1.5 text-sm">
+      <div>
+        Resolved <span className="font-medium">{m.outcome === "yes" ? "YES" : "NO"}</span> · {formatMusd(PAYOUT_PER_SHARE)} mUSD per winning share
+      </div>
+      <div className="num text-[11px] break-all text-faint">{m.evidenceHash}</div>
+      {check === "pending" && <div className="text-xs text-warn">Checking evidence…</div>}
+      {check === "failed" && <div className="text-xs text-warn">Could not verify evidence hash.</div>}
       {check && typeof check === "object" && (
         <div className={`text-xs ${check.matches ? "text-up" : "text-down"}`}>
-          {check.matches ? "Evidence hash recomputed in this browser: matches the chain." : `Evidence hash mismatch (${check.hash}). Do not rely on this file.`}{" "}
+          {check.matches ? "Evidence matches chain." : `Hash mismatch (${check.hash}).`}{" "}
           {check.matches && (
             <a className="underline" href={`/api/evidence/${m.address}?raw=1`} target="_blank" rel="noreferrer">
               Evidence
@@ -101,6 +127,7 @@ export function MarketView({ market, round, children }: { market: string; round?
   const me = publicKey?.toBase58() ?? null;
   const [outcome, setOutcome] = useState<OutcomeCode>(Outcome.Yes);
   const [pick, setPick] = useState<TradePick | null>(null);
+  const [tab, setTab] = useState<"book" | "trades" | "map">("book");
 
   const info = usePoll(() => fetchMarketInfo(market), [market], 3_000);
   const book = usePoll(() => fetchBook(market), [market], 2_000);
@@ -136,116 +163,160 @@ export function MarketView({ market, round, children }: { market: string; round?
 
   return (
     <MakersContext.Provider value={makers}>
-      <div className="space-y-10">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-dim">
+      <div className="space-y-6 animate-in">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
             <Link href="/rounds" className="hover:text-ink">
-              Round #{r.roundId.toString()} · {r.label}
+              Round #{r.roundId.toString()}
             </Link>
+            <span className="text-faint">·</span>
             <StateLabel state={state} />
-            <a className="hover:text-ink" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">
-              Market on Explorer
+            <span className="text-faint">·</span>
+            <span className="num">
+              Vol {info.data.volume === null ? "…" : `${formatMusd(info.data.volume)} mUSD`}
+            </span>
+            {info.data.confirmingFills > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span className="text-warn">{info.data.confirmingFills} confirming</span>
+              </>
+            )}
+            <a className="ml-auto hover:text-ink" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">
+              Explorer
             </a>
           </div>
-          <h1 className="max-w-3xl text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{question(m)}</h1>
-          <TriggerSentence />
-          <ReplayDisclosure />
+          <h1 className="max-w-4xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{question(m)}</h1>
+          <p className="max-w-3xl text-[11px] leading-snug text-faint">
+            <TriggerSentence /> <ReplayDisclosure className="inline" />
+          </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
-          <div className="space-y-6">
-            <div className="grid grid-cols-3 gap-5">
-              <HeadlinePrice label="YES" h={info.data.headline.yes} />
-              <HeadlinePrice label="NO" h={info.data.headline.no} />
-              <Stat label="Volume (finalized)">
-                {info.data.volume === null ? <span className="text-dim">indexing…</span> : <>{formatMusd(info.data.volume)} <span className="text-faint">mUSD</span></>}
-              </Stat>
-            </div>
-            {info.data.confirmingFills > 0 && <div className="text-xs text-warn">{info.data.confirmingFills} fill(s) confirming; not yet in volume or the chart.</div>}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <OutcomePrice label="YES" h={info.data.headline.yes} selected={outcome === Outcome.Yes} onSelect={() => setOutcome(Outcome.Yes)} />
+          <OutcomePrice label="NO" h={info.data.headline.no} selected={outcome === Outcome.No} onSelect={() => setOutcome(Outcome.No)} />
+        </div>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-4">
             <PriceChart chart={chart.data} outcome={outcome} />
-          </div>
-          <PerimeterMap
-            points={[{ key: m.address, lat: m.latE6 / 1e6, lon: m.lonE6 / 1e6, label: marketTitle(m), radiusM: m.triggerDistanceM, selected: true }]}
-            settledMarket={m.outcome === "yes" || m.outcome === "no" ? m.address : undefined}
-            height={340}
-          />
-        </div>
 
-        <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr]">
-          <Panel title="Order book" right={health.data && health.data.matching === "paused" ? <span className="text-warn">Matching paused (keeper offline)</span> : undefined}>
-            {book.error && !book.data ? (
-              <Unavailable>Book unavailable: {book.error}</Unavailable>
-            ) : (
-              <OrderBook
-                book={outcome === Outcome.Yes ? book.data?.yes : book.data?.no}
-                outcome={outcome}
-                onOutcome={setOutcome}
-                onPick={(priceBps: number, side: OrderSideCode) => setPick({ priceBps, side, at: Date.now() })}
-                me={me}
-                closed={closed}
-              />
-            )}
-            <div className="mt-4">
-              <LiquidityDisclosure />
+            <div>
+              <div className="mb-3 flex items-center gap-1 border-b border-line text-sm">
+                {(
+                  [
+                    ["book", "Order book"],
+                    ["trades", "Trades"],
+                    ["map", "Map"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTab(id)}
+                    className={`-mb-px border-b-2 px-3 py-2 transition-colors ${
+                      tab === id ? "border-ink font-medium text-ink" : "border-transparent text-dim hover:text-ink"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {tab === "book" && health.data?.matching === "paused" && (
+                  <span className="ml-auto text-xs text-warn">Matching paused</span>
+                )}
+              </div>
+
+              {tab === "book" &&
+                (book.error && !book.data ? (
+                  <Unavailable>Book unavailable: {book.error}</Unavailable>
+                ) : (
+                  <OrderBook
+                    book={outcome === Outcome.Yes ? book.data?.yes : book.data?.no}
+                    outcome={outcome}
+                    onOutcome={setOutcome}
+                    onPick={(priceBps: number, side: OrderSideCode) => setPick({ priceBps, side, at: Date.now() })}
+                    me={me}
+                    closed={closed}
+                    compact
+                  />
+                ))}
+
+              {tab === "trades" &&
+                (!trades.data ? (
+                  trades.error ? <Unavailable>{trades.error}</Unavailable> : <div className="h-24 animate-pulse bg-bg-soft" />
+                ) : trades.data.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-dim">No trades yet.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {trades.data.slice(0, 16).map((t) => (
+                        <tr key={`${t.signature}-${t.buyer}-${t.seller}-${t.quantity}`} className="border-t border-line">
+                          <td className="py-2">
+                            {formatShares(t.quantity)} {outcomeName(t.outcome)} @ <span className="num">{formatPrice(t.priceBps)}</span>
+                          </td>
+                          <td className="py-2 text-xs text-dim">
+                            <MakerLabel address={t.buyer} me={me} short /> ← <MakerLabel address={t.seller} me={me} short />
+                          </td>
+                          <td className="py-2 text-right">
+                            {!t.finalized && <span className="mr-2 text-xs text-warn">confirming</span>}
+                            <TxLink signature={t.signature} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ))}
+
+              {tab === "map" && (
+                <PerimeterMap
+                  points={[{ key: m.address, lat: m.latE6 / 1e6, lon: m.lonE6 / 1e6, label: marketTitle(m), radiusM: m.triggerDistanceM, selected: true }]}
+                  settledMarket={m.outcome === "yes" || m.outcome === "no" ? m.address : undefined}
+                  height={280}
+                />
+              )}
             </div>
-          </Panel>
-          <Panel title="Trade">
-            <TradePanel market={m} book={book.data} outcome={outcome} onOutcome={setOutcome} have={wallet.data ?? null} tradingOpen={!closed} pick={pick} onDone={refresh} />
-          </Panel>
+          </div>
+
+          <aside className="lg:sticky lg:top-20">
+            <div className="border border-line bg-bg p-4 sm:p-5">
+              <div className="mb-3 text-xs font-medium tracking-wide text-faint uppercase">Trade</div>
+              <TradePanel market={m} book={book.data} outcome={outcome} onOutcome={setOutcome} have={wallet.data ?? null} tradingOpen={!closed} pick={pick} onDone={refresh} />
+            </div>
+          </aside>
         </div>
 
-        <Panel title="Your position">
+        <Panel title="Position">
           <WalletPanel market={m} have={wallet.data ?? null} orders={wallet.data?.orders} trades={trades.data} onDone={refresh} />
         </Panel>
 
-        <div className="grid gap-10 lg:grid-cols-2">
-          <Panel title="Recent trades" right="finalized fills; newer ones marked confirming">
-            {!trades.data ? (
-              trades.error ? <Unavailable>{trades.error}</Unavailable> : <div className="h-24 animate-pulse bg-bg-soft" />
-            ) : trades.data.length === 0 ? (
-              <div className="text-sm text-dim">No trades yet.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {trades.data.slice(0, 12).map((t) => (
-                    <tr key={`${t.signature}-${t.buyer}-${t.seller}-${t.quantity}`} className="border-t border-line">
-                      <td className="py-2">
-                        {formatShares(t.quantity)} {outcomeName(t.outcome)} @ <span className="num">{formatPrice(t.priceBps)}</span>
-                      </td>
-                      <td className="py-2 text-xs">
-                        <MakerLabel address={t.buyer} me={me} short /> ← <MakerLabel address={t.seller} me={me} short />
-                      </td>
-                      <td className="py-2 text-right">
-                        {!t.finalized && <span className="mr-2 text-xs text-warn">confirming</span>}
-                        <TxLink signature={t.signature} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
+        <div className="grid gap-8 lg:grid-cols-2">
           <Panel title="Settlement">
             <Settlement key={`${m.address}:${m.evidenceHash}`} info={info.data} />
           </Panel>
+          {siblings.length > 0 && (
+            <Panel title="Same round">
+              <div className="divide-y divide-line">
+                {siblings.map((s) => (
+                  <Link key={s.address} href={`/market/${s.address}`} className="flex items-center justify-between py-2.5 text-sm hover:bg-bg-soft">
+                    <span className="font-medium text-ink">{marketTitle(s)}</span>
+                    <StateLabel state={marketState(s.outcome, r)} />
+                  </Link>
+                ))}
+              </div>
+            </Panel>
+          )}
         </div>
 
-        {siblings.length > 0 && (
-          <Panel title="Other markets in this round">
-            <div className="divide-y divide-line">
-              {siblings.map((s) => (
-                <Link key={s.address} href={`/market/${s.address}`} className="flex items-center justify-between py-3 text-sm hover:bg-bg-soft">
-                  <span className="font-medium text-ink">{marketTitle(s)}</span>
-                  <StateLabel state={marketState(s.outcome, r)} />
-                </Link>
-              ))}
-            </div>
-          </Panel>
-        )}
         {children}
-        <p className="text-xs text-faint">
-          Market {m.address.slice(0, 8)}… · vault <a className="hover:underline" href={explorerAddress(new PublicKey(m.vault))} target="_blank" rel="noreferrer">{m.vault.slice(0, 8)}…</a> · {formatShares(m.pairsOutstanding)} pairs outstanding
-        </p>
+        <div className="space-y-1 border-t border-line pt-4 text-xs text-faint">
+          <LiquidityDisclosure />
+          <p>
+            {m.address.slice(0, 8)}… · vault{" "}
+            <a className="hover:underline" href={explorerAddress(new PublicKey(m.vault))} target="_blank" rel="noreferrer">
+              {m.vault.slice(0, 8)}…
+            </a>{" "}
+            · {formatShares(m.pairsOutstanding)} pairs
+          </p>
+        </div>
       </div>
     </MakersContext.Provider>
   );

@@ -40,9 +40,9 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
     return [...mids, ...trades].sort((a, b) => a.x - b.x);
   }, [chart, outcome]);
 
-  if (!chart) return <div className="h-[220px] animate-pulse bg-bg-soft" />;
-  if (chart.indexing) return <div className="flex h-[160px] items-center justify-center border border-line text-sm text-dim">Indexing trade history from chain events…</div>;
-  if (!pts.length) return <div className="flex h-[160px] items-center justify-center border border-line text-sm text-dim">No quotes or trades yet</div>;
+  if (!chart) return <div className="h-[180px] animate-pulse bg-bg-soft" />;
+  if (chart.indexing) return <div className="flex h-16 items-center text-xs text-dim">Indexing…</div>;
+  if (!pts.length) return <div className="flex h-16 items-center text-xs text-dim">No chart data yet</div>;
 
   // Even spacing by event order: chain order is what matters, gaps in time are not data.
   const xs = pts.map((_, i) => i);
@@ -69,15 +69,15 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-4 text-xs text-dim">
-        <div className="flex items-center gap-4">
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] text-dim">
+        <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4" style={{ background: MID }} /> Quoted midpoint
+            <span className="inline-block h-0.5 w-3" style={{ background: MID }} /> Mid
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: TRADE }} /> Trades
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TRADE }} /> Trades
           </span>
-          <span className="text-faint">{outcomeName(outcome)} · finalized events</span>
+          <span className="text-faint">{outcomeName(outcome)}</span>
         </div>
         <button className="text-faint hover:text-ink" onClick={() => setTable((t) => !t)}>
           {table ? "Chart" : "Table"}

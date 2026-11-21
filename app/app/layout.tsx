@@ -19,17 +19,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${GeistSans.className} min-h-screen antialiased`}>
         <Providers>
           <Header />
-          <main className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-8 sm:py-14">{children}</main>
-          <footer className="mx-auto w-full max-w-6xl border-t border-line px-5 py-10 sm:px-8">
-            <div className="flex flex-col gap-3 text-sm text-faint sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="font-medium text-dim">MetrEx</div>
-                <p className="mt-1 max-w-md leading-relaxed">
-                  Parametric gap coverage on Solana Devnet. mUSD is a test token with no value. Home labels are fictional;
-                  coordinates are approximate points, not real addresses.
-                </p>
-              </div>
-              <p className="max-w-xs leading-relaxed sm:text-right">Pays on fire proximity, not on damage.</p>
+          <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+          <footer className="mx-auto w-full max-w-6xl border-t border-line px-4 py-6 sm:px-6">
+            <div className="flex flex-col gap-1 text-xs text-faint sm:flex-row sm:items-center sm:justify-between">
+              <p>MetrEx · Solana Devnet · mUSD is a test token · labels fictional</p>
+              <p>Pays on fire proximity, not on damage.</p>
             </div>
           </footer>
         </Providers>

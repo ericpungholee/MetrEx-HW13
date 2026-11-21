@@ -68,7 +68,7 @@ export function Header() {
           Fixture mode — offline sample data. Transactions are disabled.
         </div>
       )}
-      <div className="mx-auto flex max-w-6xl items-center gap-6 px-5 py-3.5 sm:px-8">
+      <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-3 sm:px-6">
         <Link href="/" className="shrink-0 text-xl font-semibold tracking-tight text-ink">
           MetrEx
         </Link>
