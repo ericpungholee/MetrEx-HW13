@@ -3,7 +3,17 @@
 // "@metrex/server/exchange" entry (§8.4).
 
 import { PublicKey, Transaction, type Keypair, type TransactionInstruction } from "@solana/web3.js";
-import { OrderSide, findOrderPda, randomNonce, type BotParams, type BookOrder, type Quote } from "@metrex/exchange";
+import {
+  OrderSide,
+  catalogByProperty,
+  catalogByScenario,
+  findOrderPda,
+  ladderFor,
+  randomNonce,
+  type BotParams,
+  type BookOrder,
+  type Quote,
+} from "@metrex/exchange";
 import {
   ataOf,
   cancelOrderIx,
@@ -115,7 +125,8 @@ export class ExchangeBotWorker {
     // NO balances, in a fixed handful of RPC calls however many markets exist.
     const state = await rpc.run((c) =>
       this.loader.load(c, {
-        roundsBack: this.o.roundsBack ?? 3,
+        // Multi-peril: one Open round per hazard, so look further back than the single-round design.
+        roundsBack: this.o.roundsBack ?? 8,
         extraKeys: (markets, config) =>
           this.o.bots.flatMap((b) => {
             const me = b.keypair.publicKey;
@@ -140,7 +151,11 @@ export class ExchangeBotWorker {
       const m = snap.market;
       // The post-only clamp needs opposing orders that are still being discovered by the loader.
       if (snap.tradingOpen && state.orderDiscoveryPending.has(m.address.toBase58())) continue;
-      const featured = m.propertyId === this.o.featuredPropertyId && m.round.equals(config.latestRound);
+      // Skew is off on every catalog market (one featured market per hazard, docs/spec-multiperil.md §6)
+      // and on the legacy featured property of the latest round (spec-v2 §8.3).
+      const featured =
+        catalogByProperty(m.propertyId) !== undefined ||
+        (m.propertyId === this.o.featuredPropertyId && m.round.equals(config.latestRound));
       planned.push(...this.planMarket(snap, featured, botKeys, balances));
     }
     // Group by bot and market: a split goes out together with the asks it funds (see executeGroup).
@@ -204,9 +219,11 @@ export class ExchangeBotWorker {
       }
       const last = bot.lastAction.get(mk);
       if (last !== undefined && now - last < this.o.config.cooldownMs) continue; // RPC catch-up and cooldown
+      // Per-market starting quotes and split size (docs/spec-multiperil.md §6); legacy ladder otherwise.
+      const entry = catalogByProperty(m.propertyId) ?? catalogByScenario(m.scenarioId);
       const actions = planBotMarket({
-        params: bot.params,
-        config: this.o.config,
+        params: ladderFor(m.propertyId, m.scenarioId, bot.params.name, bot.params),
+        config: entry ? { ...this.o.config, splitPairs: entry.splitPairs } : this.o.config,
         maker,
         phase,
         featured,

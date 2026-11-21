@@ -27,11 +27,15 @@ interface Target {
   musd: bigint;
 }
 
-/** Priority order: if the funder runs short, earlier wallets are funded first. */
+/**
+ * Priority order: if the funder runs short, earlier wallets are funded first. Bots hold 600k mUSD:
+ * the four catalog markets commit about 480k (A), 400k (B) and 360k (C) at zero inventory
+ * (docs/spec-multiperil.md §6; scripts/prepare-multiperil.ts prints the exact figure).
+ */
 export const TARGETS: readonly Target[] = [
-  { name: "botA", sol: solToLamports("1.5"), musd: musd(250_000n) },
-  { name: "botB", sol: solToLamports("1.5"), musd: musd(250_000n) },
-  { name: "botC", sol: solToLamports("1.5"), musd: musd(250_000n) },
+  { name: "botA", sol: solToLamports("1.5"), musd: musd(600_000n) },
+  { name: "botB", sol: solToLamports("1.5"), musd: musd(600_000n) },
+  { name: "botC", sol: solToLamports("1.5"), musd: musd(600_000n) },
   { name: "homeownerDemo", sol: solToLamports("0.5"), musd: musd(100_000n) },
   { name: "oracle", sol: solToLamports("0.05"), musd: 0n },
   { name: "controller", sol: solToLamports("0.05"), musd: 0n },

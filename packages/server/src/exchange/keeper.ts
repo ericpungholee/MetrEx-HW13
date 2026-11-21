@@ -59,7 +59,7 @@ export class Keeper {
   async tick(): Promise<void> {
     this.stats.ticks++;
     // One batched read of every book (a fixed handful of RPC calls), then act market by market.
-    const state = await this.o.rpc.run((c) => this.loader.load(c, { roundsBack: this.o.roundsBack ?? 3 }));
+    const state = await this.o.rpc.run((c) => this.loader.load(c, { roundsBack: this.o.roundsBack ?? 8 }));
     if (!state) return;
     const collateral = state.config.collateralMint;
     for (const snap of state.snapshots) {
