@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { MarketCard } from "@/components/MarketCard";
 import { NetworkPanel } from "@/components/NetworkPanel";
-import { Empty, ErrorLine } from "@/components/ui";
+import { Empty, ErrorLine, PageHeader } from "@/components/ui";
 import { fetchExchange } from "@/lib/client";
 import { summarizeMarket } from "@/lib/derive";
 import { usePoll } from "@/lib/usePoll";
@@ -19,37 +19,46 @@ export default function ExchangePage() {
   const settled = summaries.filter((s) => !(s.display === "Accepting offers" || s.display === "Funded"));
 
   return (
-    <div className="space-y-5">
+    <div className="animate-in space-y-10">
+      <PageHeader
+        title="Markets"
+        description="Underwrite wildfire risk on individual properties. Fully collateralized. Settled on Solana."
+        action={
+          <Link href="/create" className="btn btn-primary">
+            Create market
+          </Link>
+        }
+      />
+
       <NetworkPanel />
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-bold">Exchange</h1>
-          <p className="text-xs text-dim">
-            Individual parametric wildfire risk. Traders underwrite with fully collateralized offers; an oracle settles from
-            escrow.
-          </p>
-        </div>
-        <Link href="/create" className="btn btn-primary">
-          + Create market
-        </Link>
-      </div>
+
       <ErrorLine error={ex.error} />
-      {ex.loading && <Empty>Loading markets from chain…</Empty>}
-      {ex.data && summaries.length === 0 && <Empty>No markets yet. Create the first one.</Empty>}
+      {ex.loading && <Empty>Loading markets…</Empty>}
+      {ex.data && summaries.length === 0 && (
+        <Empty>
+          No markets yet.{" "}
+          <Link href="/create" className="text-ink underline-offset-2 hover:underline">
+            Create the first one
+          </Link>
+          .
+        </Empty>
+      )}
+
       {live.length > 0 && (
         <section>
-          <h2 className="mb-2 text-xs font-semibold tracking-wide text-dim uppercase">Open markets ({live.length})</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <h2 className="mb-1 text-xs font-medium tracking-wide text-faint uppercase">Open · {live.length}</h2>
+          <div>
             {live.map((s) => (
               <MarketCard key={s.market.publicKey.toBase58()} s={s} />
             ))}
           </div>
         </section>
       )}
+
       {settled.length > 0 && (
         <section>
-          <h2 className="mb-2 text-xs font-semibold tracking-wide text-dim uppercase">Closed and settled ({settled.length})</h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <h2 className="mb-1 text-xs font-medium tracking-wide text-faint uppercase">Settled · {settled.length}</h2>
+          <div>
             {settled.map((s) => (
               <MarketCard key={s.market.publicKey.toBase58()} s={s} />
             ))}

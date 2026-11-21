@@ -10,21 +10,19 @@ import { fetchMusdBalance, fetchSolLamports, requestFaucet, describeError, USE_F
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 
-// The wallet button reads browser-only wallet state; render it on the client only.
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false, loading: () => <div className="h-8 w-36 rounded border border-line bg-panel2" /> },
+  { ssr: false, loading: () => <div className="h-10 w-36 animate-pulse bg-bg-muted" /> },
 );
 
 const NAV = [
-  { href: "/", label: "Exchange" },
+  { href: "/", label: "Markets" },
   { href: "/create", label: "Create" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/demo", label: "Settlement" },
 ];
 
-/** Low-balance thresholds for showing "Get demo funds" (spec §9.3). */
-const LOW_SOL_LAMPORTS = 10_000_000n; // 0.01 SOL
+const LOW_SOL_LAMPORTS = 10_000_000n;
 const LOW_MUSD = 100n * MUSD_UNIT;
 
 export function Header() {
@@ -41,6 +39,7 @@ export function Header() {
   );
   const [faucetMsg, setFaucetMsg] = useState<string | null>(null);
   const [faucetBusy, setFaucetBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const low = balances.data && (balances.data.sol < LOW_SOL_LAMPORTS || balances.data.musd < LOW_MUSD);
 
@@ -51,7 +50,7 @@ export function Header() {
     try {
       const r = await requestFaucet(publicKey);
       const err = typeof r.body?.error === "string" ? r.body.error : null;
-      setFaucetMsg(r.ok ? "Demo funds requested. Balance updates within seconds." : (err ?? `Faucet unavailable (HTTP ${r.status})`));
+      setFaucetMsg(r.ok ? "Funds requested. Balance updates shortly." : (err ?? `Faucet unavailable (HTTP ${r.status})`));
       balances.refresh();
     } catch (e) {
       setFaucetMsg(describeError(e));
@@ -61,57 +60,89 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-[900] border-b border-line bg-bg/95 backdrop-blur">
+    <header className="sticky top-0 z-[900] border-b border-line bg-bg/90 backdrop-blur-md">
       {USE_FIXTURES && (
-        <div className="bg-fixture px-4 py-1 text-center text-xs font-bold tracking-wider text-black">
-          FIXTURE DATA — not on-chain. Transactions are disabled. (NEXT_PUBLIC_USE_FIXTURES=1, dev only)
+        <div className="bg-fixture px-4 py-2 text-center text-sm font-medium text-white">
+          Fixture mode — offline sample data. Transactions are disabled.
         </div>
       )}
-      <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-4 py-2">
-        <Link href="/" className="flex items-baseline gap-2">
-          <span className="text-base font-black tracking-tight">
-            Metr<span className="text-up">Ex</span>
-          </span>
-          <span className="text-[10px] text-faint uppercase">devnet</span>
+      <div className="mx-auto flex max-w-6xl items-center gap-6 px-5 py-3.5 sm:px-8">
+        <Link href="/" className="shrink-0 text-xl font-semibold tracking-tight text-ink">
+          MetrEx
         </Link>
-        <nav className="flex gap-1">
+
+        <nav className="hidden items-center gap-1 md:flex">
           {NAV.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                className={`rounded px-3 py-1.5 text-xs font-semibold ${active ? "bg-panel2 text-ink" : "text-dim hover:text-ink"}`}
+                className={`px-3 py-1.5 text-sm transition-colors ${active ? "font-medium text-ink" : "text-dim hover:text-ink"}`}
               >
                 {n.label}
               </Link>
             );
           })}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
+
+        <div className="ml-auto flex items-center gap-3 sm:gap-4">
           {viewer && balances.data && (
-            <div className="text-right">
-              <div className="num text-xs">
-                {formatMusd(balances.data.musd)} <span className="text-faint">mUSD</span>
-              </div>
-              <div className="num text-[10px] text-faint">
-                {USE_FIXTURES && !publicKey ? "fixture wallet" : `${(Number(balances.data.sol) / 1e9).toFixed(3)} SOL`}
+            <div className="hidden text-right sm:block">
+              <div className="num text-sm font-medium">
+                {formatMusd(balances.data.musd)} <span className="font-normal text-faint">mUSD</span>
               </div>
             </div>
           )}
           {publicKey && low && !USE_FIXTURES && (
-            <button className="btn btn-up" disabled={faucetBusy} onClick={getFunds}>
-              {faucetBusy ? "Requesting…" : "Get demo funds"}
+            <button className="btn btn-sm hidden sm:inline-flex" disabled={faucetBusy} onClick={getFunds}>
+              {faucetBusy ? "Requesting…" : "Get funds"}
             </button>
           )}
           <WalletMultiButton />
+          <div className="md:hidden">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              aria-label="Menu"
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              {menuOpen ? "Close" : "Menu"}
+            </button>
+          </div>
         </div>
       </div>
+
+      {menuOpen && (
+        <nav className="border-t border-line px-5 py-3 md:hidden">
+          <div className="flex flex-col gap-1">
+            {NAV.map((n) => {
+              const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
+              return (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  onClick={() => setMenuOpen(false)}
+                  className={`px-2 py-2.5 text-base ${active ? "font-medium text-ink" : "text-dim"}`}
+                >
+                  {n.label}
+                </Link>
+              );
+            })}
+            {publicKey && low && !USE_FIXTURES && (
+              <button className="btn mt-2 w-full" disabled={faucetBusy} onClick={getFunds}>
+                {faucetBusy ? "Requesting…" : "Get funds"}
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+
       {faucetMsg && (
-        <div className="mx-auto max-w-[1400px] px-4 pb-2 text-right text-xs text-dim">
+        <div className="border-t border-line bg-bg-soft px-5 py-2 text-right text-sm text-dim sm:px-8">
           {faucetMsg}{" "}
-          <button className="text-faint hover:text-ink" onClick={() => setFaucetMsg(null)}>
-            ×
+          <button className="ml-2 text-faint hover:text-ink" onClick={() => setFaucetMsg(null)} aria-label="Dismiss">
+            Dismiss
           </button>
         </div>
       )}

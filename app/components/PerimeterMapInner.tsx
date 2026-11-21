@@ -1,7 +1,6 @@
 "use client";
 
 // Leaflet map: packaged fire perimeter + property points with their trigger circles.
-// Client-only (imported through PerimeterMap with ssr: false).
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { Circle, CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
@@ -61,17 +60,16 @@ export default function PerimeterMapInner({
   const center = points[0] ? ([points[0].lat, points[0].lon] as [number, number]) : ([34.05, -118.53] as [number, number]);
 
   return (
-    <div className="relative overflow-hidden rounded border border-line" style={{ height }}>
+    <div className="relative overflow-hidden border border-line" style={{ height }}>
       <MapContainer center={center} zoom={12} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <TileLayer
-          className="dark-tiles"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {perimeter && (
           <GeoJSON
             data={perimeter}
-            style={() => ({ color: "#f0505a", weight: 1.5, fillColor: "#f0505a", fillOpacity: 0.22 })}
+            style={() => ({ color: "#c4352d", weight: 1.5, fillColor: "#c4352d", fillOpacity: 0.18 })}
           />
         )}
         {points.map((p) => (
@@ -80,13 +78,13 @@ export default function PerimeterMapInner({
               <Circle
                 center={[p.lat, p.lon]}
                 radius={p.radiusM}
-                pathOptions={{ color: p.selected ? "#4ea1ff" : "#8592a3", weight: p.selected ? 2 : 1, dashArray: "4 4", fillOpacity: 0.08 }}
+                pathOptions={{ color: p.selected ? "#0a0a0a" : "#9a9a94", weight: p.selected ? 2 : 1, dashArray: "4 4", fillOpacity: 0.04 }}
               />
             )}
             <CircleMarker
               center={[p.lat, p.lon]}
               radius={p.selected ? 6 : 4}
-              pathOptions={{ color: "#fff", weight: 1, fillColor: p.selected ? "#4ea1ff" : "#d7dee8", fillOpacity: 1 }}
+              pathOptions={{ color: "#fff", weight: 1.5, fillColor: p.selected ? "#0a0a0a" : "#6b6b66", fillOpacity: 1 }}
               eventHandlers={onSelect ? { click: () => onSelect(p.key) } : undefined}
             >
               <Tooltip>{p.label}</Tooltip>
@@ -95,13 +93,13 @@ export default function PerimeterMapInner({
         ))}
         <FitTo points={points} />
       </MapContainer>
-      <div className="pointer-events-none absolute top-2 right-2 z-[500] rounded bg-bg/85 px-2 py-1 text-[10px] text-dim">
-        {perimeterState === "ok" && <span className="text-down">■</span>} Fire perimeter{" "}
-        {perimeterState === "loading" ? "loading…" : perimeterState === "missing" ? "unavailable (data/ not packaged yet)" : ""}
+      <div className="pointer-events-none absolute top-3 right-3 z-[500] bg-bg/90 px-2.5 py-1.5 text-xs text-dim">
+        {perimeterState === "ok" && <span className="text-down">■</span>} Fire perimeter
+        {perimeterState === "loading" ? "…" : perimeterState === "missing" ? " unavailable" : ""}
         {points.some((p) => p.radiusM !== undefined) && (
           <>
             {" "}
-            · <span className="text-info">◌</span> trigger radius
+            · <span className="text-ink">◌</span> trigger
           </>
         )}
       </div>
