@@ -336,8 +336,14 @@ export function parseEventsFromLogs(logs: string[]): { name: string; data: Recor
  * Activity feed (spec §6.5): program events from recent transactions touching `address`
  * (a market, or a wallet). Best effort; account state remains the source of truth.
  * Parsed transactions are cached by signature, so each poll only fetches new ones.
+ * Supplying the market's offer keys scopes each event to that market. Tier 2 events
+ * identify the offer but omit the market.
  */
-export async function fetchActivity(address: PublicKey, limit = 25): Promise<ActivityItem[]> {
+export async function fetchActivity(
+  address: PublicKey,
+  limit = 25,
+  marketOfferKeys?: ReadonlySet<string>,
+): Promise<ActivityItem[]> {
   if (USE_FIXTURES) return fixtureActivity(address);
   const conn = getConnection();
   const sigs = await conn.getSignaturesForAddress(address, { limit });
@@ -359,7 +365,12 @@ export async function fetchActivity(address: PublicKey, limit = 25): Promise<Act
       );
     }
   }
-  return sigs.flatMap((s) => s.err ? [] : parsedTxCache.get(s.signature) ?? []);
+  const activity = sigs.flatMap((s) => s.err ? [] : parsedTxCache.get(s.signature) ?? []);
+  if (!marketOfferKeys) return activity;
+  return activity.filter(({ data }) => {
+    if (data.market instanceof PublicKey) return address.equals(data.market);
+    return data.offer instanceof PublicKey && marketOfferKeys.has(data.offer.toBase58());
+  });
 }
 
 async function fixtureActivity(address: PublicKey): Promise<ActivityItem[]> {
