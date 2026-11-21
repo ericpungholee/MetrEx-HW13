@@ -1,0 +1,6 @@
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+# Copied from ../data by scripts/copy-perimeter.mjs
+/public/data/
