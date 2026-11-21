@@ -12,7 +12,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 | V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
 | V2 — Trading protocol | **Passed** 2026-11-21 | `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` are implemented against the frozen contexts. The IDL is unchanged. `tests/exchange.ts` now has 67 tests: 31 for V2, including I3, I4 and I10–I12, the §11 demo replay and the size test. A mutation check, with the execution price forced to the SELL price and the take self-trade check removed, fails 5 of them. R checklist: all six items pass (see below) |
 | V3 — Engine and liquidity (local) | **Passed** 2026-11-21 | `scripts/v3-local.sh` passes end to end on a disposable validator (results below). Workspace tests: exchange 33, geo 35, server 50, bots 38, scripts 5, app 13, shared 12. App build passes with the v1 pages unchanged. `anchor test`: 145 passing (67 v2, 78 v1). Program and IDL unchanged |
-| V4 — Devnet | **Blocked** | Needs about 8 Devnet SOL in the deployer for the deploy peak (see below) |
+| V4 — Devnet | **Passed** 2026-11-21 | Deployed at `BrHisWF8…Fko`, admin is upgrade authority, dumped bytes match the tested build. Every §13.3 item passed on Devnet, NO validated separately. See [v2-devnet-verification.md](v2-devnet-verification.md) |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
 | V6 — Phantom rehearsal | Not started | |
 
@@ -72,14 +72,33 @@ Run with `bash scripts/v3-local.sh`. It uses throwaway keys in a temp dir (never
 - **Local finality** lags about 13 s. Pre-checks in `prepare-demo-v2` read at `confirmed`, and round creation and settlement wait for `finalized`.
 - `app/next.config.ts` adds `@metrex/exchange` to `transpilePackages`, because the server root now imports it.
 
-### Blocked: Gate V4 (Devnet) needs Devnet SOL (D2)
+### V4 results
 
-Checked 2026-11-21. `metrex_exchange` is not on Devnet yet.
+The full record is [v2-devnet-verification.md](v2-devnet-verification.md).
 
-- **Deploy cost.** `metrex_exchange.so` is 755,024 B, and its ProgramData rent is 3.836 SOL. A standard deploy also funds a buffer of the same size until the deploy instruction closes it. The peak is therefore about **7.7 SOL**, and about 3.84 SOL stays locked after the deploy. D2's estimate of 4–5 SOL covers only the steady state. Deploying with `--max-len` at the .so size, from a single buffer, needs the full peak.
-- **Balances now.** Deployer 0.05, admin 0.045, controller 0.02, oracle 0.02, keeper 0, bots about 1.0 each, faucet 5.55, presenter 0.029 SOL.
-- **Ask.** Fund the deployer with about **8 Devnet SOL** (it is refunded to about 4 after the deploy), plus about 0.5 SOL each for the admin and the keeper. I won't take SOL from the v1 faucet, because the v1 fallback demo depends on it.
-- **Once funded:** deploy with the admin as upgrade authority → `setup-devnet-v2.ts` (Devnet timeout 86,400 s) → `fund-bots.ts` → start the bots and the keeper → `prepare-demo-v2.ts` → the §13.3 YES and NO runs recorded in `docs/v2-devnet-verification.md`.
+- **Funding:** 20 Devnet SOL from DevnetFaucet.org (needed the owner's X follow and post).
+  - Rate-limited: faucet.solana.com (2 per 8 h) and Pine Stake (cooldown).
+  - Needed a Mainnet SOL balance: QuickNode and Chainstack.
+- **Deploy:** about 7.7 SOL at peak, 3.84 SOL locked. Program `BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko`, upgrade authority admin, dumped SHA-256 `b9d0325e…` equal to the tested build. v1 is untouched.
+- **Config:** uses the existing mUSD mint with a resolution timeout of 86,400 s. Properties 1–3 are registered.
+- **§13.3:** every item passed on Devnet (`scripts/prove-v4-devnet.ts --phase trade|settled`):
+  - split and merge back to the base unit
+  - the exact §8.3 bot ladder
+  - market buy 300 = 13.6 mUSD
+  - limit sell 200 @ 410 with a 100 partial fill
+  - cancel returning the escrow and rent
+  - NO buy on property 2
+  - one close stopping both markets
+  - a simulated split rejected with `RoundNotOpen`
+  - YES (property 1) and NO (property 2) with evidence v2 hashes matching on-chain
+  - redemptions exact: 200 YES → 200 mUSD, 50 NO → 50 mUSD
+- **Round 2** (`Crp8ZE8C…`) is open with fresh markets for the demo.
+
+### Next: Gate V5 (app replaces v1)
+
+Tag `v1.1-demo` first. Then build the §10 pages on `app/lib/exchange-client.ts` and wire v2 evidence into `/api/evidence`.
+
+Before V6, fix the RPC rate limits. The Devnet RPC returned HTTP 429 about 350 times while the bots and keeper ran, and bot quotes took 14–23 s against 5.7 s locally. Raise `BOTS_POLL_MS` and the keeper interval, or use a higher RPC tier.
 
 ### Effect on v1 open items
 
