@@ -1,5 +1,7 @@
 # MetrEx — Build Plan (v1.1)
 
+> **v1 plan; all gates passed.** v2 work follows [build-plan-v2.md](build-plan-v2.md).
+
 **Builds:** `claude/metrex-spec-v1.1.md` (put a copy at `docs/spec.md` in the repo; every agent reads it)
 **Team:** one human + parallel coding agents
 **Target prize:** MLH Best Use of Solana (Unruggable hardware wallets). The brief rewards fast, cheap, high-frequency transactions and trading/DEX designs, so the plan includes **Tier 2** (secondary trading, continuous requoting, live network stats) as planned work, not a stretch.
