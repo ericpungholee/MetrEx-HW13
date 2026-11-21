@@ -11,8 +11,8 @@ _Last updated: 2026-11-21_
 | 2 — Devnet live | **Passed 2026-11-21** | Deployed and verified the core program, admin authority, Config, mint, properties and fallback market |
 | 3 — Human lifecycle | **Passed 2026-11-21** | Phantom created, accepted and claimed on Devnet. The wallet received exactly 10,000 mUSD and the vault closed |
 | 4 — Definition of Done | **Passed 2026-11-21** | Bot offers arrived within 10 s for both live markets, three offers were accepted together, both evidence hashes matched and the winning wallets received exactly 10,000 mUSD per outcome |
-| 5 — Solana track (T2) | In progress | Trading and reassigned-holder payout passed on a local validator on `codex/tier2-local`. The compiled upgrade needs a temporary Devnet buffer |
-| 6 — Demo-ready | In progress | Funded fallback and packaged dataset verified. Live demonstrations, full demo balances and backup RPC remain open |
+| 5 — Solana track (T2) | **Passed 2026-11-21** | Same program ID and admin authority after upgrade. Live requotes, a Risk purchase and the buyer's claim verified on Devnet |
+| 6 — Demo-ready | **Passed 2026-11-21** | Both outcomes, fallback, packaged dataset, demo balances and backup RPC verified. Browser rehearsal and demo recording completed |
 
 ## Gate 0 checklist
 
@@ -69,10 +69,9 @@ _Last updated: 2026-11-21_
 - Toolchain binaries are on `~/.cargo/bin` and `~/.local/share/solana/install/active_release/bin`; installers were run with `--no-modify-path`, so add both to your shell `PATH`.
 - `anchor test` needs a wallet; pass `--provider.wallet <path>` or create `~/.config/solana/id.json`.
 
-## Blockers (human)
+## Devnet RPC configuration
 
-1. **Demo-day funding.** The owner funded the 555,992-byte Tier 2 upgrade through the Solana Foundation faucet. Devnet quoted 2.825277560 SOL in temporary buffer rent and 0.092008960 SOL for ProgramData growth, before transaction fees. The full §14 faucet and bot balances remain open for Gate 6.
-2. **RPC reliability.** A free Chainstack Solana Devnet node was verified by genesis hash and used for the Phantom claim and bot runs. The official Solana Devnet endpoint remains available as a server-side fallback and was rate-limited during earlier runs.
+- The free Chainstack Solana Devnet node served the Phantom claim and bot runs. The server uses the official Solana Devnet endpoint as a fallback. Both returned the Devnet genesis hash. The official endpoint was rate-limited during earlier runs.
 
 ## Gate 1 progress
 
@@ -141,7 +140,7 @@ The integrated setup creates and verifies a mint without a freeze authority. Dir
 - A confirmed 5 SOL deposit funded the Devnet deployer. The earlier CLI airdrops were rate-limited, and SolFaucet reported its RPC faucet closed. DevnetFaucet.org authenticated GitHub but rejected the submitted claim under its eligibility list. The documented proof-of-work pool was empty and its fee bootstrap was rate-limited. Funding came through the Solana Foundation web faucet.
 - RPC write transport hit the public per-IP rate limit. Retrying with the same explicit buffer and default TPU transport succeeded. The ProgramData is 537,880 bytes at slot 524610462. The downloaded bytes match the tested build, and the on-chain authority is the admin. The measured ProgramData and Program rent totals 2.73414236 Devnet SOL before transaction fees.
 - The admin was funded, initialized the no-freeze mUSD mint and Config, and registered properties 1–3. Minimum funding transactions topped up the bots and demo wallets. The fallback market has three accepted positions and 10,000 mUSD activated.
-- The separately reviewed Tier 2 rehearsal is on [codex/tier2-local](https://github.com/ericpungholee/MetrEx-HW13/tree/codex/tier2-local), with 71 Anchor tests and a verified local purchase and claim. The live program still rejects Tier 2 instructions.
+- The separately reviewed Tier 2 rehearsal is on [codex/tier2-local](https://github.com/ericpungholee/MetrEx-HW13/tree/codex/tier2-local), with 71 Anchor tests and a verified local purchase and claim. That work is merged and deployed on Devnet.
 
 ## Tier 2 local rehearsal
 
@@ -149,7 +148,20 @@ The integrated setup creates and verifies a mint without a freeze authority. Dir
 - A 390 bps judge offer caused the three local bots to requote to 380, 400 and 450 bps. After accepting the three bot offers, the judge bought a listed Risk position and claimed it following the NO resolution. The winners received 10,000 mUSD in total, and the serialized evidence matched the on-chain hash. The local network panel reported 31 transactions and 155,000 lamports in fees.
 - Independent read-only review checked §6.3 invariants 15–17. Listing authority, state and price are checked in `list_position.rs:44–59`. Purchase binds the listing, offer, seller and both mUSD accounts in `buy_position.rs:13–63`, rejects stale holders and conflicting roles in its handler, then transfers the price and records the buyer before Anchor closes the listing. The account contexts for listing, purchase and cancellation have no vault account. Cancellation binds the seller and refunds listing rent in `cancel_listing.rs:8–20`.
 - The app funds a temporary token account with the displayed price and closes it within the purchase transaction. A higher on-chain price exceeds that balance. A lower price leaves a balance that prevents closure and rolls back payment and ownership changes. A validator regression exercised both mismatched quotes through the app client, then executed the matching quote.
-- The [demo rehearsal script](demo-script.md) lists the recordings and Explorer links to collect on Devnet.
+- The [demo rehearsal script](demo-script.md) contains the Devnet verification links.
+
+## Tier 2 Devnet verification
+
+- The owner funded the 555,992-byte upgrade through the Solana Foundation faucet. ProgramData grew by 18,112 bytes. The admin remained upgrade authority and the downloaded ELF matched the tested build. Anchor passed 71 tests, the workspace passed 113 tests, TypeScript and production build checks passed, and the frozen interfaces matched Gate 0.
+- After an RPC rate limit, the proof resumed from the same market and offers. A 390 bps judge quote led to live bot rates of 380, 400 and 450 bps. The judge paid 2,932.50 mUSD for the Risk position and later claimed 3,000 mUSD. The combined payout was 10,000 mUSD and the evidence hash matched.
+- The warmed network index returned 65 program transactions and 570,000 lamports in fees with zero fees pending. The panel labels partial fee data during indexing.
+
+## Gate 6 rehearsal
+
+- All three bots held 1.01 SOL and more than 242,000 mUSD each. The demo faucet held 5.693713800 SOL after a finalized 2 SOL Pine Stake airdrop. The demo homeowner held 117,858 mUSD and 0.033132800 SOL. The fallback market remained open with 10,000 mUSD activated across three accepted positions.
+- Local ignored configuration sets the verified program ID and mUSD mint for the app and server. The app reads the private Chainstack connection through a loopback RPC bridge. The official fallback is configured for server requests.
+- Browser rehearsal found that the settlement page fetched the evidence API's JSON envelope for hashing. The app now fetches the canonical bytes. Regression tests cover the raw response request and reporting incomplete network fees. The final workspace run passed 115 tests and TypeScript checks.
+- The browser displayed the YES evidence hash match, the live network panel, and the NO market's purchase and payout events. The local demo recording is a 34-second WebM replay of the verified Devnet screens. Playback and seeking were verified in Chrome.
 
 ## Resolved
 
