@@ -4,6 +4,7 @@
   "private": true,
   "description": "setup-devnet, fund-bots, fund-wallet, seed-demo (D); find-properties (B). Run with pnpm tsx scripts/<name>.ts",
   "dependencies": {
+    "@metrex/geo": "workspace:*",
     "@metrex/shared": "workspace:*"
   },
   "devDependencies": {

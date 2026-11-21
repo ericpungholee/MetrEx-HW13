@@ -1,0 +1,11 @@
+{
+  "1": {
+    "scenarioId": 1,
+    "name": "palisades-2025",
+    "title": "Palisades Fire, January 2025",
+    "file": "palisades-2025.geojson",
+    "sha256": "8447bc02b2789c45d278327b4997789fb42112e457715b30847b2cbd64073b4a",
+    "source": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0",
+    "retrieved": "2026-11-20"
+  }
+}
