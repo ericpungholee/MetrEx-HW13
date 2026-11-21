@@ -6,7 +6,7 @@ _Last updated: 2026-11-20_
 
 | Gate | Status | Notes |
 |---|---|---|
-| 0 — Freeze | **Awaiting human review** | `anchor build` + `anchor test` green; IDL generated; review structs/seeds, then freeze |
+| 0 — Freeze | **Frozen — interface approved** | Gate 0 review against spec §5 and generated IDL completed at `25e10ac`; local keypair backup still unverified |
 | 1 — Core program | Not started | |
 | 2 — Devnet live | Not started | |
 | 3 — Human lifecycle | Not started | |
@@ -26,8 +26,15 @@ _Last updated: 2026-11-20_
 - [x] Program ID `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` in `declare_id!` and `Anchor.toml` (localnet + devnet)
 - [x] `anchor test` green on local validator (upgradeable deploy; smoke test only)
 - [x] IDL + types generated (`target/idl/metrex.json`, `target/types/metrex.ts`): 14 instructions, 5 accounts, 12 events, errors 6000–6021, 19 constants
-- [ ] IDL + types committed
-- [ ] Human review of structs and seeds against spec §5, then **freeze**
+- [x] IDL + types committed (Gate 0 commit `25e10ac`)
+- [x] Human review of account structs, PDA seeds, instruction arguments, program ID and generated IDL against spec §5–6; **interfaces frozen**
+
+## Gate 0 interface review (2026-11-20)
+
+- Reviewed GitHub commit `25e10ac` against `docs/spec.md` §5–6: all five Anchor account layouts and six PDA derivations agree with the spec (including integer seed byte order), all 14 instruction signatures are present, and the program ID is consistent in Rust, `Anchor.toml` and the IDL.
+- This is an **interface freeze**, not approval of business logic: Gate 0 instruction handlers are empty stubs and the reported `anchor test` is a program-load smoke test. Full security and lifecycle tests remain Gate 1 work.
+- Gate 1 review requirements: validate the vault mint and token authority on every token-moving path; enforce distinct oracle/controller keys at initialization to honor spec §2. These checks need no frozen interface change.
+- **Operational action still required:** back up `target/deploy/metrex-keypair.json` outside the repository (e.g. `~/.config/metrex/metrex-program.json`) and confirm its public key is `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X`. This cannot be verified from GitHub.
 
 ## Pinned versions
 
@@ -74,8 +81,9 @@ _Last updated: 2026-11-20_
 1. **Keypairs missing.** `~/.config/metrex/` does not exist. Need `admin`, `oracle`, `controller`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`, `deployer`, `mint-authority`, `faucet`.
 2. **Devnet SOL** not yet requested for `deployer` and `admin`.
 3. **Raw fire perimeter** not in `data/raw/` (CAL FIRE / NIFC final Palisades perimeter).
+4. **Program keypair backup unverified.** Copy the existing `target/deploy/metrex-keypair.json` to a private location and check the public key before deploying; never commit it.
 
 ## Open questions
 
-- Should `initialize_config` also require `oracle != controller` (spec §2 says they are distinct keys)? It doesn't change the interface; Workstream A can add it as a `require!` with `Unauthorized` if approved.
+- Gate 1: enforce `oracle != controller` in `initialize_config` (spec §2 requires distinct keys; no interface change).
 - `pnpm install` skipped build scripts for `bigint-buffer`, `bufferutil`, `esbuild`, `utf-8-validate`. Tests pass without them; run `pnpm approve-builds` if native speed-ups are wanted.
