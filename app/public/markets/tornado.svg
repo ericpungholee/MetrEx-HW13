@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-label="Illustration: two-storey house on the plains with a distant funnel cloud">
-<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8f9a8a"/><stop offset="1" stop-color="#d9dccf"/></linearGradient></defs>
-<rect width="320" height="240" fill="url(#s)"/>
-<path d="M0 40 q60 -26 120 -6 q60 -24 120 -4 q50 -14 80 6 V70 H0z" fill="#6e786a" opacity=".75"/>
-<path d="M232 64 q30 4 42 0 q-6 20 -16 34 q-4 22 -14 40 q-4 14 -2 26 q-8 -14 -6 -30 q-6 -18 -2 -36 q-6 -18 -2 -34z" fill="#5b6458" opacity=".85"/>
-<rect y="170" width="320" height="70" fill="#a9b26c"/>
-<path d="M0 190 H320 M0 206 H320 M0 222 H320" stroke="#93995a" stroke-width="2"/>
-<g transform="translate(56 92)"><polygon points="0,34 70,0 140,34" fill="#4e5560"/><rect x="10" y="34" width="120" height="66" fill="#efe9dc"/><rect x="22" y="44" width="22" height="18" fill="#6c8aa0"/><rect x="96" y="44" width="22" height="18" fill="#6c8aa0"/><rect x="22" y="72" width="22" height="18" fill="#6c8aa0"/><rect x="60" y="70" width="18" height="30" fill="#3e4652"/><rect x="134" y="62" width="50" height="38" fill="#e4ddcd"/><rect x="142" y="72" width="34" height="28" fill="#b7b0a1"/><polygon points="130,62 159,46 188,62" fill="#4e5560"/></g>
-</svg>

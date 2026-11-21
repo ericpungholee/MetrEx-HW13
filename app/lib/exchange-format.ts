@@ -7,9 +7,7 @@ import type { MarketSummary, RoundInfo } from "./exchange-client";
 /** §10.1 required text (plain text, no pills). The wildfire sentence; other hazards use `payoutRule`. */
 export const TRIGGER_SENTENCE =
   "Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage.";
-export const REPLAY_DISCLOSURE = "Historical replay. The real outcome is public. Prices here are not forecasts.";
 export const INVALID_DISCLOSURE = "If the market is declared invalid, every share pays 0.50 mUSD (50¢). Buying above 50¢ can lose money on invalid.";
-export const LIQUIDITY_DISCLOSURE = "Liquidity is provided by MetrEx-operated market makers.";
 
 /** Cents without the sign: 430 → "4.30", 80 → "0.80", 1 → "0.01", a half-tick midpoint 415.5 → "4.155". */
 export function formatCents(bps: number): string {

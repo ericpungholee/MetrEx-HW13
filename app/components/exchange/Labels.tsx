@@ -4,10 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { explorerAddress, shortKey } from "@/lib/format";
 import {
   INVALID_DISCLOSURE,
-  LIQUIDITY_DISCLOSURE,
-  REPLAY_DISCLOSURE,
   STATE_TONE,
-  TRIGGER_SENTENCE,
   formatPrice,
   type MarketState,
 } from "@/lib/exchange-format";
@@ -35,27 +32,8 @@ export function StateLabel({ state }: { state: MarketState }) {
   return <span className={`text-xs font-medium ${STATE_TONE[state]}`}>{state}</span>;
 }
 
-/** §10.1: the payout rule on every market page (plain text, no pills). Wildfire sentence by default, `payoutRule` per hazard. */
-export function TriggerSentence({ text = TRIGGER_SENTENCE, className = "" }: { text?: string; className?: string }) {
-  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{text}</span>;
-}
-
-/** §10.1 replay disclosure; `replayOf` names the real event the market replays (docs/spec-multiperil.md §7.1). */
-export function ReplayDisclosure({ className = "", replayOf }: { className?: string; replayOf?: string }) {
-  return (
-    <span className={`text-[11px] leading-snug text-faint ${className}`}>
-      {REPLAY_DISCLOSURE}
-      {replayOf && <> This market replays {replayOf}. Coverage dates are historical; trading time on-chain is the demo clock.</>}
-    </span>
-  );
-}
-
 export function InvalidDisclosure() {
   return <p className="text-[11px] leading-snug text-faint">{INVALID_DISCLOSURE}</p>;
-}
-
-export function LiquidityDisclosure() {
-  return <p className="text-xs leading-snug text-faint">{LIQUIDITY_DISCLOSURE}</p>;
 }
 
 /** Quiet "unavailable" line: the UI never shows cached or invented data as live (§7.5). */

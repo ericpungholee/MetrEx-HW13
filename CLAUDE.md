@@ -114,7 +114,7 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 - Never fake a transaction, fill, price, level, chart point or volume. Everything shown comes from on-chain accounts or finalized events. Optimistic rows are marked pending.
 - Never synthesize an executable NO quote from YES. Complements must be labelled "indicative".
 - Fixtures exist only behind `NEXT_PUBLIC_USE_FIXTURES=1`, and production builds must fail with it on.
-- Every market page shows, as plain text: *"Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage."* It also shows the historical-replay disclosure, the invalid-outcome disclosure and the note that liquidity comes from MetrEx-operated market makers (§10.1).
+- Every market page shows the applicable payout rule, historical coverage month, Devnet trading deadline, settlement source, and invalid-outcome terms. Keep replay and liquidity boilerplate off the exchange UI, preserve maker labels in trades, and show map and photo attribution alongside the relevant media (spec-multiperil §7.1).
 - Evidence and the perimeter require finalized settlement and a matching on-chain hash.
 - The homepage features the four catalog markets (`packages/exchange/src/catalog.ts`), each from the newest round of its scenario (spec-multiperil §7.2). Non-wildfire payout rules end "…, not on damage." Operator controls live only at password-protected `/operator`.
 - Explorer links use `?cluster=devnet`.

@@ -1,50 +1,80 @@
 "use client";
 
 // Homepage (docs/spec-multiperil.md §7.2): one property market per hazard, each from the newest round
-// of its scenario. Every price is the live best YES ask on the on-chain book; with no ask the card
-// says so instead of showing a number. Earlier rounds are on /rounds with their outcomes labelled.
+// of its scenario. Outcome buttons use the live asks from their own on-chain books.
 import Link from "next/link";
-import { CATALOG, HAZARD_LABEL, type CatalogMarket } from "@metrex/exchange";
-import { fetchFeatured, type FeaturedMarket } from "@/lib/exchange-client";
+import { CATALOG, HAZARD_LABEL, Outcome, type CatalogMarket } from "@metrex/exchange";
+import { fetchFeatured, fetchMarketInfo, fetchOutcomeBook, type FeaturedMarket } from "@/lib/exchange-client";
 import { formatPrice, marketState } from "@/lib/exchange-format";
+import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
-import { LiquidityDisclosure, ReplayDisclosure, StateLabel, Unavailable } from "@/components/exchange/Labels";
+import { StateLabel, Unavailable } from "@/components/exchange/Labels";
+import { MarketPhoto, MarketPhotoCredit } from "@/components/exchange/MarketPhoto";
 
-function PriceLine({ f, loading }: { f: FeaturedMarket | undefined; loading: boolean }) {
-  if (loading) return <div className="h-7 w-48 animate-pulse rounded bg-bg-soft" aria-label="Loading price" />;
-  if (!f?.market || !f.round) return <div className="text-sm text-dim">Not listed on this cluster yet</div>;
-  const state = marketState(f.market.outcome, f.round);
-  if (state !== "Open") return <StateLabel state={state} />;
-  if (f.yesBestAskBps === null) return <div className="text-sm text-dim">No YES offers right now</div>;
+function OutcomeLink({ href, label, ask, pending, unavailable }: { href: string; label: "YES" | "NO"; ask: number | null; pending?: boolean; unavailable?: boolean }) {
   return (
-    <div className="num text-xl font-medium text-up">
-      YES {formatPrice(f.yesBestAskBps)} <span className="text-sm font-normal text-dim">best offer per $1 of cover</span>
-    </div>
+    <Link
+      href={`${href}?outcome=${label.toLowerCase()}`}
+      prefetch={false}
+      className={`flex min-h-10 flex-wrap items-center justify-between gap-x-2 rounded-md px-3 py-2 text-sm font-semibold transition-opacity hover:opacity-75 ${label === "YES" ? "bg-up-soft text-up" : "bg-down-soft text-down"}`}
+    >
+      <span className={label === "YES" ? "text-up" : "text-down"}>{label}</span>
+      <span className="num">{unavailable ? "Unavailable" : pending ? "…" : ask === null ? "No ask" : formatPrice(ask)}</span>
+    </Link>
   );
 }
 
-function MarketCard({ c, f, loading }: { c: CatalogMarket; f: FeaturedMarket | undefined; loading: boolean }) {
+function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMarket | undefined; loading: boolean; failed: boolean }) {
+  const address = f?.market?.address;
+  const href = address ? `/market/${address}` : undefined;
+  const state = f?.market && f.round ? marketState(f.market.outcome, f.round) : null;
+  const no = usePoll(() => address && state === "Open" ? fetchOutcomeBook(address, Outcome.No) : Promise.resolve(null), [address, state], 8_000);
+  const info = usePoll(() => address ? fetchMarketInfo(address) : Promise.resolve(null), [address], 20_000);
+  const volume = info.error ? null : info.data?.volume;
   const body = (
-    <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:gap-6">
-      {/* eslint-disable-next-line @next/next/no-img-element -- static local illustration */}
-      <img src={c.photo.src} alt={c.photo.alt} className="h-36 w-full shrink-0 rounded-2xl object-cover sm:h-32 sm:w-44" />
-      <div className="min-w-0 space-y-1.5">
+    <>
+      <MarketPhoto photo={c.photo} sizes="(min-width: 72rem) 540px, (min-width: 40rem) 50vw, 100vw" className="aspect-[2/1] w-full sm:aspect-[9/4]" />
+      <div className="flex flex-1 flex-col gap-2 p-4 sm:px-5">
         <div className="text-sm text-dim">
-          {c.place} · {HAZARD_LABEL[c.hazard]}
+          {HAZARD_LABEL[c.hazard]} · {c.place}
         </div>
         <h2 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">{c.question}</h2>
-        <div className="text-[15px] text-ink-secondary">Trigger: {c.trigger}</div>
-        <PriceLine f={f} loading={loading} />
-        <div className="text-sm text-dim">{c.month} contract · historical replay</div>
+        <div className="text-sm text-dim">{c.month}</div>
       </div>
-    </div>
+    </>
   );
-  return f?.market ? (
-    <Link href={`/market/${f.market.address}`} className="block border-b border-line px-1 transition-colors last:border-b-0 hover:bg-bg-soft">
-      {body}
-    </Link>
-  ) : (
-    <div className="border-b border-line px-1 opacity-70 last:border-b-0">{body}</div>
+  return (
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line">
+      {href ? (
+        <Link href={href} className="flex flex-1 flex-col transition-colors hover:bg-bg-soft focus-visible:outline-offset-[-2px]">
+          {body}
+        </Link>
+      ) : (
+        <div className="flex flex-1 flex-col">{body}</div>
+      )}
+      <div className="space-y-2 px-4 pb-4 sm:px-5">
+        {href && state === "Open" ? (
+          <>
+            <div className="flex items-baseline justify-between gap-2 text-xs text-dim">
+              <span>Best asks</span>
+              {volume != null && <span className="num">Vol {formatMusd(volume)} mUSD</span>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <OutcomeLink href={href} label="YES" ask={f?.yesBestAskBps ?? null} unavailable={failed} />
+              <OutcomeLink href={href} label="NO" ask={no.data?.tradingOpen ? no.data.book.bestAskBps : null} pending={no.loading} unavailable={!!no.error} />
+            </div>
+          </>
+        ) : loading ? (
+          <div className="h-10 animate-pulse rounded bg-bg-soft" aria-label="Loading market status" />
+        ) : (
+          <div className="flex min-h-10 items-center justify-between gap-2 text-sm text-dim">
+            {state ? <StateLabel state={state} /> : failed ? "Market data unavailable" : "Not listed on this cluster"}
+            {volume != null && <span className="num text-xs">Vol {formatMusd(volume)} mUSD</span>}
+          </div>
+        )}
+      </div>
+      <div className="border-t border-line px-4 py-2 sm:px-5"><MarketPhotoCredit photo={c.photo} /></div>
+    </article>
   );
 }
 
@@ -53,36 +83,16 @@ export default function Home() {
   const byProperty = new Map((featured.data ?? []).map((f) => [f.propertyId, f]));
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Property markets</h1>
-        <p className="max-w-2xl text-[15px] leading-relaxed text-ink-secondary">
-          One exchange, four perils. Each market asks one yes-or-no question about one property and one calendar month. YES pays 1 mUSD per share if
-          the trigger is met, so buying YES is parametric protection that pays on the event, not on damage. NO holders put up the collateral and earn the
-          premium. Every YES and NO pair is backed by exactly 1 mUSD in that market&apos;s own vault.
-        </p>
-        <ReplayDisclosure />
-      </div>
+    <div className="space-y-5">
+      <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Property markets</h1>
 
       {featured.error && !featured.data && <Unavailable>Exchange data unavailable: {featured.error}</Unavailable>}
-      <div className="rounded-3xl border border-line px-4 sm:px-6">
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
         {CATALOG.map((c) => (
-          <MarketCard key={c.propertyId} c={c} f={byProperty.get(c.propertyId)} loading={!featured.data && !featured.error} />
+          <MarketCard key={byProperty.get(c.propertyId)?.market?.address ?? c.propertyId} c={c} f={byProperty.get(c.propertyId)} loading={featured.loading} failed={!!featured.error} />
         ))}
       </div>
 
-      <div className="space-y-1.5 text-sm text-dim">
-        <p>
-          Addresses are real residential address points from OpenStreetMap (© OpenStreetMap contributors, ODbL), used only as locations. Every
-          market pays on hazard proximity or measured intensity and says nothing about damage to any home or its residents. Illustrations are
-          not the property.
-        </p>
-        <p>
-          Prices are the current best offers from the on-chain order book, not premiums set by MetrEx and not forecasts. The market can move them at any
-          time.
-        </p>
-        <LiquidityDisclosure />
-      </div>
     </div>
   );
 }

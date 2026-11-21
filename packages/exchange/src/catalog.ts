@@ -76,10 +76,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NIFC WFIGS Interagency Perimeters (final mapped perimeter)",
     roundLabel: "Wildfire · Jan 2025 replay",
     photo: {
-      src: "/markets/wildfire.svg",
-      alt: "Illustration of a hillside home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/wildfire-house.webp",
+      alt: "A modern coastal home in Pacific Palisades",
+      credit: "Capriatti · CC0 1.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Pacific_Palisades_House_View_1.jpg",
     },
     // YES bids 74 / 80 / 82, asks 86 / 100 / 118 (0.74¢ … 1.18¢).
     ladder: ladder([80, 6], [90, 10], [100, 18]),
@@ -100,10 +100,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NOAA National Hurricane Center best-track GIS wind swaths",
     roundLabel: "Hurricane · Sep 2017 replay",
     photo: {
-      src: "/markets/hurricane.svg",
-      alt: "Illustration of a home behind palm trees (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/hurricane-house.webp",
+      alt: "A 1925 Spanish-style house in Coral Gables",
+      credit: "Escuadro · CC BY-SA 4.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Coral_Gables_1925_House.jpg",
     },
     // YES bids 111 / 120 / 123, asks 129 / 150 / 177.
     ladder: ladder([120, 9], [135, 15], [150, 27]),
@@ -124,10 +124,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "USGS ShakeMap (event nc72282711)",
     roundLabel: "Earthquake · Aug 2014 replay",
     photo: {
-      src: "/markets/earthquake.svg",
-      alt: "Illustration of a family home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/earthquake-house.webp",
+      alt: "Churchill Manor, a historic residence in Napa",
+      credit: "Sanfranman59 · CC BY-SA 3.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Churchill_Manor,_485_Brown_St.,_Napa,_CA_9-5-2010_4-41-04_PM.JPG",
     },
     // YES bids 9 / 8 / 7, asks 11 / 12 / 15 (0.09¢ … 0.15¢).
     ladder: ladder([10, 1], [10, 2], [11, 4]),
@@ -148,10 +148,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NOAA NWS Damage Assessment Toolkit surveyed tracks",
     roundLabel: "Tornado · May 2024 replay",
     photo: {
-      src: "/markets/tornado.svg",
-      alt: "Illustration of a suburban home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/tornado-house.webp",
+      alt: "The historic Jordan House in West Des Moines, near Johnston",
+      credit: "Goddesshanna · CC BY-SA 3.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Jordan_House_street_view.JPG",
     },
     // YES bids 28 / 30 / 31, asks 32 / 38 / 45.
     ladder: ladder([30, 2], [34, 4], [38, 7]),

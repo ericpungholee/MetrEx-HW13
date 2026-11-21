@@ -7,7 +7,7 @@ import { marketState, marketTitle } from "@/lib/exchange-format";
 import { formatUnix } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel } from "@/components/ui";
-import { ReplayDisclosure, StateLabel, Unavailable } from "@/components/exchange/Labels";
+import { StateLabel, Unavailable } from "@/components/exchange/Labels";
 
 const SHOW = 10n;
 
@@ -27,7 +27,7 @@ export default function RoundsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Rounds" description={<ReplayDisclosure />} />
+      <PageHeader title="Rounds" />
       {!rounds.data ? (
         rounds.error ? <Unavailable>Rounds unavailable: {rounds.error}</Unavailable> : <div className="h-64 animate-pulse bg-bg-soft" />
       ) : rounds.data.length === 0 ? (

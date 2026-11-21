@@ -13,6 +13,7 @@ import {
   type BuiltEvidenceV3,
   type EvidenceRecordV2,
   type EvidenceRecordV3,
+  type FootprintFeature,
   type HazardDataset,
 } from "@metrex/geo";
 import { loadHazardDataset, loadScenarioGeometry, loadScenarioRegistry } from "@metrex/geo/node";
@@ -137,6 +138,12 @@ export interface ExchangeOracleDeps {
   send?: typeof sendExchangeTx;
 }
 
+interface ExchangeEvidenceDeps {
+  rpc?: RpcPool;
+  dataDir?: string;
+  readFinalizedMarket?: (market: PublicKey) => Promise<MarketView | null>;
+}
+
 export interface ExchangeResolveResult {
   market: string;
   status: "resolved" | "already_resolved";
@@ -207,10 +214,10 @@ export async function expireExchangeMarket(market: MarketView, caller: Keypair, 
 }
 
 /** §9.3 step 6: evidence only for a finalized YES/NO market whose file hash equals the on-chain hash. */
-export async function getExchangeEvidence(market: PublicKey, deps: { rpc?: RpcPool; dataDir?: string } = {}) {
-  const rpc = deps.rpc ?? getRpc();
-  const m = await rpc
-    .run((c) => fetchExchangeMarket(getExchangeProgram(c), market, "finalized"))
+export async function getExchangeEvidence(market: PublicKey, deps: ExchangeEvidenceDeps = {}) {
+  const readMarket = deps.readFinalizedMarket ?? ((key: PublicKey) =>
+    (deps.rpc ?? getRpc()).run((c) => fetchExchangeMarket(getExchangeProgram(c), key, "finalized")));
+  const m = await readMarket(market)
     .catch(() => {
       throw unavailable("Evidence temporarily unavailable");
     });
@@ -227,8 +234,11 @@ export async function getExchangeEvidence(market: PublicKey, deps: { rpc?: RpcPo
   } catch {
     throw unavailable("Evidence temporarily unavailable");
   }
-  const expectedVersion = record.scenario_id === WILDFIRE_SCENARIO_ID ? 2 : 3;
-  if (record.version !== expectedVersion || record.market !== market.toBase58() || record.round !== m.round.toBase58() || record.triggered !== (m.outcome === "yes")) {
+  const expectedVersion = m.scenarioId === WILDFIRE_SCENARIO_ID ? 2 : 3;
+  if (record?.version !== expectedVersion || record.market !== market.toBase58() || record.round !== m.round.toBase58() ||
+      record.scenario_id !== m.scenarioId || record.property?.id !== m.propertyId ||
+      record.property.lat_e6 !== m.latE6 || record.property.lon_e6 !== m.lonE6 ||
+      record.trigger_distance_m !== m.triggerDistanceM || record.triggered !== (m.outcome === "yes")) {
     throw unavailable("Evidence temporarily unavailable");
   }
   return { market: market.toBase58(), canonical: bytes.toString("utf8"), hashHex, record, onChain: { outcome: m.outcome, evidenceHash: hashHex, matches: true } };
@@ -239,25 +249,48 @@ export async function getExchangeEvidence(market: PublicKey, deps: { rpc?: RpcPo
  * gate. Wildfire returns the fire perimeter; a hurricane returns the 64-kt swath pieces. Tornado
  * tracks and earthquake grids have no polygon footprint and return null (the evidence carries the result).
  */
-export async function getExchangeSettledPerimeter(
-  market: PublicKey,
-  deps: { rpc?: RpcPool; dataDir?: string } = {},
-): Promise<MultiPolygon | null> {
-  const evidence = await getExchangeEvidence(market, deps);
+export async function getExchangeSettledPerimeter(market: PublicKey, deps: ExchangeEvidenceDeps = {}): Promise<MultiPolygon | null> {
+  const { overlay } = await getExchangeSettledOverlay(market, deps);
+  if (overlay.kind === "wildfire") return overlay.geometry;
+  if (overlay.kind !== "hurricane") return null;
+  return { type: "MultiPolygon", coordinates: overlay.geometry.features.flatMap((f) => f.geometry.coordinates) };
+}
+
+/** Publish only the map layers derived from the verified evidence and its pinned dataset. */
+export async function getExchangeSettledOverlay(market: PublicKey, deps: ExchangeEvidenceDeps = {}) {
+  const { hashHex, record } = await getExchangeEvidence(market, deps);
+  const dir = deps.dataDir ?? oracleDataDir();
   try {
-    const dir = deps.dataDir ?? oracleDataDir();
     const registry = loadScenarioRegistry(dir);
-    if (evidence.record.scenario_id === WILDFIRE_SCENARIO_ID) {
-      const { scenario, geometry } = loadScenarioGeometry(registry, evidence.record.scenario_id, dir);
-      if (scenario.sha256.toLowerCase() !== evidence.record.dataset.sha256) throw new Error("Dataset changed");
-      return geometry;
+    if (record.version === 2) {
+      const { scenario, geometry } = loadScenarioGeometry(registry, record.scenario_id, dir);
+      if (scenario.sha256.toLowerCase() !== record.dataset.sha256) throw new Error("Dataset changed");
+      return { evidenceHash: hashHex, overlay: { kind: "wildfire" as const, geometry } };
     }
-    const { scenario, dataset } = loadHazardDataset(registry, evidence.record.scenario_id, dir);
-    if (scenario.sha256.toLowerCase() !== evidence.record.dataset.sha256) throw new Error("Dataset changed");
-    if (dataset.metrex.rule.method !== "inside_footprint" || dataset.type !== "FeatureCollection") return null;
-    const coordinates = dataset.features.flatMap((f) => (f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : []));
-    return { type: "MultiPolygon", coordinates };
+    const { scenario, dataset } = loadHazardDataset(registry, record.scenario_id, dir);
+    if (scenario.sha256.toLowerCase() !== record.dataset.sha256) throw new Error("Dataset changed");
+    if (record.hazard !== dataset.metrex.rule.hazard) throw new Error("Dataset hazard mismatch");
+    if (dataset.type === "MetrexIntensityGrid") {
+      if (!("node_lat_e4" in record.computed)) throw new Error("Missing intensity evidence");
+      return {
+        evidenceHash: hashHex,
+        overlay: {
+          kind: "earthquake" as const,
+          nodes: dataset.nodes,
+          thresholdX10: dataset.metrex.rule.threshold_x10,
+          nearest: record.computed,
+        },
+      };
+    }
+    const collection = { type: "FeatureCollection" as const };
+    if (record.hazard === "hurricane") {
+      const features = dataset.features.filter((f): f is FootprintFeature => f.geometry.type === "MultiPolygon");
+      return { evidenceHash: hashHex, overlay: { kind: "hurricane" as const, geometry: { ...collection, features } } };
+    }
+    return { evidenceHash: hashHex, overlay: { kind: "tornado" as const, geometry: { ...collection, features: dataset.features } } };
   } catch {
-    throw unavailable("Perimeter temporarily unavailable");
+    throw unavailable("Historical overlay temporarily unavailable");
   }
 }
+
+export type SettledMarketOverlay = Awaited<ReturnType<typeof getExchangeSettledOverlay>>;

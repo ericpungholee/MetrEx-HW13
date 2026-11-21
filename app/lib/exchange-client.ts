@@ -389,13 +389,16 @@ export async function fetchMarketInfo(market: string): Promise<MarketInfo | null
 }
 
 export async function fetchBook(market: string): Promise<BookInfo> {
-  const [y, n] = await Promise.all([getJson(`/api/markets/${market}/book?outcome=yes`), getJson(`/api/markets/${market}/book?outcome=no`)]);
+  const [y, n] = await Promise.all([fetchOutcomeBook(market, Outcome.Yes), fetchOutcomeBook(market, Outcome.No)]);
+  return { market, tradingOpen: y.tradingOpen, fetchedAt: y.fetchedAt, yes: y.book, no: n.book };
+}
+
+export async function fetchOutcomeBook(market: string, outcome: OutcomeCode) {
+  const j = await getJson(`/api/markets/${market}/book?outcome=${outcome === Outcome.Yes ? "yes" : "no"}`);
   return {
-    market,
-    tradingOpen: y.tradingOpen === true,
-    fetchedAt: str(y.fetchedAt),
-    yes: parseBookSide(y.book as J, Outcome.Yes),
-    no: parseBookSide(n.book as J, Outcome.No),
+    tradingOpen: j.tradingOpen === true,
+    fetchedAt: str(j.fetchedAt),
+    book: parseBookSide(j.book as J, outcome),
   };
 }
 

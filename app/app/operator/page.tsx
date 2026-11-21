@@ -6,8 +6,9 @@
 // Multi-peril (docs/spec-multiperil.md §2.2): one round per hazard can be open at once, so the
 // operator picks a round and closes and settles it without touching the others.
 import { useState } from "react";
+import Link from "next/link";
 import { HAZARD_LABEL, catalogByScenario } from "@metrex/exchange";
-import { fetchHealth, fetchLatestRound, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundWithMarkets } from "@/lib/exchange-client";
+import { fetchFeatured, fetchHealth, fetchLatestRound, fetchMarketInfo, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundInfo, type RoundWithMarkets } from "@/lib/exchange-client";
 import { marketState, marketTitle } from "@/lib/exchange-format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat } from "@/components/ui";
@@ -29,7 +30,7 @@ function describe(action: OperatorAction, ok: boolean, body: Body): LogLine {
       return { action, ok: true, text: "Round closure is finalized. Skipped the trade simulation because all resting orders are gone.", links: [] };
     }
     if (body.rejected === true && body.roundNotOpen === true) {
-      return { action, ok: true, text: `RoundNotOpen verified on property ${String(body.propertyId)}.`, links: [] };
+      return { action, ok: true, text: "Verified that the program rejects trades after closure.", links: [] };
     }
     const text = body.rejected === false
       ? "A trade still simulated successfully. Do not settle yet."
@@ -54,11 +55,11 @@ function describe(action: OperatorAction, ok: boolean, body: Body): LogLine {
 }
 
 const LABELS: Record<OperatorAction, string> = {
-  close: "1. close_round (finalized)",
-  reject: "2. Show a trade is rejected",
-  resolve: "3–4. Oracle resolution and evidence",
-  sweep: "5. Sweep remaining orders",
-  status: "6. Completeness check",
+  close: "Close trading",
+  reject: "Verify closure",
+  resolve: "Resolve markets",
+  sweep: "Sweep orders",
+  status: "Check settlement",
 };
 
 const ROUNDS_BACK = 8n;
@@ -72,7 +73,7 @@ async function fetchRecentRounds(): Promise<RoundWithMarkets[]> {
   return [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
 }
 
-const hazardOf = (r: RoundWithMarkets): string => {
+const hazardOf = (r: Pick<RoundInfo, "scenarioId">): string => {
   const c = catalogByScenario(r.scenarioId);
   return c ? HAZARD_LABEL[c.hazard] : `Scenario ${r.scenarioId}`;
 };
@@ -82,18 +83,37 @@ export default function OperatorPage() {
   const [busy, setBusy] = useState<OperatorAction | "all" | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
-  const rounds = usePoll(() => fetchRecentRounds(), [], 5_000);
+  const [showHistory, setShowHistory] = useState(false);
+  const featured = usePoll(fetchFeatured, [], 5_000);
+  const history = usePoll(() => showHistory ? fetchRecentRounds() : Promise.resolve(null), [showHistory], 20_000);
   const health = usePoll(() => fetchHealth(), [], 10_000);
-  const all = rounds.data ?? [];
-  // Default: the newest round that still needs work, else the newest round.
-  const r = all.find((x) => x.address === picked) ?? all.find((x) => x.state === "open" || x.resolvedCount < x.marketCount) ?? all[0] ?? null;
+  const current = (featured.data ?? []).flatMap(({ round, market }) => round && market ? [{
+    ...round, scenarioId: market.scenarioId, market: market.address, resolved: market.outcome !== "unresolved",
+  }] : []);
+  const older = (history.data ?? []).filter((r) => !current.some((c) => c.address === r.address));
+  const selectedCatalog = current.find((c) => c.address === picked)
+    ?? (picked === null ? current.find((c) => !c.resolved) ?? current[0] : undefined);
+  const selectedHistory = older.find((r) => r.address === picked);
+  const selectedAddress = selectedCatalog?.address ?? selectedHistory?.address;
+  const selectedMarket = selectedCatalog?.market;
+  const details = usePoll(async () => {
+    if (!selectedAddress) return null;
+    if (selectedMarket) {
+      const info = await fetchMarketInfo(selectedMarket);
+      if (info?.round.address === selectedAddress && info.round.marketCount === 1) return { ...info.round, markets: [info.market] };
+    }
+    return fetchRound(selectedAddress);
+  }, [selectedAddress, selectedMarket], 12_000);
+  const r = !details.error && details.data?.address === selectedAddress ? details.data ?? null : null;
 
   async function step(action: OperatorAction): Promise<boolean> {
     if (!r) return false;
     const res = await operatorStep(action, password, r.address);
     const line = describe(action, res.ok, res.body);
     setLog((l) => [...l, { ...line, text: `Round #${r.roundId.toString()}: ${line.text}` }]);
-    rounds.refresh();
+    featured.refresh();
+    details.refresh();
+    if (showHistory) history.refresh();
     return res.ok && (action !== "reject" || line.ok);
   }
 
@@ -122,67 +142,76 @@ export default function OperatorPage() {
   }
 
   return (
-    <div className="space-y-10">
-      <PageHeader title="Operator" description="Round inspection, bot and keeper health, and the Close and settle workflow. Keys stay on the server." />
+    <div className="space-y-8">
+      <PageHeader title="Operator" description="Select a hazard round to manage its trading and settlement." />
 
-      <div className="grid gap-6 sm:grid-cols-4">
-        <Stat label="RPC">{health.data ? (health.data.rpc.ok ? `ok · slot ${health.data.rpc.slot}` : "down") : "—"}</Stat>
+      <div className="grid grid-cols-2 gap-4 rounded-lg border border-line p-4 sm:grid-cols-4">
+        <Stat label="Devnet RPC">{health.data ? (health.data.rpc.ok ? "Connected" : "Unavailable") : "—"}</Stat>
         <Stat label="Bots">{health.data ? (health.data.botsAlive ? "running" : "no heartbeat") : "—"}</Stat>
         <Stat label="Keeper">{health.data ? (health.data.keeperAlive ? "running" : "no heartbeat") : "—"}</Stat>
         <Stat label="Matching">{health.data?.matching ?? "—"}</Stat>
       </div>
 
-      <Panel title="Recent rounds" right="one Open round per hazard is operator policy, not a program rule">
-        {all.length === 0 ? (
-          rounds.error ? <Unavailable>{rounds.error}</Unavailable> : <div className="text-sm text-dim">No round yet.</div>
+      <Panel title="Catalog rounds">
+        {current.length === 0 ? (
+          featured.error ? <Unavailable>{featured.error}</Unavailable> : <div className="text-sm text-dim">{featured.loading ? "Loading rounds…" : "No rounds yet."}</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-faint">
-              <tr>
-                <th className="pb-2 font-medium">Round</th>
-                <th className="pb-2 font-medium">Hazard</th>
-                <th className="pb-2 font-medium">State</th>
-                <th className="pb-2 text-right font-medium">Settled</th>
-                <th className="pb-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {all.map((x) => (
-                <tr key={x.address} className={`border-t border-line ${x.address === r?.address ? "bg-bg-soft" : ""}`}>
-                  <td className="py-2.5">
-                    <span className="font-medium">#{x.roundId.toString()}</span> <span className="text-dim">{x.label}</span>
-                  </td>
-                  <td className="py-2.5">{hazardOf(x)}</td>
-                  <td className="py-2.5">{x.state}</td>
-                  <td className="num py-2.5 text-right">
-                    {x.resolvedCount}/{x.marketCount}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <button className="btn btn-sm" disabled={busy !== null || x.address === r?.address} onClick={() => setPicked(x.address)}>
-                      {x.address === r?.address ? "Selected" : "Select"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {current.map((x) => (
+              <button
+                key={x.address}
+                type="button"
+                aria-pressed={x.address === selectedAddress}
+                className={`flex items-center justify-between gap-3 rounded-md border p-3 text-left text-sm ${x.address === selectedAddress ? "border-ink bg-bg-soft" : "border-line hover:bg-bg-soft"}`}
+                disabled={busy !== null}
+                onClick={() => setPicked(x.address)}
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium">{hazardOf(x)} · Round #{x.roundId.toString()}</span>
+                  <span className="text-xs text-dim">{x.label}</span>
+                </span>
+                <span className="shrink-0 text-right text-xs text-dim">
+                  <span className={x.state === "open" ? "block text-up" : "block"}>
+                    {x.state === "open" ? "Trading open" : "Trading closed"}
+                  </span>
+                  {x.resolved ? "Catalog market settled" : "Awaiting settlement"}
+                </span>
+              </button>
+            ))}
+          </div>
         )}
+        <details className="mt-3 text-sm" onToggle={(e) => setShowHistory(e.currentTarget.open)}>
+          <summary className="cursor-pointer text-dim">Earlier rounds</summary>
+          {showHistory && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {older.map((x) => (
+                <button key={x.address} type="button" className="btn btn-sm justify-start" aria-pressed={x.address === selectedAddress} disabled={busy !== null} onClick={() => setPicked(x.address)}>
+                  {hazardOf(x)} · Round #{x.roundId.toString()} · {x.resolvedCount}/{x.marketCount} settled
+                </button>
+              ))}
+              {history.error && <Unavailable>{history.error}</Unavailable>}
+              {!history.error && !older.length && <p className="text-xs text-dim">{history.data ? "No earlier rounds." : "Loading earlier rounds…"}</p>}
+            </div>
+          )}
+        </details>
       </Panel>
 
       <Panel
-        title={r ? `Round #${r.roundId.toString()} · ${hazardOf(r)} · ${r.label}` : "Round"}
-        right={r ? `${r.state} · ${r.resolvedCount}/${r.marketCount} settled` : undefined}
+        title={r ? `${hazardOf(r)} markets` : "Markets"}
       >
         {!r ? (
-          <div className="text-sm text-dim">No round selected.</div>
+          <div className="text-sm text-dim">{details.error ?? (selectedAddress ? "Loading selected round…" : "No round selected.")}</div>
         ) : (
           <div className="divide-y divide-line">
             {r.markets.map((m) => (
-              <div key={m.address} className="flex items-center justify-between py-3 text-sm">
-                <span>
-                  <span className="font-medium">{marketTitle(m)}</span> <span className="num text-faint">{m.address.slice(0, 8)}…</span>
-                </span>
-                <StateLabel state={marketState(m.outcome, r)} />
+              <div key={m.address} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                <Link href={`/market/${m.address}`} className="font-medium hover:underline">{marketTitle(m)}</Link>
+                <div className="flex items-center gap-3">
+                  <StateLabel state={marketState(m.outcome, r)} />
+                  {(m.outcome === "yes" || m.outcome === "no") && (
+                    <Link href={`/market/${m.address}#settlement`} className="text-xs underline underline-offset-2">Evidence</Link>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -190,7 +219,7 @@ export default function OperatorPage() {
       </Panel>
 
       <Panel title={r ? `Close and settle round #${r.roundId.toString()} (${hazardOf(r)} only)` : "Close and settle"}>
-        <div className="space-y-5">
+        <div className="space-y-5 rounded-lg border border-line p-4">
           <label className="block max-w-sm">
             <span className="text-xs font-medium tracking-wide text-faint uppercase">Operator password</span>
             <input className="input mt-1 w-full" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -206,7 +235,7 @@ export default function OperatorPage() {
             ))}
           </div>
           {log.length > 0 && (
-            <ol className="space-y-2 text-sm">
+            <ol aria-live="polite" className="space-y-2 text-sm">
               {log.map((l, i) => (
                 <li key={i} className={`border-l-2 pl-3 ${l.ok ? "border-up" : "border-down"}`}>
                   <div className="font-medium text-ink">{LABELS[l.action]}</div>

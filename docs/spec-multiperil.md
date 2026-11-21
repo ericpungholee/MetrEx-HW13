@@ -1,6 +1,6 @@
 # MetrEx multi-peril addendum
 
-_Status: implemented locally on branch `feat/multi-peril` (2026-11-21). The Devnet program upgrade has not been made yet._
+_Status: merged into `main` and deployed to Devnet on 2026-11-21._
 
 This addendum extends [spec-v2.md](spec-v2.md) from one wildfire to four property markets, one per peril. Everything spec-v2 says still holds unless a section here replaces it. Section numbers (§) in code comments that cite `spec-multiperil.md` refer to this file.
 
@@ -8,7 +8,7 @@ The owner approved these choices on 2026-11-21:
 
 - a small program upgrade (scenario IDs 1–4, and concurrent rounds of different hazards), with no account layout, seed, instruction, argument, error or event changes;
 - a real earthquake (the 2014 South Napa M6.0) for the earthquake market;
-- free illustrative imagery for the cards. §7.3 explains why the cards use local illustrations instead of photos;
+- free illustrative imagery for the cards (§7.3);
 - real home addresses for the four catalog markets (§3), chosen from OpenStreetMap without using any damage data.
 
 ## 1. Product
@@ -107,7 +107,7 @@ A refused market stays unresolved. The existing recovery paths apply: `invalidat
 
 - Scenarios 2–4 publish **evidence v3**: canonical JSON (sorted keys, no whitespace, integers only), SHA-256 hashed, with `version: 3`, `hazard`, `scenario_id`, `round`, `market`, the property, the dataset hash and the pinned `coverage` window. It also carries the method's computed integers (`distance_m`, or `mmi_x10` and the node, or `inside`) and `triggered`.
 - Scenario 1 keeps evidence v2 unchanged.
-- The perimeter view after settlement shows the wildfire footprint or the union of hurricane swaths. It shows nothing for tracks and grids, whose evidence is the computed distance or intensity.
+- Every exchange market page shows a map of the registered point and, for distance-based markets, its on-chain trigger radius. After finalized YES/NO settlement, `?overlay=1` on the evidence route serves the matched dataset's wildfire perimeter, hurricane wind swaths, tornado centerlines or ShakeMap grid points. The ShakeMap layer marks the nearest node and distinguishes samples above and below the threshold. Invalid markets have no historical overlay. The legacy `?perimeter=1` response remains available.
 - Prices display in cents with up to two decimals (80 bps = 0.80¢; 415.5 bps average = 4.155¢). Entry accepts cents ("0.8", "0.80¢").
 
 ## 6. Per-market bot ladders
@@ -127,48 +127,34 @@ At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) 
 
 ### 7.1 Required text
 
-Every market page shows, as plain text:
+Every market page shows the contract details in plain text:
 
 - its payout rule. The wildfire sentence is the verbatim spec-v2 §10.1 text. Every other rule names its source and threshold and ends "…, not on damage.";
-- the historical-replay disclosure, naming the replayed event ("This market replays …. Coverage dates are historical; trading time on-chain is the demo clock.");
-- the invalid-outcome disclosure, the liquidity disclosure and the settlement source.
+- the historical coverage month, the separate Devnet trading deadline, the settlement source and the invalid-outcome terms beside the ticket.
+
+This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution and each photo carries its credit.
 
 ### 7.2 Homepage
 
-The homepage lists the four catalog markets. Each card shows an illustration, place and hazard, the question, a trigger line, the live best YES ask and the contract month. The price comes from `GET /api/featured`: for each catalog entry, the newest recent round of its scenario that contains the property, with that book's best YES bid, best YES ask and ask depth. With no ask the card says "No YES offers right now", and a market not yet on the cluster says "Not listed on this cluster yet". A closed or settled market shows its state instead of a price.
+The homepage shows the four catalog markets in a 2×2 grid on desktop and a single column on phones. Cards show regional photography, the market question, historical contract month, finalized volume when available, and separate YES and NO actions. `GET /api/featured` selects each market and supplies its best YES ask. The NO ask comes from the NO order book. Selecting an outcome opens the market with that side selected in the trade ticket. A closed or settled market shows its state.
+
+The market detail page shows the live asks, with labelled midpoint or last-trade prices when an ask is unavailable. The price chart lets viewers switch between finalized trades and quoted midpoint history and filter either series by time. The rules show the historical month, settlement source and the separate Devnet trading deadline.
 
 ### 7.3 Imagery
 
-Cards use local SVG illustrations (`app/public/markets/*.svg`), credited "MetrEx illustration", and the homepage says illustrations are not the property. Royalty-free stock photos were the approved choice. The candidates found either showed identifiable real homes or were poor matches, and the main stock-photo API refused automated access. Replacing the illustrations with credited stock photos needs only the `photo` fields in the catalog.
+Cards and market headers label their images as area photos and link to their source and license. The images show the surrounding regions. [Photo credits](market-photo-credits.md) lists the local WebP assets, authors and licenses.
 
 ### 7.4 Coverage mode
 
-The trade panel has two modes: **Buy coverage ($)** and **Trade shares**. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover; presets 25k / 50k / 100k / 250k) with a default slippage of 100 bps. It shows only figures from the live book:
-
-- the premium for the plan;
-- the payout if the trigger is met;
-- the collateral provided by risk sellers;
-- the average price per $1 of cover;
-- the cost at the best offer alone, the slippage and the worst price sent;
-- a partial-fill warning when depth is short;
-- an annualized equivalent, labelled as arithmetic only.
+The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. The default tolerances remain 100 bps for coverage and 200 bps for share orders.
 
 ### 7.5 Portfolio
 
-A **Coverage** panel lists each market where the wallet holds YES:
-
-- the property and place;
-- the contract month (marked replay) and whether trading is open;
-- coverage in dollars;
-- the premium paid (net YES bought minus sold, from indexed fills only, or "indexing…");
-- the value at the current best YES bid;
-- the market state.
-
-It states that the value at best bid is not a forecast and that price moves don't change the payout. The portfolio looks back 8 rounds.
+The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio looks back 8 rounds.
 
 ### 7.6 Operator
 
-`/operator` lists the last 8 rounds with hazard, state and settled count. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server route already takes a round address.
+`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server route already takes a round address.
 
 ## 8. Tests
 
