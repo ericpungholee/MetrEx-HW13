@@ -9,9 +9,9 @@ _Last updated: 2026-11-21_
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
 | 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 68/68 after approved review fixes |
 | 2 — Devnet live | **Passed 2026-11-21** | Deployed and verified the core program, admin authority, Config, mint, properties and fallback market |
-| 3 — Human lifecycle | In progress | Phantom create and accept finalized. The judge offer, operator close and YES resolution finalized. The wallet payout remains pending |
-| 4 — Definition of Done | In progress | Local bot and oracle runs passed for YES and NO. The first live run hit a public Devnet RPC rate limit before setup completed |
-| 5 — Solana track (T2) | In progress | Trading and reassigned-holder payout passed on a local validator on `codex/tier2-local`. Live rollout follows Gate 4 |
+| 3 — Human lifecycle | **Passed 2026-11-21** | Phantom created, accepted and claimed on Devnet. The wallet received exactly 10,000 mUSD and the vault closed |
+| 4 — Definition of Done | **Passed 2026-11-21** | Bot offers arrived within 10 s for both live markets, three offers were accepted together, both evidence hashes matched and the winning wallets received exactly 10,000 mUSD per outcome |
+| 5 — Solana track (T2) | In progress | Trading and reassigned-holder payout passed on a local validator on `codex/tier2-local`. The compiled upgrade needs a temporary Devnet buffer |
 | 6 — Demo-ready | In progress | Funded fallback and packaged dataset verified. Live demonstrations, full demo balances and backup RPC remain open |
 
 ## Gate 0 checklist
@@ -71,8 +71,8 @@ _Last updated: 2026-11-21_
 
 ## Blockers (human)
 
-1. **Human lifecycle.** Phantom signed the homeowner create and accept transactions. The final claim needs normal Phantom approval. Devnet successfully simulated the prepared claim, and the wallet had 0.048478560 SOL before it. Phantom still reported a simulation and SOL-balance warning in the earlier prompt. The app now uses the connection-aware Wallet Standard submission path.
-2. **Demo-day funding and backup RPC.** The project initially funded the minimum execution balances. The full §14 faucet and bot balances, and a verified backup Devnet endpoint, remain open for Gate 6.
+1. **Demo-day funding.** The project initially funded the minimum execution balances. The full §14 faucet and bot balances remain open for Gate 6.
+2. **RPC reliability.** A free Chainstack Solana Devnet node was verified by genesis hash and used for the Phantom claim and bot runs. The official Solana Devnet endpoint remains available as a server-side fallback and was rate-limited during earlier runs.
 
 ## Gate 1 progress
 
