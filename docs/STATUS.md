@@ -1,14 +1,14 @@
 # MetrEx — Status
 
-_Last updated: 2026-11-20_
+_Last updated: 2026-11-21_
 
 ## Gates
 
 | Gate | Status | Notes |
 |---|---|---|
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
-| 1 — Core program | Not started | |
-| 2 — Devnet live | Not started | |
+| 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 62/62; independent review in progress before Devnet deployment |
+| 2 — Devnet live | Blocked | Devnet faucet rate limits. Both payer wallets reported 0 SOL |
 | 3 — Human lifecycle | Not started | |
 | 4 — Definition of Done | Not started | |
 | 5 — Solana track (T2) | Not started | |
@@ -71,12 +71,14 @@ _Last updated: 2026-11-20_
 
 ## Blockers (human)
 
-1. **Devnet SOL.** `solana airdrop` on the public Devnet RPC returns "rate limit reached" for every request (2, 1 and 0.5 SOL, 2026-11-20). Deploy needs ~3–4 SOL on `deployer`. Retrying periodically; if it keeps failing, a human must use https://faucet.solana.com (GitHub sign-in) for `deployer` = `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`.
+1. **Devnet SOL.** On November 21, the public Devnet RPC rate-limited both CLI airdrop requests. The deployer and admin both reported 0 SOL, and the program account was absent. Request about **14 Devnet SOL** for `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP` and **1 Devnet SOL** for `sQuXrM2LYdxq5sc8dAcsfgFSoa9V6jfNk5txzea87sD` using the [Solana Foundation faucet](https://faucet.solana.com/) with GitHub sign-in. The deployer target includes approximately 2.71 SOL in ProgramData rent, up to 10.4 SOL in `fund-bots.ts` wallet top-ups, the script's 0.1 SOL reserve and room for transaction fees.
 
 ## Gate 1 progress
 
-- **B (geo, dataset, properties): merged** (e50cbf0). Geo 31 tests green. Normalized `data/palisades-2025.geojson` SHA-256 `8447bc02…4b73a`. Properties: 1 Home #1042 (34.045, −118.526) inside, 672 m margin, YES; 2 Home #2210 (34.057, −118.458) 4,000 m out, NO; 3 Home #1187 (34.055, −118.515) inside, 559 m margin, YES. Map check: 1 and 3 lie inside the mapped burn area in Pacific Palisades; 2 checked on OpenStreetMap, on land in West LA by the I-405 near Brentwood. Real perimeter has no holes; hole logic covered by synthetic tests. Rule at the boundary: `triggered = inside || floor(distance) <= 500` (keeps evidence self-consistent).
-- A (program), C (frontend), D (bots/scripts/routes): in progress on `ws-a-core`, `ws-c-frontend`, `ws-d-backend`.
+- **B (geo, dataset, properties): merged** (e50cbf0). Geo 31 tests green. Normalized `data/palisades-2025.geojson` SHA-256 `8447bc02…4b73a`. Properties: 1 Home #1042 (34.045, −118.526) inside, 672 m margin, YES; 2 Home #2210 (34.057, −118.458) 4,000 m out, NO; 3 Home #1187 (34.055, −118.515) inside, 559 m margin, YES. Map check: 1 and 3 lie inside the mapped burn area in Pacific Palisades; 2 checked on OpenStreetMap, on land in West LA by the I-405 near Brentwood. Real perimeter has no holes; hole logic covered by synthetic tests. §8.2 compares the full geodesic distance with the trigger radius. Evidence reports the distance floored to an integer.
+- **A (core program): merged** in `00dba89`. `anchor build` passed without warnings after removing the unused `lib` crate type, and the full Anchor suite passed on an isolated local validator (62 tests). The named `inv-1` through `inv-14` cases passed, including wrong-mint coverage for all five core token-moving instructions. YES and NO both conserved balances across wallets and vaults. The test harness now waits for confirmed setup transactions before dependent preflight checks. Shared tests passed (12), including IDL sync. `target/idl`, `target/types` and `packages/shared` match `25e10ac`, and the three Tier 2 handlers remain stubs.
+- **C (frontend): merged** in `6a253d0`. Fixtures and browser evidence verification use the registered demo property data.
+- **D (backend):** integration commit `869535b` on `ws-d-backend`. `/api/stats` returns the fields read by the app. The oracle uses the packaged geometry loader and rejects unknown scenarios. The setup script verifies upgrade authority before creating the mint and can recover the mint address from an initialized Config. Workspace tests passed (111), TypeScript checks passed and Next.js built with all five API routes. Local validation ran setup, funding and seeding twice, funded a fresh wallet through `/api/faucet`, and exercised both outcomes with the app client, the bots and the close, oracle and evidence routes. Bot offers arrived in about 1.2 s on both local runs. Three offers fit in one acceptance transaction, the YES claims fit in one transaction and each settlement paid exactly 10,000 mUSD. Both evidence files matched their on-chain hashes. The local stats route reported 27 program transactions and 135,000 lamports in fees for this run.
 
 ## Resolved
 
@@ -85,5 +87,5 @@ _Last updated: 2026-11-20_
 
 ## Open questions
 
-- Should `initialize_config` also require `oracle != controller` (spec §2 says they are distinct keys)? It doesn't change the interface; Workstream A can add it as a `require!` with `Unauthorized` if approved.
+- Workstream A applied §2 by requiring distinct, nondefault oracle and controller keys during Config initialization. The instruction interface stayed frozen.
 - `pnpm install` skipped build scripts for `bigint-buffer`, `bufferutil`, `esbuild`, `utf-8-validate`. Tests pass without them; run `pnpm approve-builds` if native speed-ups are wanted.
