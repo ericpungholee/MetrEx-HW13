@@ -2,7 +2,7 @@
 
 // Create (spec §3.1 item 2): choose a registered property, enter coverage. That's the whole form.
 import { decodeLabel, MAX_COVERAGE_TARGET, MIN_COVERAGE } from "@metrex/shared";
-import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useWalletSigner } from "@/lib/useWalletSigner";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -15,7 +15,7 @@ import { usePoll } from "@/lib/usePoll";
 
 export default function CreatePage() {
   const props = usePoll(fetchProperties, [], 15_000);
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const { setVisible } = useWalletModal();
   const { run } = useTx();
   const router = useRouter();

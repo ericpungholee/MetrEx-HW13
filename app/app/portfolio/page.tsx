@@ -2,7 +2,7 @@
 
 // Portfolio (spec §3.1 item 4, §10.4): balance, open offers, locked collateral, positions,
 // total exposure, exposure per scenario, premiums, claimable, realized P&L, bought positions.
-import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useWalletSigner } from "@/lib/useWalletSigner";
 import type { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -25,7 +25,7 @@ import { marketDisplayState } from "@metrex/shared";
 import { usePoll } from "@/lib/usePoll";
 
 export default function PortfolioPage() {
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const viewer = viewerFor(wallet?.publicKey);
   if (!viewer) {
     return (
@@ -39,7 +39,7 @@ export default function PortfolioPage() {
 }
 
 function PortfolioView({ viewer }: { viewer: PublicKey }) {
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const { run } = useTx();
   const ex = usePoll(fetchExchange, []);
   const balance = usePoll(() => fetchMusdBalance(viewer), [viewer.toBase58()]);

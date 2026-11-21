@@ -13,7 +13,7 @@ import {
   type ListingAccount,
   type OfferAccount,
 } from "@metrex/shared";
-import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useWalletSigner } from "@/lib/useWalletSigner";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -86,7 +86,7 @@ export default function MarketPage() {
 }
 
 function MarketView({ marketKey }: { marketKey: PublicKey }) {
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const viewer = viewerFor(wallet?.publicKey);
   const { run } = useTx();
   const snap = usePoll(() => fetchMarketSnapshot(marketKey), [marketKey.toBase58()]);
@@ -400,7 +400,7 @@ function OfferForm({
   balance: bigint | null;
   onPlaced: () => void;
 }) {
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const { run } = useTx();
   const [coverageText, setCoverageText] = useState("1000");
   const [rateText, setRateText] = useState("4.50");
@@ -474,7 +474,7 @@ function PositionsTable({
   tradable: boolean;
   onChange: () => void;
 }) {
-  const wallet = useAnchorWallet();
+  const wallet = useWalletSigner();
   const { run } = useTx();
   const [draft, setDraft] = useState<{ offer: string; side: Side; price: string } | null>(null);
 

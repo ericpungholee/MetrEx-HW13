@@ -16,6 +16,7 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
+  type SendOptions,
   type Transaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
@@ -344,15 +345,17 @@ export async function fetchActivity(address: PublicKey, limit = 25): Promise<Act
       missing.map((s) => s.signature),
       { maxSupportedTransactionVersion: 0, commitment: "confirmed" },
     );
-    txs.forEach((tx, i) => {
-      const sig = missing[i]!;
-      if (!tx) return; // not yet available; retry next poll
+    const requested = new Set(missing.map((item) => item.signature));
+    for (const tx of txs) {
+      const signature = tx?.transaction.signatures[0];
+      // Batch JSON-RPC responses may arrive in a different order from the requests.
+      if (!tx || !signature || !requested.has(signature)) continue;
       const events = parseEventsFromLogs(tx.meta?.logMessages ?? []);
       parsedTxCache.set(
-        sig.signature,
-        events.map((e) => ({ signature: sig.signature, slot: tx.slot, blockTime: tx.blockTime ?? null, ...e })),
+        signature,
+        events.map((e) => ({ signature, slot: tx.slot, blockTime: tx.blockTime ?? null, ...e })),
       );
-    });
+    }
   }
   return sigs.flatMap((s) => parsedTxCache.get(s.signature) ?? []);
 }
@@ -399,11 +402,12 @@ export async function fetchEvidenceText(market: PublicKey): Promise<string | nul
 // Writes
 // ---------------------------------------------------------------------------
 
-/** What the connected wallet must provide (matches wallet-adapter's `useAnchorWallet()`). */
+/** Browser wallets can submit with the connection so Wallet Standard receives the chain. */
 export interface WalletSigner {
   publicKey: PublicKey;
   signTransaction<T extends Transaction>(tx: T): Promise<T>;
   signAllTransactions<T extends Transaction>(txs: T[]): Promise<T[]>;
+  sendTransaction?(tx: Transaction, connection: Connection, options?: SendOptions): Promise<string>;
 }
 
 export interface TxResult {
@@ -441,8 +445,7 @@ async function ataIfMissing(payer: PublicKey, owner: PublicKey, mint: PublicKey)
 }
 
 /**
- * Pack, sign (one wallet prompt for the whole batch), send and confirm.
- * Each transaction's send→confirm latency is recorded for the network panel.
+ * Pack, sign, submit and confirm. Each packed browser transaction has one wallet prompt.
  */
 async function sendGroups(
   wallet: WalletSigner,
@@ -455,21 +458,29 @@ async function sendGroups(
   const batches = packInstructionGroups(groups, { feePayer: wallet.publicKey, recentBlockhash: blockhash, prefix });
   const txs = buildTransactions(batches, wallet.publicKey, blockhash);
   opts?.onProgress?.({ stage: "signing", total: txs.length });
-  const signed = txs.length === 1 ? [await wallet.signTransaction(txs[0]!)] : await wallet.signAllTransactions(txs);
+  const sendTransaction = wallet.sendTransaction?.bind(wallet);
+  const signed = sendTransaction
+    ? undefined
+    : txs.length === 1
+      ? [await wallet.signTransaction(txs[0]!)]
+      : await wallet.signAllTransactions(txs);
 
   const results: TxResult[] = [];
-  for (let i = 0; i < signed.length; i++) {
+  for (const [i, tx] of txs.entries()) {
     try {
-      opts?.onProgress?.({ stage: "sending", index: i, total: signed.length });
+      // Wallet Standard may sign and submit in a single call.
+      const sendOptions = { preflightCommitment: "confirmed" } as const;
+      const walletSignature = sendTransaction ? await sendTransaction(tx, conn, sendOptions) : undefined;
+      opts?.onProgress?.({ stage: "sending", index: i, total: txs.length });
       const t0 = performance.now();
-      const signature = await conn.sendRawTransaction(signed[i]!.serialize(), { preflightCommitment: "confirmed" });
+      const signature = walletSignature ?? await conn.sendRawTransaction(signed![i]!.serialize(), sendOptions);
       const conf = await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
       if (conf.value.err) throw conf.value.err;
       const latencyMs = Math.round(performance.now() - t0);
       latencies.push(latencyMs);
       const result = { signature, explorerUrl: explorerTx(signature), latencyMs };
       results.push(result);
-      opts?.onProgress?.({ stage: "confirmed", index: i, total: signed.length, result });
+      opts?.onProgress?.({ stage: "confirmed", index: i, total: txs.length, result });
     } catch (e) {
       if (results.length > 0) throw new PartialBatchError(results, e);
       throw e;
