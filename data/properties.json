@@ -1,0 +1,35 @@
+[
+  {
+    "property_id": 1,
+    "label": "Palisades · Home #1042",
+    "lat_e6": 34045000,
+    "lon_e6": -118526000,
+    "scenario_id": 1,
+    "trigger_distance_m": 500,
+    "expected": "YES",
+    "distance_m": 672,
+    "inside": true
+  },
+  {
+    "property_id": 2,
+    "label": "Westside · Home #2210",
+    "lat_e6": 34057000,
+    "lon_e6": -118458000,
+    "scenario_id": 1,
+    "trigger_distance_m": 500,
+    "expected": "NO",
+    "distance_m": 4000,
+    "inside": false
+  },
+  {
+    "property_id": 3,
+    "label": "Palisades · Home #1187",
+    "lat_e6": 34055000,
+    "lon_e6": -118515000,
+    "scenario_id": 1,
+    "trigger_distance_m": 500,
+    "expected": "YES",
+    "distance_m": 559,
+    "inside": true
+  }
+]
