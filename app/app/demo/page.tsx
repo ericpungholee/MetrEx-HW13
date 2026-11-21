@@ -9,7 +9,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { NetworkPanel } from "@/components/NetworkPanel";
 import { PerimeterMap } from "@/components/PerimeterMap";
-import { Empty, ErrorLine, Panel, ReplayLabel, scenarioName, Stat, StatusPill, TriggerWording, TxLink } from "@/components/ui";
+import {
+  Empty,
+  ErrorLine,
+  PageHeader,
+  Panel,
+  ReplayLabel,
+  scenarioName,
+  Stat,
+  StatusPill,
+  TriggerWording,
+  TxLink,
+} from "@/components/ui";
 import {
   describeError,
   fetchEvidenceText,
@@ -28,10 +39,6 @@ async function sha256Hex(text: string): Promise<string> {
   return toHex(new Uint8Array(digest));
 }
 
-/**
- * Browser-side canonical re-check (spec §8.4): re-canonicalize the served evidence with
- * `@metrex/geo` and hash it. Returns null if the text is not valid evidence JSON.
- */
 async function recomputeCanonicalHash(text: string): Promise<string | null> {
   try {
     return verifyEvidenceText(text).hashHex;
@@ -102,25 +109,32 @@ export default function DemoPage() {
       : null);
 
   return (
-    <div className="space-y-4">
+    <div className="animate-in space-y-10">
+      <PageHeader
+        title="Settlement"
+        description="Close a market, replay the oracle against the packaged perimeter, and verify the evidence."
+        action={
+          <div className="w-full sm:w-64">
+            <label className="text-xs font-medium tracking-wide text-faint uppercase">Operator password</label>
+            <input
+              className="input mt-1.5"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Required to settle"
+            />
+          </div>
+        }
+      />
+
       <NetworkPanel />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold">Settlement · operator</h1>
-          <p className="text-xs text-dim">Close a market, replay the oracle against the packaged perimeter, verify the evidence.</p>
-        </div>
-        <div className="w-72">
-          <label className="text-[11px] text-dim">Demo password</label>
-          <input className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </div>
-      </div>
       <ErrorLine error={ex.error} />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_1fr]">
+      <div className="grid grid-cols-1 gap-10 xl:grid-cols-[300px_1fr]">
         <Panel title="Markets">
           {ex.loading && <Empty>Loading…</Empty>}
           {ex.data && summaries.length === 0 && <Empty>No markets.</Empty>}
-          <div className="space-y-1">
+          <div>
             {summaries.map((s) => {
               const key = s.market.publicKey.toBase58();
               const active = sel?.market.publicKey.toBase58() === key;
@@ -128,14 +142,14 @@ export default function DemoPage() {
                 <button
                   key={key}
                   onClick={() => setSelectedKey(key)}
-                  className={`block w-full rounded border px-3 py-2 text-left ${active ? "border-info bg-info/10" : "border-line hover:border-dim"}`}
+                  className={`block w-full border-b border-line px-1 py-4 text-left transition-colors last:border-b-0 ${active ? "bg-bg-soft" : "hover:bg-bg-soft/50"}`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-semibold">{s.label}</span>
+                  <div className="font-semibold tracking-tight">{s.label}</div>
+                  <div className="mt-1 flex items-baseline justify-between gap-2">
                     <StatusPill state={s.display} />
-                  </div>
-                  <div className="num text-[11px] text-dim">
-                    {formatMusd(s.activated, 0)} / {formatMusd(s.target, 0)} mUSD · {key.slice(0, 8)}…
+                    <span className="num text-xs text-faint">
+                      {formatMusd(s.activated, 0)} / {formatMusd(s.target, 0)}
+                    </span>
                   </div>
                 </button>
               );
@@ -144,32 +158,31 @@ export default function DemoPage() {
         </Panel>
 
         {sel && selKey ? (
-          <div className="space-y-4">
-            <Panel
-              title={sel.label}
-              right={
-                <Link className="text-xs text-info hover:underline" href={`/market/${selKey.toBase58()}`}>
-                  open market →
+          <div className="space-y-10">
+            <section className="space-y-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="text-2xl font-semibold tracking-tight">{sel.label}</h2>
+                <Link className="text-sm text-dim underline-offset-2 hover:text-ink hover:underline" href={`/market/${selKey.toBase58()}`}>
+                  Open market
                 </Link>
-              }
-            >
-              <div className="flex flex-wrap items-center gap-3">
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <StatusPill state={sel.display} />
                 <ReplayLabel />
               </div>
-              <div className="mt-2">
-                <TriggerWording />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+              <TriggerWording />
+              <div className="grid grid-cols-2 gap-5 border-y border-line py-5 sm:grid-cols-5">
                 <Stat label="Scenario">{scenarioName(sel.market.account.scenarioId)}</Stat>
-                <Stat label="Point (approx.)">
-                  {formatE6(sel.market.account.latE6)}, {formatE6(sel.market.account.lonE6)}
+                <Stat label="Location">
+                  <span className="num text-sm">
+                    {formatE6(sel.market.account.latE6)}, {formatE6(sel.market.account.lonE6)}
+                  </span>
                 </Stat>
                 <Stat label="Trigger">{sel.market.account.triggerDistanceM} m</Stat>
                 <Stat label="Activated">{formatMusd(sel.activated)}</Stat>
                 <Stat label="Positions">{sel.acceptedOffers.length}</Stat>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   className="btn btn-primary"
                   disabled={busy !== null || status !== "open" || !password || USE_FIXTURES}
@@ -184,20 +197,19 @@ export default function DemoPage() {
                 >
                   {busy === "resolve" ? "Resolving…" : resolved ? "Recover evidence" : "2 · Run oracle"}
                 </button>
-                {!password && <span className="text-[11px] text-faint">Enter the demo password to enable.</span>}
-                {USE_FIXTURES && <span className="text-[11px] text-fixture">Fixture mode: transactions disabled</span>}
+                {!password && <span className="text-sm text-faint">Enter the operator password to continue.</span>}
               </div>
               {result && (
-                <div className={`mt-3 rounded border px-3 py-2 text-xs ${resErr ? "border-down/50 text-down" : "border-up/50 text-up"}`}>
-                  <span className="font-semibold">{result.action}:</span>{" "}
-                  {resErr ? resErr : resSig ? <>confirmed <TxLink signature={resSig} /></> : "done"}
+                <div className={`border px-4 py-3 text-sm ${resErr ? "border-down/30 bg-down-soft text-down" : "border-up/30 bg-up-soft text-up"}`}>
+                  <span className="font-medium">{result.action}:</span>{" "}
+                  {resErr ? resErr : resSig ? <>confirmed · <TxLink signature={resSig} /></> : "done"}
                 </div>
               )}
-            </Panel>
+            </section>
 
             <Panel title={resolved ? "Settlement map" : "Trigger area"}>
               <PerimeterMap
-                height={420}
+                height={400}
                 settledMarket={resolved && currentEvidence?.text && !USE_FIXTURES ? selKey.toBase58() : undefined}
                 points={[
                   {
@@ -212,42 +224,42 @@ export default function DemoPage() {
               />
             </Panel>
 
-            <Panel title="Evidence record">
-              {!resolved && <Empty>The evidence record appears once the oracle resolves this market.</Empty>}
+            <Panel title="Evidence">
+              {!resolved && <Empty>Evidence appears after the oracle resolves this market.</Empty>}
               {resolved && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[180px_1fr]">
-                    <span className="text-dim">On-chain evidence_hash</span>
-                    <span className="num break-all">{onChainHash ?? "—"}</span>
-                    <span className="text-dim">SHA-256 of served file</span>
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-[160px_1fr]">
+                    <span className="text-dim">On-chain hash</span>
+                    <span className="num break-all text-ink">{onChainHash ?? "—"}</span>
+                    <span className="text-dim">File hash</span>
                     <span className="num break-all">
-                      {currentEvidence?.fileHash ?? (evidence.loading ? "…" : "evidence file unavailable")}
+                      {currentEvidence?.fileHash ?? (evidence.loading ? "…" : "Unavailable")}
                       {currentEvidence?.fileHash && onChainHash && (
-                        <span className={`ml-2 font-bold ${currentEvidence.fileHash === onChainHash ? "text-up" : "text-down"}`}>
-                          {currentEvidence.fileHash === onChainHash ? "✓ matches on-chain" : "✗ does not match"}
+                        <span className={`ml-2 font-medium ${currentEvidence.fileHash === onChainHash ? "text-up" : "text-down"}`}>
+                          {currentEvidence.fileHash === onChainHash ? "Matches" : "Mismatch"}
                         </span>
                       )}
                     </span>
-                    <span className="text-dim">Canonical re-check</span>
+                    <span className="text-dim">Canonical check</span>
                     <span className="num break-all">
                       {currentEvidence?.canonicalHash ? (
                         <>
                           {currentEvidence.canonicalHash}
-                          <span className={`ml-2 font-bold ${currentEvidence.canonicalHash === onChainHash ? "text-up" : "text-down"}`}>
-                            {currentEvidence.canonicalHash === onChainHash ? "✓" : "✗"}
+                          <span className={`ml-2 font-medium ${currentEvidence.canonicalHash === onChainHash ? "text-up" : "text-down"}`}>
+                            {currentEvidence.canonicalHash === onChainHash ? "Matches" : "Mismatch"}
                           </span>
                         </>
                       ) : (
-                        <span className="text-faint">not valid evidence JSON</span>
+                        <span className="text-faint">Not valid evidence JSON</span>
                       )}
                     </span>
                   </div>
                   {currentEvidence?.text && (
-                    <pre className="num max-h-72 overflow-auto rounded border border-line bg-bg p-3 text-[11px] whitespace-pre-wrap">
+                    <pre className="num max-h-72 overflow-auto border border-line bg-bg-soft p-4 text-xs whitespace-pre-wrap">
                       {prettyEvidence(currentEvidence.text)}
                     </pre>
                   )}
-                  {USE_FIXTURES && <p className="text-[11px] text-fixture">FIXTURE evidence record (not produced by the oracle).</p>}
+                  {USE_FIXTURES && <p className="text-sm text-fixture">Fixture evidence (not produced by the oracle).</p>}
                 </div>
               )}
             </Panel>

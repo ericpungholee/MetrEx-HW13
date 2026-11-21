@@ -1,7 +1,6 @@
 "use client";
 
 // Transaction status (spec §10.1): pending → confirmed → Explorer link, or a readable error.
-// Only real confirmed signatures are ever shown as confirmed.
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import {
   describeError,
@@ -25,7 +24,6 @@ interface TxToast {
 }
 
 interface TxContextValue {
-  /** Run a write. Resolves to its results, or null on failure (the toast shows why). */
   run: (label: string, fn: (opts: WriteOptions) => Promise<TxResult[]>) => Promise<TxResult[] | null>;
 }
 
@@ -40,13 +38,13 @@ export function useTx(): TxContextValue {
 function progressText(p: TxProgress): string {
   switch (p.stage) {
     case "building":
-      return "Building transaction…";
+      return "Preparing…";
     case "signing":
       return p.total > 1 ? `Approve ${p.total} transactions in your wallet…` : "Approve in your wallet…";
     case "sending":
-      return p.total > 1 ? `Sending ${p.index + 1}/${p.total}, waiting for confirmation…` : "Sent, waiting for confirmation…";
+      return p.total > 1 ? `Confirming ${p.index + 1} of ${p.total}…` : "Confirming…";
     case "confirmed":
-      return p.total > 1 ? `Confirmed ${p.index + 1}/${p.total}` : "Confirmed";
+      return p.total > 1 ? `Confirmed ${p.index + 1} of ${p.total}` : "Confirmed";
   }
 }
 
@@ -92,41 +90,47 @@ export function TxProvider({ children }: { children: ReactNode }) {
   return (
     <TxContext.Provider value={{ run }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[1000] flex w-[380px] flex-col gap-2">
+      <div className="fixed right-4 bottom-4 z-[1000] flex w-[min(100vw-2rem,360px)] flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`rounded border bg-panel p-3 shadow-lg ${
+            className={`animate-in border bg-bg px-4 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.08)] ${
               t.stage === "confirmed"
-                ? "border-up/60"
+                ? "border-up/40"
                 : t.stage === "error"
-                  ? "border-down/60"
+                  ? "border-down/40"
                   : t.stage === "disabled"
-                    ? "border-fixture/60"
-                    : "border-info/60"
+                    ? "border-fixture/40"
+                    : "border-line-strong"
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div className="font-semibold">{t.label}</div>
-              <button className="text-dim hover:text-ink" onClick={() => dismiss(t.id)} aria-label="Dismiss">
+            <div className="flex items-start justify-between gap-3">
+              <div className="font-medium text-ink">{t.label}</div>
+              <button className="text-faint hover:text-ink" onClick={() => dismiss(t.id)} aria-label="Dismiss">
                 ×
               </button>
             </div>
             <div
-              className={`mt-1 text-xs ${
-                t.stage === "confirmed" ? "text-up" : t.stage === "error" ? "text-down" : t.stage === "disabled" ? "text-fixture" : "text-info"
+              className={`mt-1 text-sm ${
+                t.stage === "confirmed"
+                  ? "text-up"
+                  : t.stage === "error"
+                    ? "text-down"
+                    : t.stage === "disabled"
+                      ? "text-fixture"
+                      : "text-dim"
               }`}
             >
-              {t.stage === "pending" && <span className="mr-1 inline-block animate-pulse">●</span>}
+              {t.stage === "pending" && <span className="pulse-dot mr-1.5 inline-block text-[10px]">●</span>}
               {t.detail}
             </div>
-            {t.error && t.stage === "error" && <div className="mt-1 text-xs text-ink">{t.error}</div>}
+            {t.error && t.stage === "error" && <div className="mt-1 text-sm text-ink-secondary">{t.error}</div>}
             {t.results.map((r) => (
-              <div key={r.signature} className="num mt-1 flex justify-between text-xs">
-                <a className="text-info hover:underline" href={r.explorerUrl} target="_blank" rel="noreferrer">
-                  {shortKey(r.signature, 8)} ↗
+              <div key={r.signature} className="mt-2 flex justify-between text-sm">
+                <a className="num text-ink-secondary underline-offset-2 hover:text-ink hover:underline" href={r.explorerUrl} target="_blank" rel="noreferrer">
+                  View on Explorer
                 </a>
-                <span className="text-dim">{(r.latencyMs / 1000).toFixed(2)} s</span>
+                <span className="num text-faint">{(r.latencyMs / 1000).toFixed(2)}s</span>
               </div>
             ))}
           </div>
