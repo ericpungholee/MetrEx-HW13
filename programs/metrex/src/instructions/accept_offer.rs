@@ -53,6 +53,7 @@ pub struct AcceptOffer<'info> {
 
 pub fn handler(ctx: Context<AcceptOffer>) -> Result<()> {
     let market = &ctx.accounts.market;
+    require!(market.scenario_id == SCENARIO_PALISADES_2025, MetrexError::InvalidScenario);
     let offer = &ctx.accounts.offer;
     require!(
         market.status == MarketStatus::Open,

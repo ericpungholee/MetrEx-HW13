@@ -12,6 +12,7 @@ import { ERROR_MESSAGES, errorNameOf } from "@metrex/shared";
 export interface SendOptions {
   /** Attempts on blockhash expiry (each re-checks the previous signature first). Default 3. */
   attempts?: number;
+  commitment?: "confirmed" | "finalized";
 }
 
 export class TxError extends Error {
@@ -38,12 +39,17 @@ export async function sendTx(
   const payer = signers[0];
   if (!payer) throw new Error("sendTx needs at least one signer (fee payer)");
   const attempts = opts.attempts ?? 3;
+  const commitment = opts.commitment ?? "confirmed";
   let lastSig: string | undefined;
   for (let i = 0; i < attempts; i++) {
     if (lastSig) {
       // The previous attempt may have landed late; never double-send.
       const st = await conn.getSignatureStatus(lastSig, { searchTransactionHistory: true });
-      if (st.value?.confirmationStatus && !st.value.err) return lastSig;
+      const status = st.value?.confirmationStatus;
+      if (st.value && !st.value.err && (status === "finalized" || status === commitment)) return lastSig;
+      if (st.value && !st.value.err) {
+        throw new TxError("Previous transaction is awaiting confirmation", [], lastSig);
+      }
     }
     const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
     const tx = new Transaction({ feePayer: payer.publicKey, blockhash, lastValidBlockHeight });
@@ -57,7 +63,7 @@ export async function sendTx(
     }
     lastSig = sig;
     try {
-      const res = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      const res = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, commitment);
       if (res.value.err) {
         const t = await conn.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
         const logs = t?.meta?.logMessages ?? [];

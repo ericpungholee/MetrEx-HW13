@@ -1,6 +1,7 @@
 "use client";
 
-// Leaflet map: packaged fire perimeter + property points with their trigger circles.
+// Property points, trigger circles, and optionally a settled perimeter.
+// Client-only (imported through PerimeterMap with ssr: false).
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { Circle, CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
@@ -17,8 +18,6 @@ export interface MapPoint {
   selected?: boolean;
 }
 
-export const PERIMETER_URL = "/data/palisades-2025.geojson";
-
 function FitTo({ points }: { points: MapPoint[] }) {
   const map = useMap();
   const sel = points.find((p) => p.selected) ?? points[0];
@@ -32,30 +31,41 @@ export default function PerimeterMapInner({
   points,
   height = 320,
   onSelect,
+  settledMarket,
 }: {
   points: MapPoint[];
   height?: number;
+  settledMarket?: string;
   onSelect?: (key: string) => void;
 }) {
-  const [perimeter, setPerimeter] = useState<GeoJsonObject | null>(null);
-  const [perimeterState, setPerimeterState] = useState<"loading" | "ok" | "missing">("loading");
+  const [overlay, setOverlay] = useState<{ market: string; data: GeoJsonObject | null }>();
+  const perimeter = settledMarket && overlay?.market === settledMarket ? overlay.data : null;
 
   useEffect(() => {
-    let alive = true;
-    fetch(PERIMETER_URL)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        const j = (await r.json()) as GeoJsonObject;
-        if (alive) {
-          setPerimeter(j);
-          setPerimeterState("ok");
+    if (!settledMarket) return;
+    const abort = new AbortController();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    async function load() {
+      try {
+        const response = await fetch(`/api/evidence/${settledMarket}?perimeter=1`, {
+          cache: "no-store", signal: abort.signal,
+        });
+        if (response.ok) {
+          const data = await response.json() as GeoJsonObject;
+          if (settledMarket && !abort.signal.aborted) setOverlay({ market: settledMarket, data });
+          return;
         }
-      })
-      .catch(() => alive && setPerimeterState("missing"));
+      } catch {
+        // Settlement or publication can still be pending.
+      }
+      if (!abort.signal.aborted) retry = setTimeout(load, 10_000);
+    }
+    void load();
     return () => {
-      alive = false;
+      abort.abort();
+      clearTimeout(retry);
     };
-  }, []);
+  }, [settledMarket]);
 
   const center = points[0] ? ([points[0].lat, points[0].lon] as [number, number]) : ([34.05, -118.53] as [number, number]);
 
@@ -68,6 +78,7 @@ export default function PerimeterMapInner({
         />
         {perimeter && (
           <GeoJSON
+            key={settledMarket}
             data={perimeter}
             style={() => ({ color: "#c4352d", weight: 1.5, fillColor: "#c4352d", fillOpacity: 0.18 })}
           />
@@ -94,14 +105,8 @@ export default function PerimeterMapInner({
         <FitTo points={points} />
       </MapContainer>
       <div className="pointer-events-none absolute top-3 right-3 z-[500] bg-bg/90 px-2.5 py-1.5 text-xs text-dim">
-        {perimeterState === "ok" && <span className="text-down">■</span>} Fire perimeter
-        {perimeterState === "loading" ? "…" : perimeterState === "missing" ? " unavailable" : ""}
-        {points.some((p) => p.radiusM !== undefined) && (
-          <>
-            {" "}
-            · <span className="text-ink">◌</span> trigger
-          </>
-        )}
+        {perimeter && <span className="text-down">■ Settled fire perimeter </span>}
+        {points.some((p) => p.radiusM !== undefined) && <span>◌ Trigger radius</span>}
       </div>
     </div>
   );

@@ -29,7 +29,6 @@ export default function config(phase: string): NextConfig {
     outputFileTracingRoot: path.join(__dirname, ".."),
     outputFileTracingIncludes: {
       "/api/**/*": ["../pnpm-workspace.yaml", "../target/idl/metrex.json"],
-      "/api/oracle/**/*": ["../data/scenarios.json", "../data/palisades-2025.geojson"],
     },
   };
 }

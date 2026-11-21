@@ -81,23 +81,34 @@ describe("offerCoverage (§7)", () => {
 });
 
 describe("botExposure", () => {
-  it("sums Open + Accepted offers on Open/Closed markets only", () => {
+  it("separates locked offers from held risk, including purchases and sales", () => {
     const markets = mapOf(mkt("m1"), mkt("m2", { status: "closed" }), mkt("m3", { status: "resolvedNo" }), mkt("m4", { status: "voided" }));
     const offers = [
       off("m1", { coverage: 1_000n * U }),
-      off("m1", { coverage: 2_000n * U, status: "accepted" }),
-      off("m2", { coverage: 3_000n * U, status: "accepted" }),
-      off("m2", { coverage: 500n * U, status: "cancelled" }),
-      off("m3", { coverage: 7_000n * U, status: "accepted" }),
-      off("m4", { coverage: 9_000n * U, status: "accepted" }),
-      off("unknown", { coverage: 9_000n * U }),
+      off("m1", { coverage: 2_000n * U, status: "accepted", riskHolder: BOT }),
+      off("m2", { coverage: 3_000n * U, status: "accepted", underwriter: "other", riskHolder: BOT }),
+      off("m2", { coverage: 500n * U, status: "open" }),
+      off("m1", { coverage: 7_000n * U, status: "accepted", riskHolder: "buyer" }),
+      off("m3", { coverage: 8_000n * U, status: "accepted", riskHolder: BOT }),
+      off("m4", { coverage: 9_000n * U, status: "accepted", riskHolder: BOT }),
     ];
-    expect(botExposure(offers, markets)).toBe(6_000n * U);
+    expect(botExposure(BOT, offers, markets)).toEqual({
+      offeredCoverage: 1_000n * U,
+      committedCollateral: 1_440n * U,
+      heldRiskCoverage: 5_000n * U,
+    });
   });
 });
 
 describe("planNewOffers (§7)", () => {
   const base = { params: A, bot: BOT, botOffers: [], exposure: 0n, wallet: RICH, inFlight: new Set<string>() };
+
+  it("sizes the quote against a partially filled market's remaining capacity", () => {
+    const openMarkets = [mkt("small", { coverageActivated: 9_949n * U + 1n })];
+    expect(planNewOffers({ ...base, openMarkets })).toMatchObject([
+      { kind: "place", market: "small", coverage: 51n * U - 1n },
+    ]);
+  });
 
   it("offers once on each open market", () => {
     const acts = planNewOffers({ ...base, openMarkets: [mkt("m1"), mkt("m2")] });
@@ -287,7 +298,6 @@ describe("planListings (§7.1)", () => {
     });
     expect(acts).toEqual([
       { kind: "list", offer: held.key, market: "m1", price: riskListingPrice(held, 50n) },
-      { kind: "list", offer: closedHeld.key, market: "m2", price: riskListingPrice(closedHeld, 50n) },
       { kind: "cancelListing", listing: "L2", offer: finalListed.key, market: "m3" },
     ]);
   });

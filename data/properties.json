@@ -5,10 +5,7 @@
     "lat_e6": 34045000,
     "lon_e6": -118526000,
     "scenario_id": 1,
-    "trigger_distance_m": 500,
-    "expected": "YES",
-    "distance_m": 672,
-    "inside": true
+    "trigger_distance_m": 500
   },
   {
     "property_id": 2,
@@ -16,10 +13,7 @@
     "lat_e6": 34057000,
     "lon_e6": -118458000,
     "scenario_id": 1,
-    "trigger_distance_m": 500,
-    "expected": "NO",
-    "distance_m": 4000,
-    "inside": false
+    "trigger_distance_m": 500
   },
   {
     "property_id": 3,
@@ -27,9 +21,6 @@
     "lat_e6": 34055000,
     "lon_e6": -118515000,
     "scenario_id": 1,
-    "trigger_distance_m": 500,
-    "expected": "YES",
-    "distance_m": 559,
-    "inside": true
+    "trigger_distance_m": 500
   }
 ]

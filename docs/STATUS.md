@@ -176,3 +176,7 @@ The integrated setup creates and verifies a mint without a freeze authority. Dir
 
 - Workstream A applied §2 by requiring distinct, nondefault oracle and controller keys during Config initialization. The instruction interface stayed frozen.
 - `pnpm install` skipped build scripts for `bigint-buffer`, `bufferutil`, `esbuild`, `utf-8-validate`. Tests pass without them; run `pnpm approve-builds` if native speed-ups are wanted.
+
+## Market integrity revision
+
+The integrity branch is documented in [the market integrity audit](v1.1-integrity-audit.md). The upgrade preserves the existing account layouts and program ID. Devnet inspection was read-only and found the prior deployment. The revised oracle controls require the updated program for the on-chain trading cutoff.

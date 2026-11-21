@@ -1,7 +1,8 @@
 import { Keypair, type VersionedTransactionResponse } from "@solana/web3.js";
 import { afterEach, expect, it, vi } from "vitest";
 import idl from "../../target/idl/metrex.json";
-import { createMarket, fetchActivity, fetchEvidenceText, fetchNetworkStats, getConnection, IDL, type WalletSigner } from "./client";
+import { getFixtureState } from "./fixtures";
+import { acceptOffers, createMarket, fetchActivity, fetchEvidenceText, fetchNetworkStats, getConnection, getProgram, IDL, PartialBatchError, type WalletSigner } from "./client";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -81,4 +82,38 @@ it("reports pending fee lookups and cached status to the network panel", async (
     stale: true,
     truncated: false,
   });
+});
+
+
+it("preserves confirmed chunks and resumes with the remaining offers after a wallet rejection", async () => {
+  const conn = getConnection();
+  const fixtures = await getFixtureState(getProgram().programId);
+  const base = fixtures.offers[0]!;
+  const offers = Array.from({ length: 30 }, () => ({ ...base, publicKey: Keypair.generate().publicKey }));
+  const publicKey = Keypair.generate().publicKey;
+  const blockhash = Keypair.generate().publicKey.toBase58();
+  vi.spyOn(conn, "getLatestBlockhash").mockResolvedValue({ blockhash, lastValidBlockHeight: 100 });
+  vi.spyOn(conn, "getAccountInfo").mockResolvedValue(null);
+  vi.spyOn(conn, "confirmTransaction").mockResolvedValue({ context: { slot: 1 }, value: { err: null } });
+  vi.spyOn(getProgram().account.config, "fetchNullable").mockResolvedValue(fixtures.config);
+  const submit = vi.fn()
+    .mockResolvedValueOnce("first")
+    .mockRejectedValueOnce(new Error("User rejected the request"))
+    .mockResolvedValue("resumed");
+  const wallet: Required<WalletSigner> = {
+    publicKey, sendTransaction: submit, signTransaction: vi.fn(), signAllTransactions: vi.fn(),
+  };
+
+  await expect(acceptOffers(wallet, base.account.market, offers)).rejects.toMatchObject({
+    name: PartialBatchError.name, confirmed: [{ signature: "first" }],
+  });
+  const firstChunk = submit.mock.calls[0]![0].instructions.length - 1; // ATA prefix
+  expect(firstChunk).toBeGreaterThan(0);
+  expect(firstChunk).toBeLessThan(offers.length);
+  const retry = await acceptOffers(wallet, base.account.market, offers.slice(firstChunk));
+  expect(retry.length).toBeGreaterThan(0);
+  const retried = submit.mock.calls.slice(2).flatMap(([tx]) => tx.instructions.slice(1));
+  expect(retried.map((ix) => ix.keys[3].pubkey.toBase58())).toEqual(
+    offers.slice(firstChunk).map((o) => o.publicKey.toBase58()),
+  );
 });

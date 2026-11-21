@@ -3,22 +3,24 @@ import { loadScenarioRegistry } from "@metrex/geo/node";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import { describe, expect, it } from "vitest";
-import { errorCode, MUSD_UNIT, type ScenarioRegistry } from "@metrex/shared";
-import { MARKET_STATUS_INDEX, OFFER_STATUS_INDEX, OFFSETS, filters, type MarketView } from "./accounts";
+import { BN } from "@anchor-lang/core";
+import { describe, expect, it, vi } from "vitest";
+import { errorCode, findMarketPda, MUSD_UNIT, type ScenarioRegistry } from "@metrex/shared";
+import { MARKET_STATUS_INDEX, OFFER_STATUS_INDEX, OFFSETS, fetchMarket, filters, type MarketView } from "./accounts";
 import { dataDir, expandHome, loadKeypairFile, parsePublicKey, repoRoot } from "./env";
 import { explorerAddress, explorerTx } from "./explorer";
 import { programDataAddress } from "./ix";
-import { loadIdl } from "./program";
+import { getProgram, loadIdl } from "./program";
 import { getEvidence } from "./oracle/evidence";
-import { sha256Hex, writeEvidence } from "./oracle/evidence-store";
+import { readEvidenceBytes, sha256Hex, writeEvidence } from "./oracle/evidence-store";
 import { realGeo, type GeoAdapter } from "./oracle/geo-adapter";
-import { assertResolvable, buildMarketEvidence } from "./oracle/resolve";
+import { assertResolvable, buildMarketEvidence, resolveMarket } from "./oracle/resolve";
 import { HttpError } from "./routes/errors";
 import { FAUCET_MUSD, FAUCET_SOL_LAMPORTS, FaucetLimiter, faucetInstructions } from "./routes/faucet";
 import { handleClose, handleEvidence, handleFaucet, handleResolve } from "./routes/http";
-import { checkDemoPassword } from "./routes/password";
+import { checkDemoPassword, OperatorPasswordBudget } from "./routes/password";
 import { formatMusd, formatSol, formatUnits, musd, solToLamports } from "./token";
+import { RpcPool } from "./rpc";
 import { describeErrorText } from "./tx";
 
 // ---------- IDL layout ----------
@@ -59,9 +61,31 @@ describe("account layout (frozen IDL)", () => {
       status: m.status,
     });
     const o = offsetsOf("Offer");
-    expect(OFFSETS.offer).toEqual({ market: o.market, underwriter: o.underwriter, status: o.status });
+    expect(OFFSETS.offer).toEqual({ market: o.market, underwriter: o.underwriter, riskHolder: o.risk_holder, status: o.status });
     const l = offsetsOf("Listing");
     expect(OFFSETS.listing).toEqual({ offer: l.offer, side: l.side, seller: l.seller });
+  });
+
+  it("reads a finalized Market only under the program owner at its canonical PDA", async () => {
+    const rpc = new RpcPool(["http://127.0.0.1:8899"]);
+    const program = getProgram(rpc.connection);
+    const homeowner = Keypair.generate().publicKey;
+    const [pk, bump] = findMarketPda(program.programId, homeowner, 12n);
+    const data = await program.coder.accounts.encode("market", {
+      homeowner, marketNonce: new BN(12), propertyId: 1, latE6: 0, lonE6: 0,
+      scenarioId: 1, triggerDistanceM: 500, coverageTarget: new BN(10),
+      coverageActivated: new BN(0), acceptedCount: 0, status: { closed: {} },
+      evidenceHash: new Uint8Array(32), createdAt: new BN(1), closedAt: new BN(2),
+      resolvedAt: new BN(0), bump,
+    });
+    const base = { data, lamports: 1, executable: false, rentEpoch: 0 };
+    const rpcRead = vi.spyOn(rpc.connection, "getAccountInfo")
+      .mockResolvedValueOnce({ ...base, owner: SystemProgram.programId })
+      .mockResolvedValue({ ...base, owner: program.programId });
+    expect(await fetchMarket(program, pk, "finalized")).toBeNull();
+    expect(await fetchMarket(program, Keypair.generate().publicKey, "finalized")).toBeNull();
+    expect((await fetchMarket(program, pk, "finalized"))?.status).toBe("closed");
+    expect(rpcRead).toHaveBeenCalledWith(pk, "finalized");
   });
 
   it("status indices follow the IDL enum variant order", () => {
@@ -165,11 +189,19 @@ describe("faucet", () => {
   });
 
   it("enforces the 100-wallet hard cap but lets known wallets return", () => {
-    const l = new FaucetLimiter(1000, 100);
+    const l = new FaucetLimiter(1000, 100, 200);
     for (let i = 0; i < 100; i++) l.reserve(`w${i}`, 0);
     expect(() => l.reserve("new", 5000)).toThrow(/limit/);
     l.reserve("w0", 5000);
     expect(l.size).toBe(100);
+  });
+
+  it("shares the faucet request budget across different wallets", () => {
+    const l = new FaucetLimiter(10 * 60_000, 100, 2);
+    l.reserve("first", 0);
+    l.reserve("second", 1);
+    expect(() => l.reserve("third", 59_999)).toThrow(/request limit/);
+    l.reserve("third", 60_000);
   });
 
   it("release restores the previous state", () => {
@@ -317,18 +349,94 @@ describe("oracle", () => {
     expect(sha256Hex(first.canonical)).toBe(first.hashHex);
   });
 
-  it("stores canonical bytes and serves them with a matching hash", async () => {
+  it("gates JSON, raw evidence and perimeter on finalized settlement and the matching hash", async () => {
     const dir = mkdtempSync(join(tmpdir(), "metrex-ev-"));
     const m = market();
     const ev = await buildMarketEvidence(m, pid, registry, fakeGeo(), dir);
     const path = await writeEvidence(dir, m.pubkey, ev.canonical);
     expect(readFileSync(path, "utf8")).toBe(ev.canonical);
-    const served = await getEvidence(m.pubkey, { dataDir: dir, skipChain: true });
-    expect(served.hashHex).toBe(ev.hashHex);
+    const key = m.pubkey.toBase58();
+    const requests = ["", "?raw=1", "?perimeter=1"];
+    for (const status of ["open", "closed", "voided"] as const) {
+      for (const query of requests) {
+        const denied = await handleEvidence(new Request(`http://x/api${query}`), key, {
+          dataDir: dir, readMarket: async () => ({ ...m, status, evidenceHash: ev.hashBytes }),
+        });
+        expect(denied.status).toBe(404);
+        expect(await denied.text()).not.toContain("triggered");
+      }
+    }
+    const opts = { dataDir: dir, readMarket: async () => ({
+      ...m, status: "resolvedYes" as const, evidenceHash: ev.hashBytes,
+    }) };
+    const served = await getEvidence(m.pubkey, opts);
     expect(served.canonical).toBe(ev.canonical);
-    await expect(getEvidence(Keypair.generate().publicKey, { dataDir: dir, skipChain: true })).rejects.toThrow(
-      /No evidence/,
-    );
+    const raw = await handleEvidence(new Request("http://x/api?raw=1"), key, opts);
+    expect(raw.status).toBe(200);
+    expect(raw.headers.get("cache-control")).toBe("no-store");
+    expect(await raw.text()).toBe(ev.canonical);
+
+    for (const query of requests) {
+      const req = new Request(`http://x/api${query}`);
+      const mismatch = await handleEvidence(req, key, {
+        dataDir: dir, readMarket: async () => ({ ...m, status: "resolvedYes" }),
+      });
+      expect(mismatch.status).toBe(503);
+      expect(await mismatch.text()).not.toContain("triggered");
+      const unavailable = await handleEvidence(req, key, {
+        dataDir: dir, readMarket: async () => { throw new Error("RPC offline"); },
+      });
+      expect(unavailable.status).toBe(503);
+    }
+  });
+
+  it("publishes real perimeter geometry only when the finalized evidence matches it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metrex-perimeter-"));
+    const registry = loadScenarioRegistry(dataDir());
+    const scenario = registry["1"]!;
+    const geojson = readFileSync(join(dataDir(), scenario.file));
+    writeFileSync(join(dir, "scenarios.json"), JSON.stringify(registry));
+    writeFileSync(join(dir, scenario.file), geojson);
+    const m = market({ latE6: 34_045_000, lonE6: -118_526_000 });
+    const ev = await buildMarketEvidence(m, pid, registry, realGeo, dir);
+    await writeEvidence(dir, m.pubkey, ev.canonical);
+    const deps = { dataDir: dir, readMarket: async () => ({
+      ...m, status: "resolvedYes" as const, evidenceHash: ev.hashBytes,
+    }) };
+    const req = new Request("http://x/api?perimeter=1");
+    const valid = await handleEvidence(req, m.pubkey.toBase58(), deps);
+    expect(valid.status).toBe(200);
+    expect((await valid.json()).type).toBe("MultiPolygon");
+    writeFileSync(join(dir, scenario.file), "tampered");
+    const invalid = await handleEvidence(req, m.pubkey.toBase58(), deps);
+    expect(invalid.status).toBe(503);
+    expect(await invalid.text()).not.toContain(scenario.sha256);
+  });
+
+  it("never writes after a failed or unfinalized send, and repairs publication after a late landing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metrex-resolve-"));
+    writeFileSync(join(dir, "scenarios.json"), JSON.stringify(registry));
+    const oracle = Keypair.generate();
+    const rpc = new RpcPool(["http://127.0.0.1:8899"]);
+    const config = getProgram(rpc.connection).account.config;
+    vi.spyOn(config, "fetchNullable").mockResolvedValueOnce({
+      oracleAuthority: oracle.publicKey, admin: oracle.publicKey,
+      demoController: oracle.publicKey, mint: oracle.publicKey, bump: 0,
+    });
+    const m = market({ status: "closed" });
+    let observed = m;
+    const send = vi.fn(async () => { throw new Error("private simulation log"); });
+    const deps = { rpc, dataDir: dir, oracle, geo: fakeGeo(), send, readMarket: async () => observed };
+    await expect(resolveMarket(m.pubkey, deps)).rejects.toThrow(/not been verified/);
+    expect(await readEvidenceBytes(dir, m.pubkey)).toBeNull();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const built = await buildMarketEvidence(m, getProgram(rpc.connection).programId, registry, deps.geo, dir);
+    observed = { ...m, status: "resolvedYes", evidenceHash: built.hashBytes };
+    const repaired = await resolveMarket(m.pubkey, deps);
+    expect(repaired.signature).toBeNull();
+    expect(await readEvidenceBytes(dir, m.pubkey)).toEqual(Buffer.from(built.canonical));
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -336,6 +444,14 @@ describe("oracle", () => {
 
 describe("route handlers", () => {
   const mk = () => Keypair.generate().publicKey.toBase58();
+
+  it("limits operator password attempts and restores access when the window expires", () => {
+    const budget = new OperatorPasswordBudget(2, 60_000);
+    expect(budget.check("wrong", "test", 0)).toBe("wrong");
+    expect(budget.check("wrong", "test", 1)).toBe("wrong");
+    expect(budget.check("test", "test", 59_999)).toBe("limited");
+    expect(budget.check("test", "test", 60_000)).toBe("allowed");
+  });
 
   it("close/resolve require the demo password", async () => {
     process.env.DEMO_PASSWORD = "pw";

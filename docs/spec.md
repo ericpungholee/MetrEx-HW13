@@ -3,6 +3,8 @@
 **Hackathon:** Hack Western 2026 · **Track:** MLH Best Use of Solana
 **Network:** Solana Devnet · **Stage:** MVP prototype
 **Supersedes:** v1.0. This document is self-contained; build from this one.
+**Market integrity revision (2026-11-21).** See [implementation and audit](v1.1-integrity-audit.md) for the operational policy and validation.
+
 **Amendments v1.1.1 (2026-11-20, approved before the Gate 0 freeze):** single holder fields on `Offer` (§5.4); `initialize_config` bound to the upgrade authority (§6); `InsufficientFunds` and `InvalidSide` errors (§6.4); Tier 2 events (§6.5); faucet and evidence as route handlers and build-plan layout (§9.3, §15).
 
 > **MetrEx is Kalshi for insurance.** Individuals list risks they want covered, traders compete to underwrite them, and a Solana program holds the collateral and settles payouts.
@@ -116,8 +118,8 @@ No role can move escrowed funds except through the rules in section 6. In partic
 1. **Exchange (`/`)**: market cards showing property label, area, risk, coverage requested, coverage funded, best open premium, offer count, status.
 2. **Create (`/create`)**: choose a registered property from a list (with a small map), enter coverage. That's the whole form.
 3. **Market (`/market/[id]`)**: header, risk info, order book (open offers, sorted by ascending bps), positions (accepted offers), offer form, homeowner actions, activity feed, Explorer links.
-4. **Portfolio (`/portfolio`)**: mUSD balance, open offers, locked collateral, active positions, total exposure, **exposure per scenario** (one fire hits every home in its footprint at once, so many positions in one scenario are effectively one bet), premiums, claimable amounts, realized P&L.
-5. **Settlement (`/demo`)**: operator view. Close market, show the fire perimeter against the property's 500 m circle, run oracle, show the evidence record.
+4. **Portfolio (`/portfolio`)**: mUSD balance, open offers, locked collateral, active positions, total exposure, **gross exposure per scenario**, original premiums booked or paid, and claimable amounts. Positions in nearby or duplicate locations can trigger together. Complete P&L requires a complete wallet cash-flow history.
+5. **Settlement (`/demo`)**: operator view. Show the 500 m trigger circle, close trading, run the oracle, and then show the final perimeter and evidence.
 
 ### 3.2 Design direction
 
@@ -176,8 +178,8 @@ Homeowner requests 10,000 mUSD.
 The booked vault obligation is collateral (K) for an Open offer, coverage (C) for an Accepted offer, and zero after cancellation, claim or refund. A live vault's raw SPL balance must cover that obligation. Any excess is unsolicited surplus. Surplus never changes booked amounts, holder rights or market coverage. Acceptance transfers exactly P and can proceed when the resulting vault balance is at least C.
 
 - **Cancellation.** Return K and any surplus to the original underwriter.
-- **Payout.** Transfer exactly C to the winning holder. Send any surplus to the original underwriter, or to the original homeowner when the original underwriter is the claimant. The surplus recipient is always a different wallet from the claimant.
-- **Void refund.** Return P to the original homeowner and K plus any surplus to the original underwriter.
+- **Payout.** Transfer exactly C to the winning holder. Send any surplus to the current holder of the losing side.
+- **Void refund.** Send P to the current Protection holder and K plus any surplus to the current Risk holder.
 
 For a surplus-bearing payout, the caller supplies the recipient's writable classic SPL token account as the first remaining account. The program validates its token program, mint and wallet owner. The caller can create it without the recipient's signature. The frozen IDL, instruction arguments and named account contexts remain unchanged. Claims with zero surplus may omit this account. Clients should supply it on every claim so deposits after a balance read cannot invalidate a correctly prepared claim.
 
@@ -289,19 +291,19 @@ Every instruction that touches tokens checks: `token_account.mint == config.mint
 | Instruction | Signer | Preconditions | Effects |
 |---|---|---|---|
 | `initialize_config(oracle, controller)` | admin | Config doesn't exist; mint account provided; **signer == the program's upgrade authority** (read from its `ProgramData` account) | Create Config |
-| `register_property(id, label, lat_e6, lon_e6, scenario_id, trigger_m)` | `config.admin` | Property ID unused; lat in ±90°, lon in ±180° | Create Property |
-| `create_market(nonce, property_id, coverage_target)` | homeowner | Property exists; `MIN_COVERAGE ≤ target ≤ MAX_COVERAGE_TARGET` | Create Market (`Open`), copy property data |
-| `place_offer(nonce, coverage, bps)` | underwriter | Market `Open`; `underwriter ≠ homeowner`; bps and coverage valid (4.2); P ≥ 1; balance ≥ K | Create Offer (`Open`) + vault; transfer K underwriter → vault |
+| `register_property(id, label, lat_e6, lon_e6, scenario_id, trigger_m)` | `config.admin` | Property ID unused; scenario supported; lat in ±90°, lon in ±180° | Create Property |
+| `create_market(nonce, property_id, coverage_target)` | homeowner | Property exists and its scenario is supported; `MIN_COVERAGE ≤ target ≤ MAX_COVERAGE_TARGET` | Create Market (`Open`), copy property data |
+| `place_offer(nonce, coverage, bps)` | underwriter | Market `Open`; `underwriter ≠ homeowner`; bps and coverage valid (4.2); supported scenario; C ≤ remaining coverage; P ≥ 1; balance ≥ K | Create Offer (`Open`) + vault; transfer K underwriter → vault |
 | `cancel_offer()` | `offer.underwriter` | Offer `Open` (any market status) | Transfer vault → underwriter; close vault; Offer → `Cancelled` |
-| `accept_offer()` | `market.homeowner` | Market `Open`; Offer `Open`; `offer.market == market`; `activated + C ≤ target` | Transfer P homeowner → vault; assert `vault.amount ≥ C`; Offer → `Accepted`; set `protection_holder = homeowner`, `risk_holder = underwriter`; `activated += C`; `accepted_count += 1` |
+| `accept_offer()` | `market.homeowner` | Market `Open`; Offer `Open`; supported scenario; `offer.market == market`; `activated + C ≤ target` | Transfer P homeowner → vault; assert `vault.amount ≥ C`; Offer → `Accepted`; set `protection_holder = homeowner`, `risk_holder = underwriter`; `activated += C`; `accepted_count += 1` |
 | `close_market()` | `config.demo_controller` | Market `Open` | Market → `Closed`; set `closed_at` |
 | `resolve_market(triggered: bool, evidence_hash)` | `config.oracle_authority` | Market `Closed` | Market → `ResolvedYes` / `ResolvedNo`; store hash; set `resolved_at` |
 | `claim_payout()` | winner | Market resolved; Offer `Accepted`; YES ⇒ signer == `protection_holder`, NO ⇒ signer == `risk_holder`; destination owned by signer | Transfer C → signer and route any surplus (§4.4); close vault (rent → underwriter); Offer → `Claimed` |
-| `list_position(side, price)` *(Tier 2)* | current holder of `side` | Market `Open` or `Closed`; Offer `Accepted`; `price ≥ 1`; no listing for this side exists | Create Listing |
-| `buy_position()` *(Tier 2)* | buyer | Market `Open` or `Closed`; Offer `Accepted`; `listing.seller ==` current holder of that side; buyer ≠ seller; buyer ≠ holder of the opposite side | Transfer `price` buyer → seller; set that side's holder = buyer; close Listing. All in one instruction |
+| `list_position(side, price)` *(Tier 2)* | current holder of `side` | Market `Open`; Offer `Accepted`; `price ≥ 1`; no listing for this side exists | Create Listing |
+| `buy_position()` *(Tier 2)* | buyer | Market `Open`; Offer `Accepted`; `listing.seller ==` current holder of that side; buyer ≠ seller; buyer ≠ holder of the opposite side | Transfer `price` buyer → seller; set that side's holder = buyer; close Listing. All in one instruction |
 | `cancel_listing()` *(Tier 2)* | `listing.seller` | Listing exists | Close Listing |
-| `void_market()` | `config.admin` | Market `Open` or `Closed` | Market → `Voided` |
-| `refund_offer()` | anyone | Market `Voided`; Offer `Accepted` | Transfer P → homeowner and K plus surplus → underwriter; close vault; Offer → `Refunded` |
+| `void_market()` | `config.admin` | Unfunded market is `Open` or `Closed`. A funded market must be `Closed` and a distinct `config.demo_controller` must co-sign via a remaining account | Market → `Voided` |
+| `refund_offer()` | anyone | Market `Voided`; Offer `Accepted` | Transfer P → Protection holder and K plus surplus → Risk holder; close vault; Offer → `Refunded` |
 
 `void_market` / `refund_offer` are a safety valve, built after the core lifecycle passes its tests (P0.5). Open offers on a voided market use `cancel_offer` as usual.
 
@@ -322,12 +324,12 @@ Every instruction that touches tokens checks: `token_account.mint == config.mint
 | resolve_market | | ✓ | | |
 | claim_payout | | | ✓ | |
 | refund_offer | | | | ✓ |
-| list_position / buy_position (Tier 2) | ✓ | ✓ | | |
+| list_position / buy_position (Tier 2) | ✓ | | | |
 | cancel_listing (Tier 2) | ✓ | ✓ | ✓ | ✓ |
 
-Trading positions is allowed while `Closed` because that is the coverage period: no new coverage is written, but existing claims can change hands until the oracle reports. Once resolved, trading stops.
+`close_market` ends acceptance, underwriting, listing, and purchases. Existing listings and unaccepted offers can be cancelled to recover rent or escrow.
 
-`refund_offer` on a voided market pays P to the original homeowner and K plus any surplus to the original underwriter regardless of current holders. Document this; a holder who bought a side can lose their purchase price on a void. (Void is an emergency path only.)
+`refund_offer` distributes escrow to the current holders under §4.4. Secondary sale consideration is final and remains with the seller. A buyer may recover less than the sale price on a void.
 
 ### 6.2 Offer state machine
 
@@ -398,7 +400,7 @@ Bots compete visibly instead of posting once:
 | C | 450 | 10 |
 
 - When another wallet's open offer on an `Open`, not-yet-funded market undercuts a bot's best open offer, the bot cancels and re-places at `undercut − step`, never below its floor.
-- At most one requote per bot per market every 5 s, and at most 20 per market. Each requote is a real `cancel_offer` + `place_offer` (one transaction, two instructions).
+- Bots quote against outside wallets and ignore sibling bots operated as part of the same demo fleet. At most one requote per bot per market every 5 s, and at most 20 per market. Each requote is a real `cancel_offer` + `place_offer` (one transaction, two instructions).
 - Bots also list the Risk side of their accepted positions at `collateral + 50% of premium` (configurable), so a buyer gets a fully funded NO claim and the bot locks in part of its premium. Bots don't buy positions; bids are out of scope.
 - Every requote shows in the activity feed and counts toward the network panel (10.5).
 
@@ -412,7 +414,7 @@ Bots compete visibly instead of posting once:
 2. Record the source URL, retrieval date, and SHA-256 of the raw file in `data/DATASET.md`.
 3. Normalize to GeoJSON, WGS84, a single `MultiPolygon` feature, keeping inner rings (holes). Save as `data/palisades-2025.geojson` and record its SHA-256 as `dataset_sha256`.
 4. Never fetch live data during the demo.
-5. Keep a scenario registry in `data/scenarios.json` mapping `scenario_id` → dataset file, name, and SHA-256. The oracle loads the dataset by the Market's `scenario_id` and refuses unknown IDs. The MVP registry has one entry (`1` → Palisades). Adding a fire = add a file and a registry entry, then register properties; no program change.
+5. Keep a scenario registry in `data/scenarios.json` mapping `scenario_id` → dataset file, name, and SHA-256. The oracle loads the dataset by the Market's `scenario_id` and refuses unknown IDs. The MVP registry has one entry (`1` → Palisades). Adding a fire requires an oracle registry entry and explicit support in the program before registering properties.
 
 ### 8.2 Trigger evaluation
 
@@ -456,7 +458,7 @@ Canonical JSON: UTF-8, keys sorted lexicographically at every level, no insignif
 {"computed":{"distance_m":0,"inside":true},"dataset":{"name":"palisades-2025","retrieved":"2026-11-21","sha256":"<hex>","source":"<url>"},"market":"<base58>","program_id":"<base58>","property":{"id":1,"lat_e6":34045000,"lon_e6":-118526000},"scenario_id":1,"trigger_distance_m":500,"triggered":true,"version":1}
 ```
 
-`evidence_hash = SHA-256(canonical bytes)`. The oracle saves the file to `data/evidence/<market>.json` and serves it at `GET /api/evidence/:market`. The settlement view recomputes the hash in the browser and shows it matches the on-chain value.
+`evidence_hash = SHA-256(canonical bytes)`. The oracle saves the file to `evidence/<market>.json` under its private data directory once the on-chain resolution finalizes. `GET /api/evidence/:market` checks finalized status and the hash on every read. The same gate applies to `?raw=1` and `?perimeter=1`. The settlement view recomputes the hash in the browser and shows it matches the on-chain value.
 
 (Coordinates above are placeholders.)
 
@@ -506,13 +508,13 @@ Keys load from env/keyfiles, never from the repo.
 ### 9.2 Modules
 
 - **bots/**: section 7.
-- **oracle/**: `POST /api/oracle/resolve/:market` → read Market, check `Closed`, load the dataset for `market.scenario_id` from the scenario registry (8.1), evaluate, write evidence, sign `resolve_market`. Refuses if already resolved or if the scenario is unknown.
+- **oracle/**: `POST /api/oracle/resolve/:market` → read Market, check `Closed`, load the dataset for `market.scenario_id` from the scenario registry (8.1), evaluate and sign `resolve_market`, then confirm finalized state and its matching hash before writing evidence. On a retry for a resolved market, rebuild and publish the same evidence if it matches the existing hash. Unknown scenarios cannot be resolved.
 - **controller/**: `POST /api/demo/close/:market`. The settlement page triggers it; protect it with a shared demo password header.
 - **faucet/**: section 9.3.
 
 ### 9.3 Faucet
 
-`POST /api/faucet { wallet }` (a Next.js route handler at `app/app/api/faucet/`, server-only keys) → sends 0.05 devnet SOL (from the pre-funded faucet wallet) and mints 25,000 mUSD. One request per wallet per 10 minutes; hard cap of 100 wallets. The frontend shows a "Get demo funds" button when the connected wallet is low.
+`POST /api/faucet { wallet }` (a Next.js route handler at `app/app/api/faucet/`, server-only keys) → sends 0.05 devnet SOL (from the pre-funded faucet wallet) and mints 25,000 mUSD. Each process allows 12 requests per minute across wallets, one grant per wallet per 10 minutes, and a hard cap of 100 distinct wallets. The frontend shows a "Get demo funds" button when the connected wallet is low.
 
 ### 9.4 Scripts
 
@@ -587,7 +589,7 @@ Preconditions: program deployed, Config and properties registered, bots funded, 
 3. **Activate:** homeowner clicks "Accept selected" on all three. One signature. Panel shows 10,000 activated, 445 premium, 9,555 collateral, 10,000 escrow.
 4. **Open participation (optional):** a judge clicks "Get demo funds" and places an offer on Home #1187.
 4b. **Secondary trade (Tier 2):** a bot lists its Risk side; a judge wallet buys it in one click. The positions table shows the new holder.
-5. **Replay:** operator closes the market on `/demo`. The map shows the perimeter and the 500 m circle. Oracle resolves; evidence hash shown and verified.
+5. **Replay:** operator closes the market on `/demo`. The map shows the 500 m trigger circle. Once the oracle resolves, show the final perimeter and verify the evidence hash.
 6. **Claim:** status `Resolved: triggered`. Homeowner clicks "Claim all". One signature. Balance rises by 10,000.
 
 The NO path (Home #2210) must be implemented and tested. Show it if time allows.

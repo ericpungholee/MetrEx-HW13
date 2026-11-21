@@ -44,6 +44,7 @@ import {
   claimablePositions,
   claimAll,
   fetchMarketSnapshot,
+  refundVoidedOffer,
   fetchMusdBalance,
   listPosition,
   placeOffer,
@@ -124,7 +125,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
   const m = market.account;
   const status = marketStatusOf(m.status);
   const isOpen = status === "open";
-  const tradable = TRADING_ENABLED && (status === "open" || status === "closed");
+  const tradable = TRADING_ENABLED && status === "open";
   const isHomeowner = !!viewer && m.homeowner.equals(viewer);
 
   const selectedOffers = summary.openOffers.filter((o) => selected.has(o.publicKey.toBase58()));
@@ -321,7 +322,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
                   </>
                 )}
               </div>
-              <button className="btn btn-primary" disabled={busy || selectedOffers.length === 0} onClick={doAccept}>
+              <button className="btn btn-primary" disabled={busy || selectedOffers.length === 0 || selectedCoverage > summary.remaining || (balance.data != null && balance.data < selectedPremium)} onClick={doAccept}>
                 Accept selected
               </button>
             </div>
@@ -329,10 +330,10 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
         </Panel>
 
         <div className="space-y-10">
-          {isOpen && !isHomeowner && (
+          {isOpen && !isHomeowner && summary.remaining >= MIN_COVERAGE && (
             <OfferForm
               marketKey={marketKey}
-              target={summary.target}
+              target={summary.remaining}
               balance={balance.data ?? null}
               onPlaced={() => {
                 snap.refresh();
@@ -343,7 +344,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
           {isOpen && isHomeowner && (
             <Panel title="Your market">
               <p className="text-[15px] leading-relaxed text-dim">
-                Select offers and accept them in one transaction. You pay each offer’s premium; collateral is already escrowed.
+                You created this market. Select offers within the remaining coverage. You pay each accepted offer&apos;s premium. The underwriter&apos;s collateral is already escrowed.
               </p>
             </Panel>
           )}
@@ -375,6 +376,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
             <div className="mt-5">
               <PerimeterMap
                 height={220}
+                settledMarket={status === "resolvedYes" || status === "resolvedNo" ? marketKey.toBase58() : undefined}
                 points={[
                   {
                     key: "m",
@@ -396,6 +398,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
         listings={data.listings}
         viewer={viewer}
         tradable={tradable}
+        voided={status === "voided"}
         onChange={() => {
           snap.refresh();
           balance.refresh();
@@ -432,7 +435,7 @@ function OfferForm({
   else if (bps === null) error = "Enter a rate like 4.25";
   else if (bps < MIN_BPS || bps > MAX_BPS) error = "Rate must be between 0.01% and 99.99%";
   else if (coverage < MIN_COVERAGE) error = `Minimum coverage is ${formatMusd(MIN_COVERAGE, 0)} mUSD`;
-  else if (coverage > target) error = "Coverage exceeds this market’s request";
+  else if (coverage > target) error = "Coverage exceeds the remaining capacity";
   else {
     terms = computeOfferTerms(coverage, bps);
     if (terms.premium < 1n) error = "Premium rounds to zero. Increase coverage or rate.";
@@ -463,7 +466,7 @@ function OfferForm({
         </div>
       </div>
       <div className="mt-5 grid grid-cols-3 gap-4 border-y border-line py-4">
-        <Stat label="You earn">{terms ? formatMusd(terms.premium) : "—"}</Stat>
+        <Stat label="Premium if Risk wins">{terms ? formatMusd(terms.premium) : "—"}</Stat>
         <Stat label="You lock">{terms ? formatMusd(terms.collateral) : "—"}</Stat>
         <Stat label="Escrow">{terms ? formatMusd(terms.coverage) : "—"}</Stat>
       </div>
@@ -471,7 +474,7 @@ function OfferForm({
         If the fire reaches the property, Protection claims the escrow. If not, Risk receives it.
       </p>
       <div className="mt-2 h-5 text-sm text-down">{error ?? (short ? "Not enough mUSD for collateral" : "")}</div>
-      <button className="btn btn-primary mt-2 w-full py-3" disabled={busy || !!error || !terms} onClick={submit}>
+      <button className="btn btn-primary mt-2 w-full py-3" disabled={busy || !!error || !terms || !!short} onClick={submit}>
         {busy ? "Placing…" : "Place offer"}
       </button>
     </Panel>
@@ -483,12 +486,14 @@ function PositionsTable({
   listings,
   viewer,
   tradable,
+  voided,
   onChange,
 }: {
   offers: Keyed<OfferAccount>[];
   listings: Keyed<ListingAccount>[];
   viewer: PublicKey | null;
   tradable: boolean;
+  voided: boolean;
   onChange: () => void;
 }) {
   const wallet = useWalletSigner();
@@ -520,23 +525,32 @@ function PositionsTable({
   function sideCell(o: Keyed<OfferAccount>, side: Side) {
     const holder = side === Side.Protection ? o.account.protectionHolder : o.account.riskHolder;
     const opposite = side === Side.Protection ? o.account.riskHolder : o.account.protectionHolder;
-    const listing = listingFor(listings, o.publicKey, side);
+    const candidate = listingFor(listings, o.publicKey, side);
+    const listing = candidate?.account.seller.equals(holder) ? candidate : undefined;
     const accepted = offerStatusOf(o.account.status) === "accepted";
     const isHolder = !!viewer && holder.equals(viewer);
-    const isDraft = draft && draft.offer === o.publicKey.toBase58() && draft.side === side;
+    const isDraft = tradable && accepted && draft && draft.offer === o.publicKey.toBase58() && draft.side === side;
     return (
       <td>
         <div className="flex flex-wrap items-center gap-2">
           {isDefaultKey(holder) ? <span className="text-faint">—</span> : <AddressLink address={holder} you={viewer} />}
-          {listing && (
+          {listing && tradable && accepted && (
             <span className="num text-sm text-warn" title={`Listed by ${listing.account.seller.toBase58()}`}>
-              {formatMusd(listing.account.price)} for sale
+              for sale {formatMusd(listing.account.price)}
             </span>
           )}
         </div>
+        {listing && tradable && accepted && (
+          <p className="mt-1 text-[11px] text-dim">
+            Max loss {formatMusd(listing.account.price)} · payout {formatMusd(o.account.coverage)} mUSD ·
+            break-even {toBig(listing.account.price) > toBig(o.account.coverage)
+              ? "unreachable"
+              : formatBps(Number((toBig(listing.account.price) * 10_000n + toBig(o.account.coverage) - 1n) / toBig(o.account.coverage)))}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {TRADING_ENABLED && listing && viewer && listing.account.seller.equals(viewer) && (
-            <button className="btn btn-sm" onClick={() => doCancelListing(listing)}>
+          {TRADING_ENABLED && candidate && viewer && candidate.account.seller.equals(viewer) && (
+            <button className="btn btn-sm" onClick={() => doCancelListing(candidate)}>
               Cancel listing
             </button>
           )}
@@ -584,13 +598,14 @@ function PositionsTable({
           <table className="dense">
             <thead>
               <tr>
-                <th className="r">Coverage</th>
+                <th className="r">Coverage (escrow)</th>
                 <th className="r">Rate</th>
                 <th className="r">Premium</th>
                 <th className="r">Collateral</th>
-                <th>Protection</th>
-                <th>Risk</th>
+                <th>Protection holder</th>
+                <th>Risk holder</th>
                 <th>Status</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -606,6 +621,19 @@ function PositionsTable({
                   {sideCell(o, Side.Risk)}
                   <td>
                     <Pill tone={offerStatusOf(o.account.status) === "accepted" ? "info" : "dim"}>{offerStatusOf(o.account.status)}</Pill>
+                    {voided && offerStatusOf(o.account.status) === "accepted" && wallet && (
+                      <button className="btn ml-2 px-2 py-0.5 text-[11px]" onClick={async () => {
+                        await run("Release refunds", (opts) => refundVoidedOffer(requireSigner(wallet), o, opts));
+                        onChange();
+                      }}>
+                        Release refunds
+                      </button>
+                    )}
+                  </td>
+                  <td className="r">
+                    <a className="text-info hover:underline" href={explorerAddress(o.publicKey)} target="_blank" rel="noreferrer">
+                      offer ↗
+                    </a>
                   </td>
                 </tr>
               ))}

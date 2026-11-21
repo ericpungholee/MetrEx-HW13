@@ -1,6 +1,6 @@
 // Evidence files: data/evidence/<market>.json holds the exact canonical bytes (§8.4).
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PublicKey } from "@solana/web3.js";
@@ -20,10 +20,10 @@ export function sha256Hex(bytes: Uint8Array | string): string {
 
 /** Atomic write (tmp + rename) so a reader never sees a partial file. */
 export async function writeEvidence(dataDir: string, market: PublicKey, canonical: string): Promise<string> {
-  await mkdir(evidenceDir(dataDir), { recursive: true });
+  await mkdir(evidenceDir(dataDir), { recursive: true, mode: 0o700 });
   const path = evidencePath(dataDir, market);
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmp, canonical, { encoding: "utf8" });
+  const tmp = `${path}.${randomUUID()}.tmp`;
+  await writeFile(tmp, canonical, { encoding: "utf8", mode: 0o600, flag: "wx" });
   await rename(tmp, path);
   return path;
 }

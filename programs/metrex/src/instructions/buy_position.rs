@@ -65,7 +65,7 @@ pub struct BuyPosition<'info> {
 
 pub fn handler(ctx: Context<BuyPosition>) -> Result<()> {
     require!(
-        matches!(ctx.accounts.market.status, MarketStatus::Open | MarketStatus::Closed),
+        ctx.accounts.market.status == MarketStatus::Open,
         MetrexError::InvalidMarketStatus
     );
     let offer = &mut ctx.accounts.offer;

@@ -69,7 +69,7 @@ export default function CreatePage() {
     <div className="animate-in mx-auto max-w-3xl space-y-10">
       <PageHeader
         title="Create a market"
-        description="List a property’s wildfire risk. Underwriters compete to cover it with fully collateralized offers."
+        description="Create a wildfire replay market at a registered point. Any wallet can participate, and property ownership is unverified."
       />
 
       <ErrorLine error={props.error} />

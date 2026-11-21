@@ -81,8 +81,6 @@ export interface PositionRow {
   /** Vault coverage C: paid to this side if it wins. */
   payoutIfWin: bigint;
   status: "active" | "claimable" | "lost" | "claimed" | "refunded" | "voided";
-  /** Realized P&L in base units for resolved positions held by the original party; null if unknown. */
-  realized: bigint | null;
 }
 
 export interface Portfolio {
@@ -92,11 +90,9 @@ export interface Portfolio {
   /** Risk-side coverage payable if the fire triggered, over unresolved markets. */
   totalExposure: bigint;
   exposureByScenario: Map<number, { risk: bigint; protection: bigint; positions: number }>;
-  premiumsEarned: bigint;
+  premiumsBooked: bigint;
   premiumsPaid: bigint;
   claimable: bigint;
-  realizedPnl: bigint;
-  bought: PositionRow[];
 }
 
 /** Listing on a given offer+side, if any. */
@@ -117,7 +113,7 @@ export function computePortfolio(
   const openOffers: Portfolio["openOffers"] = [];
   const positions: PositionRow[] = [];
   let lockedCollateral = 0n;
-  let premiumsEarned = 0n;
+  let premiumsBooked = 0n;
   let premiumsPaid = 0n;
 
   for (const o of offers) {
@@ -133,8 +129,8 @@ export function computePortfolio(
     if (!market) continue;
 
     // Premiums by original party (P moved homeowner → vault at acceptance).
-    if (a.underwriter.equals(me) && st !== "refunded") premiumsEarned += toBig(a.premium);
-    if (market.account.homeowner.equals(me) && st !== "refunded") premiumsPaid += toBig(a.premium);
+    if (a.underwriter.equals(me)) premiumsBooked += toBig(a.premium);
+    if (market.account.homeowner.equals(me)) premiumsPaid += toBig(a.premium);
 
     const ms = marketStatusOf(market.account.status);
     for (const side of ["Protection", "Risk"] as const) {
@@ -151,25 +147,15 @@ export function computePortfolio(
       else if (!wins) status = "lost";
       else status = st === "claimed" ? "claimed" : "claimable";
 
-      // Original party's P&L: protection pays P, gets C on YES; risk posts K, gets C on NO.
-      let realized: bigint | null = null;
-      if (resolved && !bought) {
-        const C = toBig(a.coverage);
-        const P = toBig(a.premium);
-        const K = toBig(a.collateral);
-        realized = side === "Protection" ? (wins ? C - P : -P) : wins ? P : -K;
-      }
-      positions.push({ market, offer: o, side, bought, payoutIfWin: toBig(a.coverage), status, realized });
+      positions.push({ market, offer: o, side, bought, payoutIfWin: toBig(a.coverage), status });
     }
   }
 
   const exposureByScenario: Portfolio["exposureByScenario"] = new Map();
   let totalExposure = 0n;
   let claimable = 0n;
-  let realizedPnl = 0n;
   for (const p of positions) {
     if (p.status === "claimable") claimable += p.payoutIfWin;
-    if (p.realized !== null) realizedPnl += p.realized;
     if (p.status !== "active") continue;
     const sid = p.market.account.scenarioId;
     const e = exposureByScenario.get(sid) ?? { risk: 0n, protection: 0n, positions: 0 };
@@ -189,10 +175,8 @@ export function computePortfolio(
     positions,
     totalExposure,
     exposureByScenario,
-    premiumsEarned,
+    premiumsBooked,
     premiumsPaid,
     claimable,
-    realizedPnl,
-    bought: positions.filter((p) => p.bought),
   };
 }

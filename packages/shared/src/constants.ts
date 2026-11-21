@@ -43,4 +43,4 @@ export const TRIGGER_WORDING =
   "Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage.";
 
 /** Shown on every market (spec §8.5). */
-export const HISTORICAL_REPLAY_LABEL = "Historical replay — outcome already known";
+export const HISTORICAL_REPLAY_LABEL = "Historical simulation · outcomes may be known from public records";

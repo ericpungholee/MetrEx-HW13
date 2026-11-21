@@ -3,14 +3,14 @@
 
 import type { PublicKey } from "@solana/web3.js";
 import { parsePublicKey } from "../env";
-import { getEvidence } from "../oracle/evidence";
+import { getEvidence, getSettledPerimeter, type EvidenceDeps } from "../oracle/evidence";
 import { resolveMarket } from "../oracle/resolve";
 import { getStats } from "../stats";
 import { TxError } from "../tx";
 import { closeMarket } from "./close";
-import { badRequest, forbidden, HttpError } from "./errors";
+import { badRequest, forbidden, HttpError, tooMany, unavailable } from "./errors";
 import { faucet } from "./faucet";
-import { checkDemoPassword, DEMO_PASSWORD_HEADER } from "./password";
+import { DEMO_PASSWORD_HEADER, OperatorPasswordBudget } from "./password";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -38,9 +38,14 @@ function marketParam(value: string | undefined): PublicKey {
   }
 }
 
+const operatorBudget = new OperatorPasswordBudget();
+
 function requirePassword(req: Request): void {
-  if (!process.env.DEMO_PASSWORD) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
-  if (!checkDemoPassword(req.headers.get(DEMO_PASSWORD_HEADER))) throw forbidden("Wrong or missing demo password");
+  const password = process.env.DEMO_PASSWORD;
+  if (!password) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
+  const result = operatorBudget.check(req.headers.get(DEMO_PASSWORD_HEADER), password);
+  if (result === "limited") throw tooMany("Too many operator authentication attempts. Retry in a minute.");
+  if (result === "wrong") throw forbidden("Wrong or missing demo password");
 }
 
 async function run(fn: () => Promise<Response>): Promise<Response> {
@@ -63,7 +68,13 @@ export function handleClose(req: Request, market: string | undefined): Promise<R
 export function handleResolve(req: Request, market: string | undefined): Promise<Response> {
   return run(async () => {
     requirePassword(req);
-    return json(await resolveMarket(marketParam(market)));
+    const key = marketParam(market);
+    try {
+      return json(await resolveMarket(key));
+    } catch {
+      // Failed submissions can include signed instruction data and simulation logs.
+      throw unavailable("Settlement could not be verified. Check market status and retry.");
+    }
   });
 }
 
@@ -92,11 +103,13 @@ export function handleFaucet(req: Request): Promise<Response> {
  * GET /api/evidence/:market → { market, canonical, hashHex, record, onChain }.
  * `?raw=1` returns the canonical file bytes exactly as hashed.
  */
-export function handleEvidence(req: Request, market: string | undefined): Promise<Response> {
+export function handleEvidence(req: Request, market: string | undefined, deps?: EvidenceDeps): Promise<Response> {
   return run(async () => {
     const pk = marketParam(market);
-    const raw = new URL(req.url).searchParams.get("raw") === "1";
-    const ev = await getEvidence(pk, { skipChain: raw });
+    const params = new URL(req.url).searchParams;
+    if (params.get("perimeter") === "1") return json(await getSettledPerimeter(pk, deps));
+    const raw = params.get("raw") === "1";
+    const ev = await getEvidence(pk, deps);
     if (raw) {
       return new Response(ev.canonical, {
         status: 200,

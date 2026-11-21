@@ -4,6 +4,7 @@
 import { utils } from "@anchor-lang/core";
 import type { GetProgramAccountsFilter, PublicKey } from "@solana/web3.js";
 import {
+  findMarketPda,
   marketStatusOf,
   offerStatusOf,
   u16LE,
@@ -18,7 +19,7 @@ import type { MetrexProgram } from "./program";
 /** Byte offsets including the 8-byte Anchor discriminator. */
 export const OFFSETS = {
   market: { homeowner: 8, marketNonce: 40, propertyId: 48, status: 82 },
-  offer: { market: 8, underwriter: 40, status: 170 },
+  offer: { market: 8, underwriter: 40, riskHolder: 138, status: 170 },
   listing: { offer: 8, side: 40, seller: 41 },
 } as const;
 
@@ -48,6 +49,7 @@ export const filters = {
   marketPropertyId: (id: number) => memcmp(OFFSETS.market.propertyId, u16LE(id)),
   offerMarket: (pk: PublicKey) => memcmp(OFFSETS.offer.market, pk.toBytes()),
   offerUnderwriter: (pk: PublicKey) => memcmp(OFFSETS.offer.underwriter, pk.toBytes()),
+  offerRiskHolder: (pk: PublicKey) => memcmp(OFFSETS.offer.riskHolder, pk.toBytes()),
   offerStatus: (s: OfferStatus) => memcmp(OFFSETS.offer.status, Uint8Array.of(OFFER_STATUS_INDEX[s])),
   listingSeller: (pk: PublicKey) => memcmp(OFFSETS.listing.seller, pk.toBytes()),
 };
@@ -138,9 +140,14 @@ export function toListingView(pubkey: PublicKey, a: ListingAccount): ListingView
 
 // ---------- Fetchers ----------
 
-export async function fetchMarket(program: MetrexProgram, pk: PublicKey): Promise<MarketView | null> {
-  const a = await program.account.market.fetchNullable(pk);
-  return a ? toMarketView(pk, a as MarketAccount) : null;
+export async function fetchMarket(
+  program: MetrexProgram, pk: PublicKey, commitment?: "confirmed" | "finalized",
+): Promise<MarketView | null> {
+  const info = await program.provider.connection.getAccountInfo(pk, commitment);
+  if (!info?.owner.equals(program.programId)) return null;
+  const account = program.coder.accounts.decode<MarketAccount>("market", info.data);
+  const [expected] = findMarketPda(program.programId, account.homeowner, big(account.marketNonce));
+  return expected.equals(pk) ? toMarketView(pk, account) : null;
 }
 
 export async function fetchMarkets(

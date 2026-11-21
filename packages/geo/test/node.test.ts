@@ -50,9 +50,6 @@ interface PropertyRecord {
   lon_e6: number;
   scenario_id: number;
   trigger_distance_m: number;
-  expected: "YES" | "NO";
-  distance_m: number;
-  inside: boolean;
 }
 
 describe("real perimeter: registered demo properties (§8.3)", () => {
@@ -86,13 +83,15 @@ describe("real perimeter: registered demo properties (§8.3)", () => {
     expect(a.record.dataset.sha256).toBe("8447bc02b2789c45d278327b4997789fb42112e457715b30847b2cbd64073b4a");
   });
 
+  const expectedById = new Map([[1, [true, 672]], [2, [false, 4000]], [3, [true, 559]]] as const);
   for (const p of properties) {
-    it(`property ${p.property_id} (${p.label}) → ${p.expected}`, () => {
+    const [triggered, distance] = expectedById.get(p.property_id as 1 | 2 | 3)!;
+    it(`property ${p.property_id} (${p.label}) → ${triggered ? "YES" : "NO"}`, () => {
       const r = evaluate(geometry, p);
-      expect(r.triggered).toBe(p.expected === "YES");
-      expect(r.inside).toBe(p.inside);
-      expect(r.distance_m).toBe(p.distance_m);
-      if (p.expected === "YES") {
+      expect(r.triggered).toBe(triggered);
+      expect(r.inside).toBe(triggered);
+      expect(r.distance_m).toBe(distance);
+      if (triggered) {
         expect(r.inside).toBe(true);
         expect(r.distance_m).toBeGreaterThanOrEqual(300);
       } else {

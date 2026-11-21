@@ -121,15 +121,12 @@ const chosen = [
     lon_e6: c.lon_e6,
     scenario_id: SCENARIO_PALISADES_2025,
     trigger_distance_m: TRIGGER,
-    expected,
-    distance_m: r.distance_m,
-    inside: r.inside,
   };
 });
 
 console.log("Selected:");
 for (const p of chosen) {
-  console.log(`  ${p.property_id} ${p.label}: lat_e6=${p.lat_e6} lon_e6=${p.lon_e6} inside=${p.inside} distance_m=${p.distance_m} expected=${p.expected}`);
+  console.log(`  ${p.property_id} ${p.label}: lat_e6=${p.lat_e6} lon_e6=${p.lon_e6}`);
 }
 console.log(`  property 1 ↔ 3 separation: ${Math.round(haversineM(p1, p3))} m`);
 

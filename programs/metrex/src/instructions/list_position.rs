@@ -45,7 +45,7 @@ pub fn handler(ctx: Context<ListPosition>, side: u8, price: u64) -> Result<()> {
     let market = &ctx.accounts.market;
     let offer = &ctx.accounts.offer;
     require!(
-        matches!(market.status, MarketStatus::Open | MarketStatus::Closed),
+        market.status == MarketStatus::Open,
         MetrexError::InvalidMarketStatus
     );
     require!(offer.status == OfferStatus::Accepted, MetrexError::InvalidOfferStatus);

@@ -1827,6 +1827,11 @@
       "code": 6021,
       "name": "InvalidSide",
       "msg": "Side must be 0 (Protection) or 1 (Risk)"
+    },
+    {
+      "code": 6022,
+      "name": "InvalidScenario",
+      "msg": "Scenario is not supported by the settlement oracle"
     }
   ],
   "types": [

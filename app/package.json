@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "copy-data": "node scripts/copy-perimeter.mjs",
-    "predev": "node scripts/copy-perimeter.mjs",
+    "predev": "node scripts/remove-legacy-perimeter.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/copy-perimeter.mjs",
+    "prebuild": "node scripts/remove-legacy-perimeter.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",

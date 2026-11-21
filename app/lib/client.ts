@@ -351,7 +351,7 @@ export async function fetchActivity(address: PublicKey, limit = 25): Promise<Act
     for (const tx of txs) {
       const signature = tx?.transaction.signatures[0];
       // Batch JSON-RPC responses may arrive in a different order from the requests.
-      if (!tx || !signature || !requested.has(signature)) continue;
+      if (!tx || tx.meta?.err || !signature || !requested.has(signature)) continue;
       const events = parseEventsFromLogs(tx.meta?.logMessages ?? []);
       parsedTxCache.set(
         signature,
@@ -359,7 +359,7 @@ export async function fetchActivity(address: PublicKey, limit = 25): Promise<Act
       );
     }
   }
-  return sigs.flatMap((s) => parsedTxCache.get(s.signature) ?? []);
+  return sigs.flatMap((s) => s.err ? [] : parsedTxCache.get(s.signature) ?? []);
 }
 
 async function fixtureActivity(address: PublicKey): Promise<ActivityItem[]> {
@@ -491,7 +491,7 @@ async function sendGroups(
   return results;
 }
 
-/** Create a market on a registered property (spec §6). nonce = Date.now(). */
+/** Create a market on a registered property with an independently generated u64 nonce. */
 export async function createMarket(
   wallet: WalletSigner,
   propertyId: number,
@@ -500,10 +500,10 @@ export async function createMarket(
 ): Promise<{ market: PublicKey; results: TxResult[] }> {
   assertLive();
   opts?.onProgress?.({ stage: "building" });
-  const nonce = new BN(Date.now());
-  const [market] = findMarketPda(PROGRAM_ID, wallet.publicKey, BigInt(nonce.toString()));
+  const nonce = randomNonce();
+  const [market] = findMarketPda(PROGRAM_ID, wallet.publicKey, nonce);
   const ix = await getProgram()
-    .methods.createMarket(nonce, propertyId, new BN(coverage.toString()))
+    .methods.createMarket(new BN(nonce.toString()), propertyId, new BN(coverage.toString()))
     .accountsStrict({
       homeowner: wallet.publicKey,
       property: findPropertyPda(PROGRAM_ID, propertyId)[0],
@@ -724,7 +724,9 @@ export async function claimAll(
   const prefix = await ataIfMissing(wallet.publicKey, wallet.publicKey, mint);
   const groups = await Promise.all(positions.map(async ({ market, offer }) => {
     const underwriter = offer.account.underwriter;
-    const owner = wallet.publicKey.equals(underwriter) ? market.account.homeowner : underwriter;
+    const owner = marketStatusOf(market.account.status) === "resolvedYes"
+      ? offer.account.riskHolder
+      : offer.account.protectionHolder;
     const surplus = await prepareClaimSurplus(wallet.publicKey, owner, mint);
     const claim = await buildClaimPayoutIx(
       prog, wallet.publicKey, market.publicKey, offer.publicKey, underwriter, mint, surplus.address,
@@ -732,6 +734,33 @@ export async function claimAll(
     return [...surplus.setup, claim];
   }));
   return sendGroups(wallet, groups, prefix, opts);
+}
+
+/** Anyone can release the two contractual shares of an accepted offer in a voided market. */
+export async function refundVoidedOffer(
+  wallet: WalletSigner,
+  offer: Keyed<OfferAccount>,
+  opts?: WriteOptions,
+): Promise<TxResult[]> {
+  assertLive();
+  opts?.onProgress?.({ stage: "building" });
+  const mint = await getMint();
+  const payer = wallet.publicKey;
+  const [protection, risk] = await Promise.all([
+    prepareClaimSurplus(payer, offer.account.protectionHolder, mint),
+    prepareClaimSurplus(payer, offer.account.riskHolder, mint),
+  ]);
+  const ix = await getProgram().methods.refundOffer().accountsStrict({
+    config: findConfigPda(PROGRAM_ID)[0],
+    market: offer.account.market,
+    offer: offer.publicKey,
+    vault: findVaultPda(PROGRAM_ID, offer.publicKey)[0],
+    homeownerToken: protection.address,
+    underwriterToken: risk.address,
+    underwriter: offer.account.underwriter,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  }).instruction();
+  return sendGroups(wallet, [[...protection.setup, ...risk.setup, ix]], [], opts);
 }
 
 /** Tier 2: list one side of an accepted position for `price` mUSD base units. */

@@ -49,4 +49,6 @@ pub enum MetrexError {
     InsufficientFunds, // 6020
     #[msg("Side must be 0 (Protection) or 1 (Risk)")]
     InvalidSide, // 6021
+    #[msg("Scenario is not supported by the settlement oracle")]
+    InvalidScenario, // 6022
 }

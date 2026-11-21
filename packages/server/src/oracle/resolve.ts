@@ -1,31 +1,24 @@
-// POST /api/oracle/resolve/:market (spec §8, §9.2). Reads the Market, requires Closed, loads
-// the dataset by market.scenario_id from data/scenarios.json (refusing unknown IDs), evaluates
-// using ONLY the on-chain market coordinates, writes the canonical evidence file, then signs
-// resolve_market(triggered, sha256(canonical)) with the oracle key.
-
-import type { BuiltEvidence } from "@metrex/geo";
+import { canonicalize, type BuiltEvidence } from "@metrex/geo";
 import { loadScenarioRegistry } from "@metrex/geo/node";
 import type { Keypair, PublicKey } from "@solana/web3.js";
-import { getScenario, type EvidenceRecord, type ScenarioRegistry } from "@metrex/shared";
+import { getScenario, type ScenarioRegistry } from "@metrex/shared";
 import { fetchMarket, type MarketView } from "../accounts";
-import { dataDir as defaultDataDir, loadKeypair } from "../env";
+import { oracleDataDir, loadKeypair } from "../env";
 import { explorerTx } from "../explorer";
 import { configPda, resolveMarketIx } from "../ix";
 import { getProgram } from "../program";
 import { getRpc, type RpcPool } from "../rpc";
 import { sendTx } from "../tx";
 import { badRequest, conflict, KeyedLock, notFound, unavailable } from "../routes/errors";
+import { settlementMatches } from "./evidence";
 import { sha256Hex, writeEvidence } from "./evidence-store";
 import { realGeo, type GeoAdapter } from "./geo-adapter";
 
 export interface ResolveResult {
   market: string;
-  signature: string;
-  explorer: string;
-  triggered: boolean;
-  evidenceHash: string;
-  evidence: EvidenceRecord;
-  evidencePath: string;
+  signature: string | null;
+  explorer: string | null;
+
 }
 
 export interface ResolveDeps {
@@ -33,6 +26,8 @@ export interface ResolveDeps {
   oracle?: Keypair;
   geo?: GeoAdapter;
   dataDir?: string;
+  send?: typeof sendTx;
+  readMarket?: (market: PublicKey) => Promise<MarketView | null>;
 }
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
@@ -90,7 +85,7 @@ export async function buildMarketEvidence(
     [r.scenario_id === m.scenarioId, "record.scenario_id"],
     [r.trigger_distance_m === m.triggerDistanceM, "record.trigger_distance_m"],
     [typeof r.triggered === "boolean", "record.triggered"],
-    [(JSON.parse(built.canonical) as EvidenceRecord).triggered === r.triggered, "canonical.triggered"],
+    [canonicalize(r) === built.canonical, "canonical record"],
   ];
   const failed = checks.filter(([ok]) => !ok).map(([, what]) => what);
   if (failed.length) throw new Error(`Evidence does not match on-chain market: ${failed.join(", ")}`);
@@ -101,38 +96,42 @@ const lock = new KeyedLock();
 
 export async function resolveMarket(market: PublicKey, deps: ResolveDeps = {}): Promise<ResolveResult> {
   const rpc = deps.rpc ?? getRpc();
-  const oracle = deps.oracle ?? loadKeypair("oracle");
-  const geo = deps.geo ?? realGeo;
-  const dir = deps.dataDir ?? defaultDataDir();
   return lock.with(market.toBase58(), async () => {
-    const m = await rpc.run((c) => fetchMarket(getProgram(c), market));
+    const readMarket = () => deps.readMarket?.(market) ?? rpc.run((c) => fetchMarket(getProgram(c), market, "finalized"));
+    const m = await readMarket();
     if (!m) throw notFound("Market not found");
-    assertResolvable(m);
-    const config = await rpc.run((c) => getProgram(c).account.config.fetchNullable(configPda(getProgram(c))));
-    if (!config) throw unavailable("Config is not initialized");
-    if (!config.oracleAuthority.equals(oracle.publicKey)) {
-      throw unavailable("Configured oracle key does not match config.oracle_authority");
-    }
+    const pending = m.status === "closed";
+    const alreadyResolved = m.status === "resolvedYes" || m.status === "resolvedNo";
+    if (!alreadyResolved) assertResolvable(m);
+
+    const dir = deps.dataDir ?? oracleDataDir();
+    const program = getProgram(rpc.connection);
     const registry = loadScenarioRegistry(dir);
-    const c = rpc.connection;
-    const program = getProgram(c);
-    const built = await buildMarketEvidence(m, program.programId, registry, geo, dir);
-    const evidencePath = await writeEvidence(dir, market, built.canonical);
-    const ix = await resolveMarketIx(program, {
-      oracleAuthority: oracle.publicKey,
-      market,
-      triggered: built.record.triggered,
-      evidenceHash: built.hashBytes,
-    });
-    const signature = await sendTx(c, [ix], [oracle]);
-    return {
-      market: market.toBase58(),
-      signature,
-      explorer: explorerTx(signature),
-      triggered: built.record.triggered,
-      evidenceHash: built.hashHex.toLowerCase(),
-      evidence: built.record,
-      evidencePath,
-    };
+    const built = await buildMarketEvidence(m, program.programId, registry, deps.geo ?? realGeo, dir);
+    let signature: string | null = null;
+    let settled = m;
+    if (pending) {
+      const oracle = deps.oracle ?? loadKeypair("oracle");
+      const config = await rpc.run((c) => getProgram(c).account.config.fetchNullable(configPda(getProgram(c))));
+      if (!config?.oracleAuthority.equals(oracle.publicKey)) throw unavailable("Oracle unavailable");
+      const c = rpc.connection;
+      const ix = await resolveMarketIx(getProgram(c), {
+        oracleAuthority: oracle.publicKey,
+        market,
+        triggered: built.record.triggered,
+        evidenceHash: built.hashBytes,
+      });
+      try {
+        signature = await (deps.send ?? sendTx)(c, [ix], [oracle], { commitment: "finalized" });
+      } catch {
+        // A timeout or competing resolver can hide a landed transaction. Check chain state.
+      }
+      settled = (await readMarket()) ?? m;
+    }
+    if (!settlementMatches(settled, built.record.triggered, built.hashHex)) {
+      throw unavailable("Settlement has not been verified. Retry to check again.");
+    }
+    await writeEvidence(dir, market, built.canonical);
+    return { market: market.toBase58(), signature, explorer: signature ? explorerTx(signature) : null };
   });
 }

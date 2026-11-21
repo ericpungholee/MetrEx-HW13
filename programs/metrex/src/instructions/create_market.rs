@@ -43,6 +43,7 @@ pub fn handler(
 
     // The Property PDA seeds bind `property` to `property_id`; all coordinates come from it.
     let property = &ctx.accounts.property;
+    require!(property.scenario_id == SCENARIO_PALISADES_2025, MetrexError::InvalidScenario);
     let now = Clock::get()?.unix_timestamp;
 
     let market = &mut ctx.accounts.market;

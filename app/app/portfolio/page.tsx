@@ -1,6 +1,7 @@
 "use client";
 
-// Portfolio (spec §3.1 item 4, §10.4): balance, offers, positions, exposure, claimable, P&L.
+// Portfolio (spec §3.1 item 4, §10.4): balance, open offers, locked collateral, positions,
+// gross exposure per scenario, original premiums, and claimable coverage.
 import { useWalletSigner } from "@/lib/useWalletSigner";
 import type { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
@@ -11,14 +12,13 @@ import {
   cancelOffer,
   claimablePositions,
   claimAll,
-  fetchActivity,
   fetchExchange,
   fetchMusdBalance,
   requireSigner,
   viewerFor,
 } from "@/lib/client";
 import { computePortfolio, propertyLabel, type PositionRow } from "@/lib/derive";
-import { formatBps, formatMusd, formatSignedMusd, shortKey } from "@/lib/format";
+import { formatBps, formatMusd, shortKey } from "@/lib/format";
 import { marketDisplayState } from "@metrex/shared";
 import { usePoll } from "@/lib/usePoll";
 
@@ -29,7 +29,7 @@ export default function PortfolioPage() {
     return (
       <div className="animate-in mx-auto max-w-lg py-24 text-center">
         <h1 className="text-3xl font-semibold tracking-tight">Portfolio</h1>
-        <p className="mt-3 text-[15px] text-dim">Connect a wallet to see your positions, offers, and performance.</p>
+        <p className="mt-3 text-[15px] text-dim">Connect a wallet to see your positions, offers, and balances.</p>
       </div>
     );
   }
@@ -41,23 +41,6 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
   const { run } = useTx();
   const ex = usePoll(fetchExchange, []);
   const balance = usePoll(() => fetchMusdBalance(viewer), [viewer.toBase58()]);
-  const buys = usePoll(
-    async () => {
-      const events = await fetchActivity(viewer, 50);
-      const map = new Map<string, bigint>();
-      for (const e of events) {
-        if (e.name !== "PositionBought") continue;
-        const buyer = e.data.buyer as PublicKey | undefined;
-        if (!buyer || !buyer.equals(viewer)) continue;
-        const key = `${(e.data.offer as PublicKey).toBase58()}:${Number(e.data.side)}`;
-        if (!map.has(key)) map.set(key, BigInt(String(e.data.price)));
-      }
-      return map;
-    },
-    [viewer.toBase58()],
-    15_000,
-  );
-
   const pf = useMemo(() => (ex.data ? computePortfolio(viewer, ex.data.markets, ex.data.offers) : null), [ex.data, viewer]);
   const claimable = useMemo(
     () => (ex.data ? claimablePositions(viewer, ex.data.markets, ex.data.offers) : []),
@@ -67,14 +50,6 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
   if (ex.loading) return <Empty>Loading portfolio…</Empty>;
   if (!pf || !ex.data) return <ErrorLine error={ex.error} />;
   const properties = ex.data.properties;
-
-  let realized = pf.realizedPnl;
-  for (const p of pf.bought) {
-    const entry = buys.data?.get(`${p.offer.publicKey.toBase58()}:${p.side === "Protection" ? 0 : 1}`);
-    if (entry === undefined) continue;
-    if (p.status === "claimable" || p.status === "claimed") realized += p.payoutIfWin - entry;
-    else if (p.status === "lost") realized -= entry;
-  }
 
   async function doClaimAll() {
     await run(`Claim ${claimable.length} position(s)`, (opts) => claimAll(requireSigner(wallet), claimable, opts));
@@ -99,17 +74,14 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
       <ErrorLine error={ex.error} />
 
       <section className="grid grid-cols-2 gap-x-8 gap-y-8 border-b border-line pb-10 sm:grid-cols-4">
-        <Stat large label="Balance" >
+        <Stat large label="mUSD balance">
           {balance.data !== undefined ? formatMusd(balance.data) : "…"}
         </Stat>
-        <Stat large label="Locked">
+        <Stat large label="Locked collateral">
           {formatMusd(pf.lockedCollateral)}
         </Stat>
         <Stat large label="Claimable">
           <span className={pf.claimable > 0n ? "text-up" : ""}>{formatMusd(pf.claimable)}</span>
-        </Stat>
-        <Stat large label="Realized P&L">
-          <span className={realized > 0n ? "text-up" : realized < 0n ? "text-down" : ""}>{formatSignedMusd(realized)}</span>
         </Stat>
       </section>
 
@@ -117,8 +89,8 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
         <Stat label="Open offers">{pf.openOffers.length}</Stat>
         <Stat label="Active positions">{pf.positions.filter((p) => p.status === "active").length}</Stat>
         <Stat label="Total exposure">{formatMusd(pf.totalExposure)}</Stat>
-        <Stat label="Premiums earned / paid">
-          {formatMusd(pf.premiumsEarned, 0)} / {formatMusd(pf.premiumsPaid, 0)}
+        <Stat label="Original premiums booked / paid">
+          {formatMusd(pf.premiumsBooked, 0)} / {formatMusd(pf.premiumsPaid, 0)}
         </Stat>
       </section>
 
@@ -134,7 +106,6 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
                   <th className="r">Positions</th>
                   <th className="r">Risk</th>
                   <th className="r">Protection</th>
-                  <th className="r">Net if triggered</th>
                 </tr>
               </thead>
               <tbody>
@@ -144,7 +115,6 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
                     <td className="r num">{e.positions}</td>
                     <td className="r num text-down">{formatMusd(e.risk)}</td>
                     <td className="r num text-up">{formatMusd(e.protection)}</td>
-                    <td className="r num">{formatSignedMusd(e.protection - e.risk)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -152,7 +122,7 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
           </div>
         )}
         <p className="mt-4 text-sm text-faint">
-          Positions in the same scenario move together — one fire can settle every home in its footprint.
+          Exposure sums the coverage of your current positions in unresolved markets. Nearby and duplicate properties can trigger together.
         </p>
       </Panel>
 
@@ -209,9 +179,11 @@ function PortfolioView({ viewer }: { viewer: PublicKey }) {
         )}
       </Panel>
 
-      <PositionsPanel title="Positions" rows={pf.positions} properties={properties} entries={buys.data} />
-      <PositionsPanel title="Bought positions" rows={pf.bought} properties={properties} entries={buys.data} showEntry />
-      <ReplayLabel />
+      <PositionsPanel title="Positions" rows={pf.positions} properties={properties} />
+      <p className="text-xs text-dim">Portfolio P&amp;L requires complete trade and settlement history.</p>
+      <div>
+        <ReplayLabel />
+      </div>
     </div>
   );
 }
@@ -229,14 +201,10 @@ function PositionsPanel({
   title,
   rows,
   properties,
-  entries,
-  showEntry,
 }: {
   title: string;
   rows: PositionRow[];
   properties: Parameters<typeof propertyLabel>[1];
-  entries: Map<string, bigint> | undefined;
-  showEntry?: boolean;
 }) {
   return (
     <Panel title={`${title} · ${rows.length}`}>
@@ -249,23 +217,14 @@ function PositionsPanel({
               <tr>
                 <th>Market</th>
                 <th>Side</th>
-                <th className="r">Payout if win</th>
+                <th className="r">Coverage (payout if you win)</th>
                 <th className="r">Rate</th>
-                <th>Market</th>
+                <th>Market status</th>
                 <th>Position</th>
-                {showEntry && <th className="r">Entry</th>}
-                <th className="r">P&amp;L</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => {
-                const entry = entries?.get(`${p.offer.publicKey.toBase58()}:${p.side === "Protection" ? 0 : 1}`);
-                let pnl = p.realized;
-                if (p.bought && entry !== undefined) {
-                  if (p.status === "claimable" || p.status === "claimed") pnl = p.payoutIfWin - entry;
-                  else if (p.status === "lost") pnl = -entry;
-                }
-                return (
+              {rows.map((p) => (
                   <tr key={`${p.offer.publicKey.toBase58()}-${p.side}`}>
                     <td>
                       <Link className="font-medium hover:underline" href={`/market/${p.market.publicKey.toBase58()}`}>
@@ -274,7 +233,7 @@ function PositionsPanel({
                     </td>
                     <td>
                       <Pill tone={p.side === "Protection" ? "up" : "warn"}>{p.side}</Pill>
-                      {p.bought && <span className="ml-1.5 text-xs text-faint">bought</span>}
+                      {p.bought && <span className="ml-1 text-[10px] text-faint">bought</span>}
                     </td>
                     <td className="r">
                       <Musd value={p.payoutIfWin} />
@@ -286,13 +245,8 @@ function PositionsPanel({
                     <td>
                       <Pill tone={STATUS_TONE[p.status]}>{p.status}</Pill>
                     </td>
-                    {showEntry && <td className="r num">{entry !== undefined ? formatMusd(entry) : "—"}</td>}
-                    <td className={`r num ${pnl !== null && pnl > 0n ? "text-up" : pnl !== null && pnl < 0n ? "text-down" : ""}`}>
-                      {pnl === null ? "—" : formatSignedMusd(pnl)}
-                    </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>

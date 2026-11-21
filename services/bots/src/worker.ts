@@ -126,7 +126,13 @@ export class BotWorker {
     const me = b.keypair.publicKey;
     const meKey = me.toBase58();
     const rpc = this.o.rpc;
-    const botOfferViews = await rpc.run((c) => fetchOffers(getProgram(c), [filters.offerUnderwriter(me)]));
+    const [originated, heldRisk] = await Promise.all([
+      rpc.run((c) => fetchOffers(getProgram(c), [filters.offerUnderwriter(me)])),
+      rpc.run((c) => fetchOffers(getProgram(c), [filters.offerRiskHolder(me)])),
+    ]);
+    const botOfferViews = [...new Map(
+      [...originated, ...heldRisk].map((o) => [o.pubkey.toBase58(), o]),
+    ).values()];
     const markets = new Map<string, MarketLite>(openMarketViews.map((m) => [m.pubkey.toBase58(), toMarketLite(m)]));
     const missing = [...new Set(botOfferViews.map((o) => o.market.toBase58()))]
       .filter((k) => !markets.has(k))

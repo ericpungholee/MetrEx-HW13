@@ -5,6 +5,7 @@
     "lib": ["ES2022", "DOM"],
     "module": "commonjs",
     "moduleResolution": "node",
+    "paths": { "@metrex/geo/node": ["./packages/geo/src/node.ts"] },
     "target": "ES2022",
     "strict": true,
     "esModuleInterop": true,

@@ -1,6 +1,9 @@
 // Anchor tests (spec §12.1). Every non-Tier-2 §12.1 item, plus one named test per
 // §6.3 invariant 1–14 (`inv-N: ...`). Runs on the local validator via `anchor test`.
 import { createHash } from "node:crypto";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as anchor from "@anchor-lang/core";
 import { AnchorError, BN, Program } from "@anchor-lang/core";
 import {
@@ -309,11 +312,12 @@ describe("metrex", () => {
       .rpc();
   }
 
-  function voidMarket(market: PublicKey, signer: Keypair = admin): Promise<string> {
+  function voidMarket(market: PublicKey, signer: Keypair = admin, jointly = false): Promise<string> {
     return program.methods
       .voidMarket()
       .accountsPartial({ admin: signer.publicKey, config: configPda, market })
-      .signers(signer === admin ? [] : [signer])
+      .remainingAccounts(jointly ? [{ pubkey: controller.publicKey, isSigner: true, isWritable: false }] : [])
+      .signers([...(signer === admin ? [] : [signer]), ...(jointly ? [controller] : [])])
       .rpc();
   }
 
@@ -344,9 +348,10 @@ describe("metrex", () => {
     lon: number,
     trigger = PROP_TRIGGER,
     signer: Keypair = admin,
+    scenario = PROP_SCENARIO,
   ): Promise<string> {
     return program.methods
-      .registerProperty(id, encodeLabel(`Test property #${id}`), lat, lon, PROP_SCENARIO, trigger)
+      .registerProperty(id, encodeLabel(`Test property #${id}`), lat, lon, scenario, trigger)
       .accountsPartial({
         admin: signer.publicKey,
         config: configPda,
@@ -514,6 +519,33 @@ describe("metrex", () => {
 
   // =====================================================================
   describe("Market and offers", () => {
+    it("rejects offers above the currently available capacity and on fully funded markets", async () => {
+      const f = await simpleMarket();
+      const target = BigInt((await program.account.market.fetch(f.market)).coverageTarget.toString());
+      const first = await placeOffer(f.market, f.uw, f.uwToken, target - m(100), 400);
+      await acceptOffer(f.market, f.homeowner, f.hoToken, first);
+      const before = await balance(f.uwToken);
+      await expectError(placeOfferTx(f.market, f.uw, f.uwToken, m(101), 400).builder.rpc(), "CoverageExceedsRemaining");
+      expect(await balance(f.uwToken)).to.equal(before);
+      const last = await placeOffer(f.market, f.uw, f.uwToken, m(100), 400);
+      await acceptOffer(f.market, f.homeowner, f.hoToken, last);
+      await expectError(placeOfferTx(f.market, f.uw, f.uwToken, m(10), 400).builder.rpc(), "CoverageExceedsRemaining");
+    });
+
+    it("serializes offer cancellation against acceptance", async () => {
+      const f = await simpleMarket();
+      const o = await placeOffer(f.market, f.uw, f.uwToken, m(100), 400);
+      const homeBefore = await balance(f.hoToken);
+      const results = await Promise.allSettled([
+        acceptOffer(f.market, f.homeowner, f.hoToken, o),
+        cancelOffer(f.uw, f.uwToken, o),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).to.have.length(1);
+      const accepted = results[0].status === "fulfilled";
+      expect(await balance(o.vault)).to.equal(accepted ? m(100) : 0n);
+      expect(await balance(f.hoToken)).to.equal(accepted ? homeBefore - m(4) : homeBefore);
+    });
+
     it("Market creation copies property data", async () => {
       const homeowner = await newUser();
       const market = await createMarket(homeowner, m(5_000));
@@ -918,6 +950,42 @@ describe("metrex", () => {
 
   // =====================================================================
   describe("Settlement", () => {
+    it("publishes evidence from the real oracle only after finalization and then pays the winner", async () => {
+      const { getEvidence } = await import("../packages/server/src/oracle/evidence");
+      const { resolveMarket: runOracle } = await import("../packages/server/src/oracle/resolve");
+      const { closeMarket: runController } = await import("../packages/server/src/routes/close");
+      const { handleEvidence } = await import("../packages/server/src/routes/http");
+      const { RpcPool } = await import("../packages/server/src/rpc");
+      const rpc = new RpcPool([conn.rpcEndpoint]);
+      const dir = mkdtempSync(join(tmpdir(), "metrex-integration-"));
+      try {
+        for (const file of ["scenarios.json", "palisades-2025.geojson"]) {
+          copyFileSync(join(process.cwd(), "data", file), join(dir, file));
+        }
+        await registerProperty(101, 34_045_000, -118_526_000);
+        const { homeowner, hoToken, uw, uwToken } = await simpleMarket();
+        const market = await createMarket(homeowner, m(100), 101);
+        const offer = await placeOffer(market, uw, uwToken, m(100), 400);
+        await acceptOffer(market, homeowner, hoToken, offer);
+        const req = new Request("http://localhost/api/evidence?raw=1");
+        expect((await handleEvidence(req, market.toBase58(), { rpc, dataDir: dir })).status).to.equal(404);
+        await runController(market, { rpc, controller });
+        expect((await handleEvidence(req, market.toBase58(), { rpc, dataDir: dir })).status).to.equal(404);
+        const first = await runOracle(market, { rpc, oracle, dataDir: dir });
+        expect(first.signature).to.be.a("string");
+        const evidence = await getEvidence(market, { rpc, dataDir: dir });
+        expect(evidence.record.triggered).to.equal(true);
+        expect((await handleEvidence(req, market.toBase58(), { rpc, dataDir: dir })).status).to.equal(200);
+        const retry = await runOracle(market, { rpc, dataDir: dir });
+        expect(retry.signature).to.equal(null);
+        const before = await balance(hoToken);
+        await claimPayout(market, homeowner, hoToken, offer, uw.publicKey);
+        expect(await balance(hoToken)).to.equal(before + m(100));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     async function participantsAndVaults(f: Fixture): Promise<PublicKey[]> {
       return [f.hoToken, ...f.uwTokens, ...f.offers.map((o) => o.vault)];
     }
@@ -1106,6 +1174,10 @@ describe("metrex", () => {
 
   // =====================================================================
   describe("Void", () => {
+    it("rejects an unsupported scenario at property registration", async () => {
+      await expectError(registerProperty(90, 34_000_000, -118_000_000, PROP_TRIGGER, admin, 65535), "InvalidScenario");
+    });
+
     it("Only admin voids; resolved market cannot be voided; Open and Closed can", async () => {
       const stranger = await newUser();
       const open = await simpleMarket();
@@ -1134,7 +1206,8 @@ describe("metrex", () => {
       const tracked = [f.hoToken, ...f.uwTokens, ...f.offers.map((o) => o.vault)];
       const total = await sumBalances(tracked);
       await closeMarket(f.market);
-      await voidMarket(f.market);
+      await expectError(voidMarket(f.market), "Unauthorized");
+      await voidMarket(f.market, admin, true);
       await expectError(
         claimPayout(f.market, f.homeowner, f.hoToken, f.offers[0], f.uws[0].publicKey),
         "InvalidMarketStatus",
@@ -1174,7 +1247,9 @@ describe("metrex", () => {
         refundOffer(f.market, f.offers[0], f.hoToken, f.uwTokens[0], f.uws[0].publicKey),
         "InvalidMarketStatus",
       );
-      await voidMarket(f.market);
+      await expectError(voidMarket(f.market, admin, true), "InvalidMarketStatus");
+      await closeMarket(f.market);
+      await voidMarket(f.market, admin, true);
       // Offer still Open (not accepted): use cancel_offer instead.
       await expectError(
         refundOffer(f.market, f.offers[1], f.hoToken, f.uwTokens[1], f.uws[1].publicKey),
@@ -1259,7 +1334,8 @@ describe("metrex", () => {
       const o = await placeOffer(f.market, f.uw, f.uwToken, coverage, 400);
       await acceptOffer(f.market, f.homeowner, f.hoToken, o);
       await mintTo(conn, payer, mint, o.vault, payer, surplus, [], CONFIRMED);
-      await voidMarket(f.market);
+      await closeMarket(f.market);
+      await voidMarket(f.market, admin, true);
       const homeownerBefore = await balance(f.hoToken);
       const underwriterBefore = await balance(f.uwToken);
       await refundOffer(f.market, o, f.hoToken, f.uwToken, f.uw.publicKey);
@@ -1297,7 +1373,6 @@ describe("metrex", () => {
         const seller = triggered ? f.homeowner : f.uw;
         const sellerToken = triggered ? f.hoToken : f.uwToken;
         const side = triggered ? Side.Protection : Side.Risk;
-        if (!triggered) await closeMarket(f.market);
         const l = list(f.market, o, seller, side);
         await l.builder.rpc();
         const buyer = await newUser();
@@ -1311,13 +1386,88 @@ describe("metrex", () => {
         expect(await exists(l.listing)).to.equal(false);
         const offer = await program.account.offer.fetch(o.offer);
         expect((triggered ? offer.protectionHolder : offer.riskHolder).equals(buyer.publicKey)).to.equal(true);
-        if (triggered) await closeMarket(f.market);
+        await closeMarket(f.market);
         await resolveMarket(f.market, triggered);
         await expectError(claimPayout(f.market, seller, sellerToken, o, f.uw.publicKey), "NotWinner");
         await claimPayout(f.market, buyer, buyerToken, o, f.uw.publicKey);
         expect(await balance(buyerToken)).to.equal(coverage);
       });
     }
+
+    it("serializes competing buyers and pays the seller exactly once", async () => {
+      const f = await simpleMarket();
+      const o = await placeOffer(f.market, f.uw, f.uwToken, coverage, 400);
+      await acceptOffer(f.market, f.homeowner, f.hoToken, o);
+      const l = list(f.market, o, f.uw, Side.Risk);
+      await l.builder.rpc();
+      const buyers = await Promise.all([newUser(), newUser()]);
+      const tokens = await Promise.all(buyers.map((buyer) => tokenAccount(buyer.publicKey, price)));
+      const before = await balance(f.uwToken);
+      const results = await Promise.allSettled(buyers.map((buyer, i) =>
+        buy(f.market, o, l.listing, f.uw.publicKey, f.uwToken, buyer, tokens[i])));
+      expect(results.filter((r) => r.status === "fulfilled")).to.have.length(1);
+      const winner = results.findIndex((r) => r.status === "fulfilled");
+      expect((await program.account.offer.fetch(o.offer)).riskHolder.equals(buyers[winner].publicKey)).to.equal(true);
+      expect(await balance(f.uwToken)).to.equal(before + price);
+      expect(await balance(tokens[winner])).to.equal(0n);
+      expect(await balance(tokens[1 - winner])).to.equal(price);
+      expect(await balance(o.vault)).to.equal(coverage);
+    });
+
+    it("refunds the current holders after two transfers on each side", async () => {
+      const f = await simpleMarket();
+      const o = await placeOffer(f.market, f.uw, f.uwToken, coverage, 400);
+      await acceptOffer(f.market, f.homeowner, f.hoToken, o);
+      const recipients = [];
+      for (const side of [Side.Protection, Side.Risk]) {
+        let seller = side === Side.Protection ? f.homeowner : f.uw;
+        let sellerToken = side === Side.Protection ? f.hoToken : f.uwToken;
+        for (let hop = 0; hop < 2; hop++) {
+          const buyer = await newUser();
+          const buyerToken = await tokenAccount(buyer.publicKey, price);
+          const l = list(f.market, o, seller, side);
+          await l.builder.rpc();
+          await buy(f.market, o, l.listing, seller.publicKey, sellerToken, buyer, buyerToken);
+          seller = buyer;
+          sellerToken = buyerToken;
+        }
+        recipients.push({ holder: seller, token: sellerToken });
+      }
+      const [protection, risk] = recipients;
+      await closeMarket(f.market);
+      await expectError(voidMarket(f.market), "Unauthorized");
+      await voidMarket(f.market, admin, true);
+      await expectError(claimPayout(f.market, protection.holder, protection.token, o, f.uw.publicKey), "InvalidMarketStatus");
+      await expectError(refundOffer(f.market, o, f.hoToken, risk.token, f.uw.publicKey), "WrongTokenOwner");
+      await expectError(refundOffer(f.market, o, protection.token, f.uwToken, f.uw.publicKey), "WrongTokenOwner");
+      await refundOffer(f.market, o, protection.token, risk.token, f.uw.publicKey);
+      const { premium, collateral } = computeOfferTerms(coverage, 400);
+      expect(await balance(protection.token)).to.equal(premium);
+      expect(await balance(risk.token)).to.equal(collateral);
+      await expectError(refundOffer(f.market, o, protection.token, risk.token, f.uw.publicKey), "AccountNotInitialized");
+    });
+
+    it("routes a transferred Risk winner's surplus to the current Protection holder", async () => {
+      const f = await simpleMarket();
+      const o = await placeOffer(f.market, f.uw, f.uwToken, coverage, 400);
+      await acceptOffer(f.market, f.homeowner, f.hoToken, o);
+      const [protection, risk] = await Promise.all([newUser(), newUser()]);
+      const protectionToken = await tokenAccount(protection.publicKey, price);
+      const riskToken = await tokenAccount(risk.publicKey, price);
+      const p = list(f.market, o, f.homeowner, Side.Protection);
+      await p.builder.rpc();
+      await buy(f.market, o, p.listing, f.homeowner.publicKey, f.hoToken, protection, protectionToken);
+      const r = list(f.market, o, f.uw, Side.Risk);
+      await r.builder.rpc();
+      await buy(f.market, o, r.listing, f.uw.publicKey, f.uwToken, risk, riskToken);
+      await mintTo(conn, payer, mint, o.vault, payer, 1n, [], CONFIRMED);
+      await closeMarket(f.market);
+      await resolveMarket(f.market, false);
+      await expectError(claimPayout(f.market, risk, riskToken, o, f.uw.publicKey, f.uwToken), "WrongTokenOwner");
+      await claimPayout(f.market, risk, riskToken, o, f.uw.publicKey, protectionToken);
+      expect(await balance(riskToken)).to.equal(coverage);
+      expect(await balance(protectionToken)).to.equal(1n);
+    });
 
     it("inv-15: rejects a nonholder and a listing whose seller is no longer the holder", async () => {
       const fixtureKey = (role: string) => Keypair.fromSeed(
@@ -1389,9 +1539,9 @@ describe("metrex", () => {
       await expectError(buy(f.market, o, l.listing, f.uw.publicKey, f.uwToken, buyer, wrongBuyer), "WrongMint");
       await expectError(buy(f.market, o, l.listing, f.uw.publicKey, wrongSeller, buyer, poor), "WrongMint");
       await closeMarket(f.market);
-      await resolveMarket(f.market, false);
       await expectError(list(f.market, o, f.homeowner, Side.Protection).builder.rpc(), "InvalidMarketStatus");
       await expectError(buy(f.market, o, l.listing, f.uw.publicKey, f.uwToken, buyer, poor), "InvalidMarketStatus");
+      await resolveMarket(f.market, false);
       await expectError(
         program.methods.cancelListing().accountsStrict({ seller: buyer.publicKey, listing: l.listing })
           .signers([buyer]).rpc(), "Unauthorized",
@@ -1588,7 +1738,8 @@ describe("metrex", () => {
       );
       // Refunded
       const g = await workedExample(true);
-      await voidMarket(g.market);
+      await closeMarket(g.market);
+      await voidMarket(g.market, admin, true);
       await refundOffer(g.market, g.offers[0], g.hoToken, g.uwTokens[0], g.uws[0].publicKey);
       await expectError(
         refundOffer(g.market, g.offers[0], g.hoToken, g.uwTokens[0], g.uws[0].publicKey),
@@ -1669,7 +1820,8 @@ describe("metrex", () => {
       await claimPayout(market, homeowner, hoToken, o2, uw.publicKey);
 
       const v = await workedExample(true);
-      await voidMarket(v.market);
+      await closeMarket(v.market);
+      await voidMarket(v.market, admin, true);
       const vHoBad = await tokenAccount(v.homeowner.publicKey, 0n, badMint);
       const vUwBad = await tokenAccount(v.uws[0].publicKey, 0n, badMint);
       await expectError(
