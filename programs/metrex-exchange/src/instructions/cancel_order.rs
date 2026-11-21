@@ -1,5 +1,5 @@
 //! `cancel_order()` (spec-v2 §5.8). Maker only, any state. Escrow and rent return to the maker.
-//! Account context FROZEN at V0. Body lands at Gate V2; until then it returns `NotImplemented`.
+//! Account context FROZEN at V0.
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
@@ -7,7 +7,13 @@ use anchor_spl::{
     token::{Mint, Token, TokenAccount},
 };
 
-use crate::{constants::*, errors::ExchangeError, state::*};
+use crate::{
+    constants::*,
+    errors::ExchangeError,
+    events::{OrderCancelled},
+    instructions::order_common::*,
+    state::*,
+};
 
 #[derive(Accounts)]
 pub struct CancelOrder<'info> {
@@ -50,6 +56,23 @@ pub struct CancelOrder<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_ctx: Context<CancelOrder>) -> Result<()> {
-    err!(ExchangeError::NotImplemented)
+pub fn handler(ctx: Context<CancelOrder>) -> Result<()> {
+    let a = &ctx.accounts;
+    let returned = return_escrow(
+        &a.token_program,
+        &a.order,
+        &a.escrow,
+        &a.maker_refund,
+        a.maker.to_account_info(),
+    )?;
+    emit!(OrderCancelled {
+        market: a.market.key(),
+        order: a.order.key(),
+        maker: a.maker.key(),
+        swept: false,
+        remaining_qty: a.order.remaining_qty,
+        returned_amount: returned,
+    });
+    // `close = maker` returns the Order's rent to the maker.
+    Ok(())
 }

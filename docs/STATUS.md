@@ -10,7 +10,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 |---|---|---|
 | V0 — Freeze | **Passed** 2026-11-21 | `programs/metrex-exchange` compiles with every §6.6 context. IDL `target/idl/metrex_exchange.json` committed: 16 instructions, 5 accounts, 10 events, 38 errors. `@metrex/exchange` (constants, PDAs, math, ladder, book) has 20 tests, including the IDL sync |
 | V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
-| V2 — Trading protocol | Not started | Exit includes the R checklist (build-plan-v2 §4). No separate audit |
+| V2 — Trading protocol | **Passed** 2026-11-21 | `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` are implemented against the frozen contexts. The IDL is unchanged. `tests/exchange.ts` now has 67 tests: 31 for V2, including I3, I4 and I10–I12, the §11 demo replay and the size test. A mutation check, with the execution price forced to the SELL price and the take self-trade check removed, fails 5 of them. R checklist: all six items pass (see below) |
 | V3 — Engine and liquidity (local) | Not started | |
 | V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
@@ -38,9 +38,28 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 - The Anchor test glob is quoted (`'tests/*.ts'`). Unquoted, the shell expanded `tests/**/*.ts` to `tests/helpers/invariants.ts` only, and mocha then ran 0 tests with exit code 0.
 - Spec corrections after the freeze are in spec-v2 §0.2: the skew sign and the respect rule (both bot policy), and the timeout bounds wording. No interface changed.
 
-### Next: Gate V2 (trading protocol)
+### V2 results
 
-Implement the bodies of `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` against the frozen contexts (§5). Add I3, I4 and I10–I12, every §13.1 Orders, Fills and Recovery case, and the 4-level take and 3-level limit size test. Then tick the short R checklist in build-plan-v2 §4. The full fresh-agent audit was dropped on 2026-11-21 as overkill for a hackathon with valueless Devnet mUSD.
+- **Demo replay on-chain.** The presenter's market buy of 300 YES fills A 200 @ 430 and B 100 @ 500 for exactly 13.6 mUSD. The sell of 200 @ 410, sent as `place_order` + `match_orders` in one transaction, fills 100 against Bot C for 4.1 mUSD and rests 100. Bot B's 400 bid then returns `OrdersDoNotCross`.
+- **Size.** A 4-level take is 1,106 B and about 109k CU. A place + 3-match limit order is 1,181 B and about 114k CU. Both are under 1,232 B and the default compute budget, with every event parsed. The limit order has only 51 B of headroom, so clients should not add a compute-budget instruction to it.
+- **R checklist (build-plan-v2 §4), all pass:**
+  - Token accounts are bound to the market, order or escrow by PDA seeds, `has_one`, canonical ATA addresses, and handler mint checks against the order's side and outcome.
+  - Fills pay `quote(fill, price)` from booked state.
+  - Every trading instruction checks the round and the market first.
+  - `take_order` checks `expected_seq` and the taker's limit, and fills `min(requested, remaining)`.
+  - Cancel and sweep send the whole escrow to the maker's ATA and the rent to the maker.
+  - Market and Round are read-only in `take_order` and `match_orders`.
+- **Client note.** `match_orders` needs the buyer's canonical mUSD ATA even when the refund is zero (spec-v2 §0.2). Clients prepend an idempotent ATA create.
+
+### Next: Gate V3 (engine and liquidity, local)
+
+- `@metrex/exchange`: book projection from Order accounts, the market-order and limit-order planners that produce the transactions above, and the chart reducer.
+- `services/indexer`: book cache, trade index from `OrderFilled`, keeper and heartbeat.
+- `services/bots`: rewrite on the tested ladder.
+- Oracle: round gate and dataset hash check.
+- Scripts: `setup-devnet-v2.ts` and `prepare-demo-v2.ts`.
+
+Passes when three bots quote both books on a local validator without crossing.
 
 ### Effect on v1 open items
 

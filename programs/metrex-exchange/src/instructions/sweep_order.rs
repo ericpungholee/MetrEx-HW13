@@ -1,6 +1,6 @@
 //! `sweep_order()` (spec-v2 §5.8). Anyone, once the round is closed, the deadline passed, the order
 //! expired or it is fully filled. Escrow and rent always return to the maker; the caller pays any ATA.
-//! Account context FROZEN at V0. Body lands at Gate V2; until then it returns `NotImplemented`.
+//! Account context FROZEN at V0.
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
@@ -8,7 +8,13 @@ use anchor_spl::{
     token::{Mint, Token, TokenAccount},
 };
 
-use crate::{constants::*, errors::ExchangeError, state::*};
+use crate::{
+    constants::*,
+    errors::ExchangeError,
+    events::{OrderCancelled},
+    instructions::order_common::*,
+    state::*,
+};
 
 #[derive(Accounts)]
 pub struct SweepOrder<'info> {
@@ -54,6 +60,31 @@ pub struct SweepOrder<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_ctx: Context<SweepOrder>) -> Result<()> {
-    err!(ExchangeError::NotImplemented)
+pub fn handler(ctx: Context<SweepOrder>) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let a = &ctx.accounts;
+    let order = &a.order;
+    let sweepable = a.round.status == RoundStatus::Closed
+        || now >= a.round.trading_ends_at
+        || (order.expires_at != 0 && now >= order.expires_at)
+        || order.remaining_qty == 0;
+    require!(sweepable, ExchangeError::NotSweepable);
+
+    let returned = return_escrow(
+        &a.token_program,
+        order,
+        &a.escrow,
+        &a.maker_refund,
+        a.maker.to_account_info(),
+    )?;
+    emit!(OrderCancelled {
+        market: a.market.key(),
+        order: order.key(),
+        maker: order.maker,
+        swept: true,
+        remaining_qty: order.remaining_qty,
+        returned_amount: returned,
+    });
+    // `close = maker` returns the Order's rent to the maker, never the caller.
+    Ok(())
 }

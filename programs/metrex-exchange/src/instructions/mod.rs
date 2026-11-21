@@ -11,6 +11,7 @@ pub mod expire_market;
 pub mod initialize_config;
 pub mod invalidate_market;
 pub mod match_orders;
+pub(crate) mod order_common;
 pub mod merge;
 pub mod place_order;
 pub mod redeem;

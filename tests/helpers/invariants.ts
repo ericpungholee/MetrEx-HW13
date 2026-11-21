@@ -1,10 +1,11 @@
 // assertMarketInvariants (spec-v2 §13.1): I1 collateral backing (§4.6), I2 mint configuration and
-// I5 mUSD conservation, checked after every state-changing call. I3 (order escrow) joins at Gate V2.
+// I3 order escrow backing (§5.2), I5 mUSD conservation and I11 (closed orders leave no accounts),
+// checked after every state-changing call.
 import type { Program } from "@anchor-lang/core";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAccount, getMint } from "@solana/spl-token";
 import { expect } from "chai";
-import { INVALID_PAYOUT_PER_SHARE, PAYOUT_PER_SHARE } from "@metrex/exchange";
+import { INVALID_PAYOUT_PER_SHARE, OrderSide, PAYOUT_PER_SHARE, quote } from "@metrex/exchange";
 import type { MetrexExchange } from "../../target/types/metrex_exchange";
 
 export interface TrackedMarket {
@@ -22,9 +23,25 @@ export interface TrackedMarket {
   dirty: boolean;
 }
 
-/** Every mUSD account the tests know about, and how much mUSD the test faucet has minted. */
+export interface TrackedOrder {
+  label: string;
+  market: PublicKey;
+  order: PublicKey;
+  escrow: PublicKey;
+  maker: PublicKey;
+  outcome: number;
+  side: number;
+  priceBps: number;
+  /** False once cancelled or swept: both accounts must then be gone (I11). */
+  open: boolean;
+  /** Set once the test sends unsolicited tokens to the escrow (I3 then holds at `≥`). */
+  dirty: boolean;
+}
+
+/** Every mUSD account the tests know about, every order, and the mUSD the test faucet minted. */
 export interface MusdLedger {
   accounts: PublicKey[];
+  orders: TrackedOrder[];
   minted: bigint;
 }
 
@@ -39,11 +56,31 @@ export function makeInvariantChecker(
 ) {
   const amount = async (a: PublicKey): Promise<bigint> => (await getAccount(conn, a, "confirmed")).amount;
 
-  /** I5: total mUSD across wallets and vaults equals what the faucet minted. */
+  /** I5: total mUSD across wallets, vaults and BUY escrows equals what the faucet minted. */
   async function assertConservation(): Promise<void> {
-    const balances = await Promise.all(ledger.accounts.map(amount));
+    const buyEscrows = ledger.orders.filter((o) => o.open && o.side === OrderSide.Buy).map((o) => o.escrow);
+    const balances = await Promise.all([...ledger.accounts, ...buyEscrows].map(amount));
     const total = balances.reduce((s, b) => s + b, 0n);
     expect(total, "I5 mUSD conservation").to.equal(ledger.minted);
+  }
+
+  /** I3 for open orders of a market; I11 (no Order, no escrow) for closed ones. */
+  async function assertOrderInvariants(market: PublicKey): Promise<void> {
+    for (const o of ledger.orders.filter((x) => x.market.equals(market))) {
+      if (!o.open) {
+        const [oi, ei] = await conn.getMultipleAccountsInfo([o.order, o.escrow], "confirmed");
+        expect(oi, `I11 ${o.label} order closed`).to.equal(null);
+        expect(ei, `I11 ${o.label} escrow closed`).to.equal(null);
+        continue;
+      }
+      const [acct, esc] = await Promise.all([program.account.order.fetch(o.order, "confirmed"), amount(o.escrow)]);
+      const remaining = BigInt(acct.remainingQty.toString());
+      expect(remaining <= BigInt(acct.originalQty.toString()), `${o.label} remaining ≤ original`).to.equal(true);
+      expect(acct.market.toBase58()).to.equal(market.toBase58());
+      const reserve = o.side === OrderSide.Buy ? quote(remaining, o.priceBps) : remaining;
+      expect(esc >= reserve, `I3 ${o.label} escrow ${esc} ≥ reserve ${reserve}`).to.equal(true);
+      if (!o.dirty) expect(esc, `I3 ${o.label} clean escrow`).to.equal(reserve);
+    }
   }
 
   /** I1 + I2 for one market, then I5 globally. */
@@ -92,6 +129,7 @@ export function makeInvariantChecker(
     expect(vault >= obligation, `I1 ${mk.label} vault ${vault} ≥ obligation ${obligation}`).to.equal(true);
     if (!mk.dirty) expect(vault, `I1 ${mk.label} clean vault`).to.equal(obligation);
 
+    await assertOrderInvariants(mk.market);
     await assertConservation();
   }
 

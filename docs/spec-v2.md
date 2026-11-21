@@ -66,6 +66,7 @@ None of these touch a frozen interface. They make the text match the tested code
 - §8.2 skew had the wrong sign. It now reads `ref − clamp(…)`, so a bot short YES raises its quotes. The ladder code and tests already did this, and skew is off on the featured market anyway.
 - §8.2 now states the bot respect rule (≥ 10 shares, within 300 bps), which stops dust orders from erasing bot depth. It is policy.
 - §6.6 `initialize_config` now states the timeout bounds that §3 and §6.1 already gave, instead of "timeout > 0".
+- Client requirement (V2): `match_orders` always passes `buyer_collateral = ATA(buy.maker, collateral)`, even when the refund is zero. A buyer who funded its BUY from a non-canonical mUSD account must have that ATA, so clients prepend an idempotent ATA-create instruction. No interface change.
 - Unreachable by construction, kept as defensive checks: `ScenarioMismatch` (only scenario 1 exists, and `register_property` rejects any other) and `InsufficientPairs` (supplies never exceed `pairs_outstanding`, so a holder can't own more pairs than are booked).
 
 **Product-level tradeoff (not a flaw, flagged for the owner):** v1 was hedger-initiated, and the homeowner created the contract. In v2 the operator lists markets and a homeowner buys YES. Size is preserved, since 1 YES = 1 mUSD of protection. Location was already limited to registered properties. The pitch changes from "list your risk" to "buy protection on a listed risk".
@@ -416,7 +417,7 @@ Fills and matches take Market and Round **read-only**, so they don't serialize b
 - `cancel_order`: maker, config, market, order (close → maker), escrow, escrow_mint, maker_refund (ATA, created if needed).
 - `sweep_order`: caller, maker (address = order.maker, receives rent), config, round, market, order (close → maker), escrow, escrow_mint, maker_refund (ATA, created if needed, paid by caller).
 
-From V0 until V2 lands, the five order instructions keep their full account contexts but return `NotImplemented`.
+The five order instructions returned `NotImplemented` from V0 until V2. Since V2 they are implemented against the same frozen contexts.
 
 ### 6.7 State machines
 
