@@ -3,6 +3,9 @@
 // Never reads settlement data: it imports only the oracle-free "@metrex/server/exchange" entry.
 //   pnpm --filter indexer start:v2
 //   KEEPER_POLL_MS (default 2000)   KEEPER_DISABLED=1 (index + heartbeat only)
+//   INDEX_POLL_MS (default 15000): the trade index here only feeds the heartbeat (the app keeps its
+//   own), so it refreshes slowly and fetches at most 25 transactions per pass
+//   RPC_MAX_RPS: client-side request cap for this process (unset = no cap)
 
 import {
   envOrUndefined,
@@ -26,7 +29,10 @@ async function main(): Promise<void> {
   const rpc = getRpc();
   const keeperKey = loadKeypair("keeper");
   const keeper = new Keeper({ rpc, keeper: keeperKey });
-  const index = new TradeIndex(connectionTradeSource(() => rpc.connection, getExchangeProgram(rpc.connection).programId));
+  const indexMs = Number(envOrUndefined("INDEX_POLL_MS") ?? 15_000);
+  const index = new TradeIndex(connectionTradeSource(() => rpc.connection, getExchangeProgram(rpc.connection).programId), { pageSize: 200, maxBackfill: 1_000, txPerRefresh: 25 });
+  let lastIndex = 0;
+  let lastReport = Date.now();
   console.log(`[keeper] program ${exchangeProgramId().toBase58()} rpc ${rpc.endpoints.map((c) => redactUrl(c.rpcEndpoint)).join(", ")}`);
   console.log(`[keeper] key ${keeperKey.publicKey.toBase58()} poll ${pollMs} ms${disabled ? " (matching disabled)" : ""}`);
 
@@ -36,9 +42,16 @@ async function main(): Promise<void> {
   let lastError: string | null = null;
   while (!stopping) {
     const started = Date.now();
+    if (started - lastReport >= 60_000) {
+      console.log(`[keeper] rpc ${rpc.pacer.report()}`);
+      lastReport = started;
+    }
     try {
       if (!disabled) await keeper.tick();
-      await index.refresh();
+      if (started - lastIndex >= indexMs) {
+        lastIndex = started;
+        await index.refresh();
+      }
       lastError = null;
     } catch (e) {
       lastError = (e as Error).message;

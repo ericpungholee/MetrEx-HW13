@@ -24,7 +24,7 @@ import {
   getRpc,
   getSolLamports,
   loadKeypair,
-  loadMarketBook,
+  ExchangeStateLoader,
   musdMint,
   readHeartbeat,
   sendExchangeTx,
@@ -166,19 +166,28 @@ async function main(): Promise<void> {
   log.step("bots, ladder, heartbeats, oracle dataset");
   const waitS = args.includes("--no-wait") ? 0 : Number(flagValue("--wait") ?? 60);
   const markets = await fetchMarketsOfRound(p, round.address);
+  // One cached loader for the polling (no getProgramAccounts scan per poll; see ExchangeStateLoader).
+  const loader = new ExchangeStateLoader();
   for (const m of markets) {
     let bad: string[] = ["not checked"];
+    let chainS = "";
     const deadline = Date.now() + waitS * 1000;
     do {
-      const snap = await loadMarketBook(conn, m.address, config.collateralMint);
+      const state = await loader.load(conn, { roundsBack: 1 });
+      const snap = state?.snapshots.find((s) => s.market.address.equals(m.address));
       if (snap) bad = [...checkBotsQuoting(snap.book, bots), ...(m.propertyId === FEATURED ? checkDepthGuarantee(snap.book, bots) : [])];
+      if (snap && !bad.length) {
+        // On-chain measure: the newest resting bot quote's created_at against the market's (Clock sysvar seconds).
+        const newest = snap.orders.filter((o) => o.maker in bots).reduce((t, o) => (o.createdAt > t ? o.createdAt : t), 0n);
+        chainS = `, last bot quote ${newest - snap.market.createdAt} s after the market on the chain clock`;
+      }
       if (!bad.length || Date.now() > deadline) break;
       await sleep(500);
     } while (true);
     if (bad.length) {
       for (const b of bad) log.fail(`property ${m.propertyId}: ${b}`);
       problems++;
-    } else log.ok(`property ${m.propertyId}: three bots quote both books, no crosses${m.propertyId === FEATURED ? ", §8.3 ladder exact" : ""} (${((Date.now() - marketsStart) / 1000).toFixed(1)} s after market creation)`);
+    } else log.ok(`property ${m.propertyId}: three bots quote both books, no crosses${m.propertyId === FEATURED ? ", §8.3 ladder exact" : ""} (${((Date.now() - marketsStart) / 1000).toFixed(1)} s after this script began creating markets${chainS})`);
   }
   for (const hb of ["bots", "keeper"] as const) {
     const r = readHeartbeat(hb);

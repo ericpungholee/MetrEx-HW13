@@ -66,5 +66,10 @@ The second prepare run found round 1 stale, because it had a non-bot wallet. It 
 
 ## Risks for V5 and V6
 
-- **RPC rate limits.** The private Devnet RPC returned HTTP 429 about 350 times across the bots and keeper. Quotes still arrived, but more slowly: 14–23 s against 5.7 s locally. Before the rehearsal, raise `BOTS_POLL_MS` and the keeper interval, or use a higher RPC tier, so the §12 "bots quote within 10 s" check holds on Devnet.
+- **RPC rate limits: fixed after V4.** During the V4 run the private Devnet RPC returned HTTP 429 about 350 times, and quotes took 14–23 s. The cause was the read pattern, not the poll rate: each worker tick made about 98 requests, several of them `getProgramAccounts` scans, and the provider allows only about 1–2 scans a second. The fix, without changing the program or the frozen interfaces:
+  - **Batched, cached reads.** `ExchangeStateLoader` reads Config and Clock, the recent Rounds, their Markets at the (round, property) PDAs and the known Orders in three `getMultipleAccounts` calls per tick. Order scans only discover other makers' orders, run in the background, and never hold up a tick. The bots register the orders they place, so their own orders are read back at once.
+  - **Client-side pacing.** `RPC_MAX_RPS` and `RPC_MAX_SCAN_RPS` space requests below the provider's caps instead of earning 429 back-offs.
+  - **Faster market entry.** A bot's split and the asks it funds share one transaction. Each bot-market group runs in the background, so cleanup of a closed round never delays quoting a new one.
+
+  Measured on Devnet (round 8, `RPC_MAX_RPS=8`, `RPC_MAX_SCAN_RPS=0.5`): 0 × 429 in the bots and keeper, about 1.5 requests a second per worker in steady state with no scans, and the last bot quote landed **7 s and 6 s** after its market on the chain clock, which meets the §12 10 s check. Locally it took 3.1 s. The figure prepare prints from its own wall clock (10.7 s) also counts sending both `create_market` transactions and the balance checks.
 - **Not covered here.** The Phantom browser flow is Gate V6 and needs the V5 app.

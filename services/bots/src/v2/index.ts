@@ -4,6 +4,7 @@
 //   BOTS_COOLDOWN_MS      per-bot, per-market requote cooldown (default 3000)
 //   BOTS_SPLIT_PAIRS      pairs split when a side runs low (default 2000)
 //   BOTS_FEATURED_PROPERTY featured property id, skew off there (default 1, §8.3)
+//   RPC_MAX_RPS           client-side request cap for this process (unset = no cap); see docs/STATUS.md
 
 import { DEMO_BOTS } from "@metrex/exchange";
 import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, redactUrl, type KeypairName } from "@metrex/server/exchange";
@@ -51,8 +52,13 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => stop("SIGINT"));
   process.on("SIGTERM", () => stop("SIGTERM"));
+  let lastReport = Date.now();
   while (!stopping) {
     const started = Date.now();
+    if (started - lastReport >= 60_000) {
+      console.log(`[bots v2] rpc ${rpc.pacer.report()}`);
+      lastReport = started;
+    }
     try {
       await worker.tick();
     } catch (e) {
@@ -67,6 +73,7 @@ async function main(): Promise<void> {
       };
     });
   }
+  await worker.drain();
   console.log("[bots v2] stopped");
 }
 

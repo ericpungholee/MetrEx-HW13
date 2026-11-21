@@ -98,7 +98,7 @@ The full record is [v2-devnet-verification.md](v2-devnet-verification.md).
 
 Tag `v1.1-demo` first. Then build the §10 pages on `app/lib/exchange-client.ts` and wire v2 evidence into `/api/evidence`.
 
-Before V6, fix the RPC rate limits. The Devnet RPC returned HTTP 429 about 350 times while the bots and keeper ran, and bot quotes took 14–23 s against 5.7 s locally. Raise `BOTS_POLL_MS` and the keeper interval, or use a higher RPC tier.
+RPC rate limits fixed (2026-11-21, after V4). The workers now read the books with batched, cached `getMultipleAccounts` calls, move order scans to the background, and pace requests with `RPC_MAX_RPS=8` and `RPC_MAX_SCAN_RPS=0.5`. On Devnet: 0 × HTTP 429, about 1.5 requests a second per worker, and bot quotes 6–7 s after market creation on the chain clock (previously 14–23 s). See the Risks section of [v2-devnet-verification.md](v2-devnet-verification.md).
 
 ### Effect on v1 open items
 

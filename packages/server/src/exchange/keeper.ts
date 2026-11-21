@@ -4,8 +4,7 @@
 
 import type { Keypair, PublicKey } from "@solana/web3.js";
 import { planKeeperMatches, type OrderAccount } from "@metrex/exchange";
-import { fetchAllRounds, fetchExchangeConfig, fetchMarketsOfRound } from "./accounts";
-import { loadMarketBook, type MarketBookSnapshot } from "./book";
+import { ExchangeStateLoader, type MarketBookSnapshot } from "./book";
 import { matchOrdersIx, sweepOrderIx } from "./ix";
 import { getExchangeProgram } from "./program";
 import { explorerTx } from "../explorer";
@@ -35,6 +34,7 @@ export function sweepable(o: OrderAccount, s: Pick<MarketBookSnapshot, "round" |
 export class Keeper {
   readonly stats: KeeperStats = { ticks: 0, matches: 0, sweeps: 0, failures: 0, lastError: null, lastSignature: null };
   private readonly inFlight = new Set<string>();
+  private readonly loader = new ExchangeStateLoader();
 
   constructor(
     private readonly o: {
@@ -58,18 +58,13 @@ export class Keeper {
 
   async tick(): Promise<void> {
     this.stats.ticks++;
-    const rpc = this.o.rpc;
-    const config = await rpc.run((c) => fetchExchangeConfig(getExchangeProgram(c)));
-    if (!config) return;
-    const rounds = (await rpc.run((c) => fetchAllRounds(getExchangeProgram(c)))).slice(-(this.o.roundsBack ?? 3));
-    for (const round of rounds) {
-      const markets = await rpc.run((c) => fetchMarketsOfRound(getExchangeProgram(c), round.address));
-      for (const m of markets) {
-        const snap = await rpc.run((c) => loadMarketBook(c, m.address, config.collateralMint, "confirmed"));
-        if (!snap) continue;
-        if (snap.tradingOpen && snap.market.outcome === "unresolved") await this.matchMarket(snap, config.collateralMint);
-        await this.sweepMarket(snap, config.collateralMint);
-      }
+    // One batched read of every book (a fixed handful of RPC calls), then act market by market.
+    const state = await this.o.rpc.run((c) => this.loader.load(c, { roundsBack: this.o.roundsBack ?? 3 }));
+    if (!state) return;
+    const collateral = state.config.collateralMint;
+    for (const snap of state.snapshots) {
+      if (snap.tradingOpen && snap.market.outcome === "unresolved") await this.matchMarket(snap, collateral);
+      await this.sweepMarket(snap, collateral);
     }
   }
 

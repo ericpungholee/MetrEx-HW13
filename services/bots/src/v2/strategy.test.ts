@@ -117,7 +117,21 @@ describe("requote thresholds (§8.1)", () => {
 
   it("splits first when a side can't cover one top size, keeping the mUSD reserve", () => {
     const acts = planBotMarket(input({ balances: { musd: 1_500n * MUSD_UNIT, yes: 0n, no: 0n } }));
-    expect(acts).toEqual([{ kind: "split", quantity: 500n }]);
+    expect(acts[0]).toEqual({ kind: "split", quantity: 500n });
+  });
+
+  it("quotes in the same plan as the split, on the post-split balances", () => {
+    const acts = planBotMarket(input({ balances: { musd: 3_000n * MUSD_UNIT, yes: 0n, no: 0n } }));
+    expect(acts[0]).toEqual({ kind: "split", quantity: 2_000n });
+    const placed = acts.flatMap((a) => (a.kind === "requote" && a.place ? [a.place] : []));
+    // Same quotes as a bot already holding the split shares and the remaining mUSD.
+    const held = planBotMarket(input({ balances: { musd: 1_000n * MUSD_UNIT, yes: 2_000n, no: 2_000n } }));
+    expect(placed).toEqual(held.flatMap((a) => (a.kind === "requote" && a.place ? [a.place] : [])));
+    expect(placed.length).toBe(4);
+    // Asks never exceed the shares the split creates.
+    for (const q of placed) if (q.side === OrderSide.Sell) expect(q.size <= 2_000n).toBe(true);
+    // Inside the cooldown: split only.
+    expect(planBotMarket(input({ balances: { musd: 3_000n * MUSD_UNIT, yes: 0n, no: 0n }, lastRequoteMs: 9_000 }))).toEqual([{ kind: "split", quantity: 2_000n }]);
   });
 });
 

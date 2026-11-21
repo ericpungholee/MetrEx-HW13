@@ -166,9 +166,27 @@ export function planBotMarket(i: BotMarketInput): BotAction[] {
   }
 
   const split = splitNeeded(i);
-  if (split > 0n) return [{ kind: "split", quantity: split }]; // quote next tick on real balances
+  if (split > 0n) {
+    // Split first, then quote on the post-split balances in the same tick: the worker sends the split
+    // and the asks (which escrow the new shares) in one transaction, so entering a market costs one
+    // confirmation instead of two plus a cooldown.
+    actions.push({ kind: "split", quantity: split });
+    if (i.lastRequoteMs !== undefined && i.nowMs - i.lastRequoteMs < i.config.cooldownMs) return actions;
+    const after: BotMarketInput = {
+      ...i,
+      balances: { musd: i.balances.musd - split * PAYOUT_PER_SHARE, yes: i.balances.yes + split, no: i.balances.no + split },
+    };
+    return [...actions, ...planQuotes(after)];
+  }
 
   if (i.lastRequoteMs !== undefined && i.nowMs - i.lastRequoteMs < i.config.cooldownMs) return [];
+  return planQuotes(i);
+}
+
+/** Requotes for the trading phase: keep orders on target, replace stale ones, place missing ones. */
+function planQuotes(i: BotMarketInput): BotAction[] {
+  const actions: BotAction[] = [];
+  const live = i.own;
 
   const want = new Map(desiredQuotes(i).map((q) => [slotKey(q.outcome, q.side), q]));
   const have = new Map<string, OrderAccount[]>();

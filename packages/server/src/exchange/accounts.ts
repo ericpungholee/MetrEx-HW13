@@ -154,9 +154,45 @@ export async function fetchExchangeMarket(p: ExchangeProgram, address: PublicKey
   return m ? toMarket(address, m) : null;
 }
 
+/** Decoders for raw account data fetched in batches (getMultipleAccounts). Throw on a wrong discriminator. */
+type RawConfig = Awaited<ReturnType<ExchangeProgram["account"]["config"]["fetch"]>>;
+export const decodeConfigAccount = (p: ExchangeProgram, address: PublicKey, data: Buffer): ConfigView => {
+  const c = p.coder.accounts.decode<RawConfig>("config", data);
+  return {
+    address,
+    admin: c.admin,
+    roundController: c.roundController,
+    oracleAuthority: c.oracleAuthority,
+    collateralMint: c.collateralMint,
+    latestRound: c.latestRound,
+    nextRoundId: big(c.nextRoundId),
+    resolutionTimeoutS: big(c.resolutionTimeoutS),
+  };
+};
+export const decodeRoundAccount = (p: ExchangeProgram, address: PublicKey, data: Buffer): RoundView =>
+  toRound(address, p.coder.accounts.decode<RawRound>("round", data));
+export const decodeMarketAccount = (p: ExchangeProgram, address: PublicKey, data: Buffer): MarketView =>
+  toMarket(address, p.coder.accounts.decode<RawMarket>("market", data));
+export const decodeOrderAccount = (p: ExchangeProgram, address: PublicKey, data: Buffer): OrderAccount =>
+  toOrderAccount(address, p.coder.accounts.decode<RawOrder>("order", data));
+
+/** Clock sysvar data → unix seconds. */
+export const clockUnixTimestamp = (data: Buffer): bigint => data.readBigInt64LE(32);
+
+export async function fetchAllMarkets(p: ExchangeProgram): Promise<MarketView[]> {
+  const rows = await p.account.market.all();
+  return rows.map((r) => toMarket(r.publicKey, r.account));
+}
+
 export async function fetchMarketsOfRound(p: ExchangeProgram, round: PublicKey): Promise<MarketView[]> {
   const rows = await p.account.market.all([{ memcmp: { offset: ROUND_OFFSET_IN_MARKET, bytes: round.toBase58() } }]);
   return rows.map((r) => toMarket(r.publicKey, r.account)).sort((a, b) => a.propertyId - b.propertyId);
+}
+
+/** Ids of every registered Property (one scan; properties are few and change rarely). */
+export async function fetchPropertyIds(p: ExchangeProgram): Promise<number[]> {
+  const rows = await p.account.property.all();
+  return rows.map((r) => r.account.propertyId).sort((a, b) => a - b);
 }
 
 export async function fetchProperty(p: ExchangeProgram, propertyId: number): Promise<PropertyView | null> {
