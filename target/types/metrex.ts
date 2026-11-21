@@ -1833,6 +1833,11 @@ export type Metrex = {
       "code": 6021,
       "name": "invalidSide",
       "msg": "Side must be 0 (Protection) or 1 (Risk)"
+    },
+    {
+      "code": 6022,
+      "name": "invalidScenario",
+      "msg": "Scenario is not supported by the settlement oracle"
     }
   ],
   "types": [

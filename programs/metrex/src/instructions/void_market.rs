@@ -1,4 +1,4 @@
-//! `void_market()` (spec §6, P0.5). Signer must be `config.admin`; market `Open` or `Closed`.
+//! Admin can void unfunded markets. Funded recovery requires prior closure and controller co-signature.
 
 use anchor_lang::prelude::*;
 
@@ -29,6 +29,15 @@ pub fn handler(ctx: Context<VoidMarket>) -> Result<()> {
         matches!(market.status, MarketStatus::Open | MarketStatus::Closed),
         MetrexError::InvalidMarketStatus
     );
+    if market.accepted_count > 0 || market.coverage_activated > 0 {
+        require!(market.status == MarketStatus::Closed, MetrexError::InvalidMarketStatus);
+        let controller = ctx.accounts.config.demo_controller;
+        require_keys_neq!(controller, ctx.accounts.admin.key(), MetrexError::Unauthorized);
+        require!(
+            ctx.remaining_accounts.iter().any(|account| account.key() == controller && account.is_signer),
+            MetrexError::Unauthorized
+        );
+    }
     market.status = MarketStatus::Voided;
 
     emit!(MarketVoided {

@@ -24,6 +24,7 @@ export const ERROR_NAMES = [
   "InvalidPrice",
   "InsufficientFunds",
   "InvalidSide",
+  "InvalidScenario",
 ] as const;
 
 export type MetrexErrorName = (typeof ERROR_NAMES)[number];
@@ -46,7 +47,7 @@ export const ERROR_MESSAGES: Record<MetrexErrorName, string> = {
   InvalidBps: "Premium rate must be between 0.01% and 99.99%.",
   CoverageTooSmall: "Coverage is below the 10 mUSD minimum.",
   CoverageExceedsTarget: "Coverage is larger than the amount this market requests.",
-  CoverageExceedsRemaining: "Accepting this offer would exceed the requested coverage.",
+  CoverageExceedsRemaining: "This offer exceeds the remaining coverage.",
   PremiumRoundsToZero: "Premium rounds to zero. Increase coverage or rate.",
   SelfUnderwriting: "You can't underwrite your own market.",
   WrongMint: "That token account isn't for mUSD.",
@@ -62,4 +63,5 @@ export const ERROR_MESSAGES: Record<MetrexErrorName, string> = {
   InvalidPrice: "Price must be greater than zero.",
   InsufficientFunds: "Not enough mUSD in your wallet.",
   InvalidSide: "Side must be Protection or Risk.",
+  InvalidScenario: "The settlement oracle does not support this scenario.",
 };

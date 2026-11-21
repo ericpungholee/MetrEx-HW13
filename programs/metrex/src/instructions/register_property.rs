@@ -49,6 +49,7 @@ pub fn handler(
     );
     require!(trigger_distance_m > 0, MetrexError::InvalidCoordinates);
 
+    require!(scenario_id == SCENARIO_PALISADES_2025, MetrexError::InvalidScenario);
     let property = &mut ctx.accounts.property;
     property.property_id = property_id;
     property.label = label;

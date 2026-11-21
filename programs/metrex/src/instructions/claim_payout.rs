@@ -1,5 +1,5 @@
 //! `claim_payout()` (spec §6). YES ⇒ claimant == protection_holder; NO ⇒ claimant == risk_holder.
-//! Booked coverage → claimant; any surplus goes to the non-claiming original party (spec §4.4).
+//! Booked coverage → claimant; any surplus goes to the current holder of the other side.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Token, TokenAccount, Transfer};
@@ -93,10 +93,10 @@ pub fn handler<'info>(ctx: Context<'_, '_, '_, 'info, ClaimPayout<'info>>) -> Re
     // Only a surplus-bearing claim uses a remaining account. The recipient can be
     // provisioned by the fee payer without the other party's signature.
     if surplus > 0 {
-        let owner = if claimant == underwriter_key {
-            market.homeowner
+        let owner = if market.status == MarketStatus::ResolvedYes {
+            offer.risk_holder
         } else {
-            underwriter_key
+            offer.protection_holder
         };
         let destination = ctx
             .remaining_accounts

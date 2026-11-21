@@ -1,5 +1,5 @@
 //! `refund_offer()` (spec §6, P0.5). Anyone can crank. Market `Voided`, Offer `Accepted`.
-//! P → original homeowner, K → original underwriter (regardless of current holders); vault closed.
+//! P → current Protection holder, K and surplus → current Risk holder. Vault rent goes to the original funder.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Token, TokenAccount, Transfer};
@@ -41,14 +41,12 @@ pub struct RefundOffer<'info> {
     #[account(
         mut,
         constraint = homeowner_token.mint == config.mint @ MetrexError::WrongMint,
-        constraint = homeowner_token.owner == market.homeowner @ MetrexError::WrongTokenOwner,
     )]
     pub homeowner_token: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = underwriter_token.mint == config.mint @ MetrexError::WrongMint,
-        constraint = underwriter_token.owner == offer.underwriter @ MetrexError::WrongTokenOwner,
     )]
     pub underwriter_token: Box<Account<'info, TokenAccount>>,
 
@@ -70,6 +68,8 @@ pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
         offer.status == OfferStatus::Accepted,
         MetrexError::InvalidOfferStatus
     );
+    require_keys_eq!(ctx.accounts.homeowner_token.owner, offer.protection_holder, MetrexError::WrongTokenOwner);
+    require_keys_eq!(ctx.accounts.underwriter_token.owner, offer.risk_holder, MetrexError::WrongTokenOwner);
     let vault = &ctx.accounts.vault;
     require!(vault.mint == ctx.accounts.config.mint, MetrexError::WrongMint);
     require!(vault.owner == offer.key(), MetrexError::WrongTokenOwner);
@@ -77,12 +77,13 @@ pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
     let premium = offer.premium;
     let collateral = offer.collateral;
     require!(vault.amount >= offer.coverage, MetrexError::VaultBalanceMismatch);
-    // The original underwriter receives booked collateral plus any surplus.
+    // The current Risk holder receives booked collateral plus any surplus.
     let underwriter_amount = vault
         .amount
         .checked_sub(premium)
         .ok_or(MetrexError::VaultBalanceMismatch)?;
-    let homeowner_key = market.homeowner;
+    let homeowner_key = offer.protection_holder;
+    let risk_holder = offer.risk_holder;
 
     let market_key = offer.market;
     let underwriter_key = offer.underwriter;
@@ -137,7 +138,7 @@ pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
         market: market_key,
         offer: offer.key(),
         homeowner: homeowner_key,
-        underwriter: underwriter_key,
+        underwriter: risk_holder,
         premium,
         collateral,
     });

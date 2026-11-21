@@ -80,11 +80,17 @@ pub fn handler(
         (MIN_BPS..=MAX_BPS).contains(&premium_bps),
         MetrexError::InvalidBps
     );
+    require!(market.scenario_id == SCENARIO_PALISADES_2025, MetrexError::InvalidScenario);
     require!(coverage >= MIN_COVERAGE, MetrexError::CoverageTooSmall);
     require!(
         coverage <= market.coverage_target,
         MetrexError::CoverageExceedsTarget
     );
+
+    let remaining = market.coverage_target
+        .checked_sub(market.coverage_activated)
+        .ok_or(MetrexError::MathOverflow)?;
+    require!(coverage <= remaining, MetrexError::CoverageExceedsRemaining);
 
     // §4.2: P = floor(C × b / 10_000) with a u128 intermediate; K = C − P.
     let premium_u128 = (coverage as u128)
