@@ -36,6 +36,8 @@ export const TARGETS: readonly Target[] = [
   { name: "oracle", sol: solToLamports("0.05"), musd: 0n },
   { name: "controller", sol: solToLamports("0.05"), musd: 0n },
   { name: "faucet", sol: solToLamports("5"), musd: 0n },
+  /** v2 keeper (spec-v2 §7.4): match and sweep fees only. */
+  { name: "keeper", sol: solToLamports("0.5"), musd: 0n },
   { name: "judge1", sol: solToLamports("0.1"), musd: musd(25_000n) },
   { name: "judge2", sol: solToLamports("0.1"), musd: musd(25_000n) },
   { name: "judge3", sol: solToLamports("0.1"), musd: musd(25_000n) },
@@ -45,7 +47,7 @@ export const TARGETS: readonly Target[] = [
 const MINIMUM_SOL: Partial<Record<KeypairName, string>> = {
   botA: "0.03", botB: "0.03", botC: "0.03",
   homeownerDemo: "0.04", oracle: "0.02", controller: "0.02",
-  faucet: "0.06", judge1: "0.02", judge2: "0.02", judge3: "0.02",
+  faucet: "0.06", keeper: "0.05", judge1: "0.02", judge2: "0.02", judge3: "0.02",
 };
 
 /** Keep this much in the funder for fees and ATA rent. */

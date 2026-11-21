@@ -11,7 +11,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 | V0 — Freeze | **Passed** 2026-11-21 | `programs/metrex-exchange` compiles with every §6.6 context. IDL `target/idl/metrex_exchange.json` committed: 16 instructions, 5 accounts, 10 events, 38 errors. `@metrex/exchange` (constants, PDAs, math, ladder, book) has 20 tests, including the IDL sync |
 | V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
 | V2 — Trading protocol | **Passed** 2026-11-21 | `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` are implemented against the frozen contexts. The IDL is unchanged. `tests/exchange.ts` now has 67 tests: 31 for V2, including I3, I4 and I10–I12, the §11 demo replay and the size test. A mutation check, with the execution price forced to the SELL price and the take self-trade check removed, fails 5 of them. R checklist: all six items pass (see below) |
-| V3 — Engine and liquidity (local) | Not started | |
+| V3 — Engine and liquidity (local) | **Passed** 2026-11-21 | `scripts/v3-local.sh` passes end to end on a disposable validator (results below). Workspace tests: exchange 33, geo 35, server 50, bots 38, scripts 5, app 13, shared 12. App build passes with the v1 pages unchanged. `anchor test`: 145 passing (67 v2, 78 v1). Program and IDL unchanged |
 | V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
 | V6 — Phantom rehearsal | Not started | |
@@ -51,15 +51,30 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
   - Market and Round are read-only in `take_order` and `match_orders`.
 - **Client note.** `match_orders` needs the buyer's canonical mUSD ATA even when the refund is zero (spec-v2 §0.2). Clients prepend an idempotent ATA create.
 
-### Next: Gate V3 (engine and liquidity, local)
+### V3 results
 
-- `@metrex/exchange`: book projection from Order accounts, the market-order and limit-order planners that produce the transactions above, and the chart reducer.
-- `services/indexer`: book cache, trade index from `OrderFilled`, keeper and heartbeat.
-- `services/bots`: rewrite on the tested ladder.
-- Oracle: round gate and dataset hash check.
-- Scripts: `setup-devnet-v2.ts` and `prepare-demo-v2.ts`.
+Run with `bash scripts/v3-local.sh`. It uses throwaway keys in a temp dir (never `~/.config/metrex`), a fresh `solana-test-validator` with `metrex_exchange.so` upgradeable by the temp admin, and `--timeout 120` for the local round. Devnet setup refuses a timeout under 86,400 s.
 
-Passes when three bots quote both books on a local validator without crossing.
+- **Bots quote within 10 s, never cross.** After `create_market`, three bots quoted both books of both markets in 5.7 s (featured) and 7.7 s (other), and the §8.3 ladder was exact on YES with exact NO complements. Twenty samples over 10 s showed all 12 bot levels and no cross.
+- **§11 demo replay through the planners.** A market buy of 300 YES filled A 200 @ 430 + B 100 @ 500 = 13.6 mUSD in one signature. The limit sell 200 @ 410 (place + match) filled 100 against C for 4.1 mUSD and rested 100. After the bots requoted, the best bot bid was 409.
+- **Keeper.** A crossing BUY 20 @ 415 placed with no match was matched once by the keeper at the older price 410, with a 0.01 mUSD refund. One `OrderFilled`, no double match.
+- **Restart and dedup.** Two fresh loaders rebuilt an identical book fingerprint (13 orders) and identical trade indexes (4 fills). Unit tests cover event dedup across overlapping pages and restarts.
+- **Keeper stopped.** With the keeper killed for 22 s, `handleBook`, `handleMarket` and `handleHealth` kept working, and health reported matching "paused".
+- **Settlement.** The second `prepare-demo-v2` run found round 1 stale (two non-bot wallets), closed it, resolved both markets through the oracle (round gate and dataset hash checked), swept, then opened round 2 with fresh markets and bots quoting. Property 1 resolved YES, property 2 NO, and both evidence v2 hashes matched on-chain. A take on the closed round was rejected. The presenter redeemed 180 YES for exactly 180 mUSD.
+- **Failures logged.** One bot cancel raced a keeper sweep (`AccountNotInitialized`). The keeper logged none.
+
+### V3 notes
+
+- **v2 bots** live in `services/bots/src/v2/` (`pnpm --filter bots start:v2`). The v1 bots are untouched for the fallback demo. The keeper and trade index are `services/indexer/src/v2.ts` (`start:v2`, `KEEPER_DISABLED=1` stops matching).
+- **Oracle isolation.** Bots and keeper import only `@metrex/server/exchange`, which never reaches oracle or geo code. Tests enforce this, and both workers refuse to start when `METREX_ORACLE_DATA_DIR` is set.
+- **Heartbeats** are files in `METREX_HEARTBEAT_DIR` (default `<repo>/.metrex/heartbeat`, gitignored). They are stale after 20 s. On a hosted deploy the app and workers must share this directory, or V4/V5 needs another channel.
+- **Routes.** The §7.5 handlers are in `packages/server/src/routes/exchange.ts`, mounted at `app/app/api/{rounds,markets,health}`. `/api/evidence` still serves v1 only. Wiring v2 evidence into the app is C/V5 work.
+- **Local finality** lags about 13 s. Pre-checks in `prepare-demo-v2` read at `confirmed`, and round creation and settlement wait for `finalized`.
+- `app/next.config.ts` adds `@metrex/exchange` to `transpilePackages`, because the server root now imports it.
+
+### Next: Gate V4 (Devnet)
+
+Needs a human to fund about 4–5 Devnet SOL (D2). Then: deploy `metrex_exchange`, run `setup-devnet-v2.ts`, `fund-bots.ts` and `prepare-demo-v2.ts` against Devnet, and run both outcomes.
 
 ### Effect on v1 open items
 
