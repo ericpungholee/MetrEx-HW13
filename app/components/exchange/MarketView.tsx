@@ -7,7 +7,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
+import { catalogByProperty, HAZARD_LABEL, Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import {
   fetchBook,
   fetchChart,
@@ -23,7 +23,7 @@ import {
   type MarketInfo,
   type RoundWithMarkets,
 } from "@/lib/exchange-client";
-import { formatPrice, formatShares, marketState, marketTitle, outcomeName, question } from "@/lib/exchange-format";
+import { formatPrice, formatShares, marketState, marketTitle, outcomeName, payoutRule, question } from "@/lib/exchange-format";
 import { explorerAddress, formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { PerimeterMap } from "@/components/PerimeterMap";
@@ -160,6 +160,7 @@ export function MarketView({ market, round, children }: { market: string; round?
   const state = marketState(m.outcome, r);
   const closed = !info.data.tradingOpen || m.outcome !== "unresolved";
   const siblings = round?.markets.filter((x) => x.address !== m.address) ?? [];
+  const c = catalogByProperty(m.propertyId);
 
   return (
     <MakersContext.Provider value={makers}>
@@ -185,10 +186,24 @@ export function MarketView({ market, round, children }: { market: string; round?
               Explorer
             </a>
           </div>
-          <h1 className="max-w-4xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{question(m)}</h1>
-          <p className="max-w-3xl text-[11px] leading-snug text-faint">
-            <TriggerSentence /> <ReplayDisclosure className="inline" />
-          </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            {c && (
+              // eslint-disable-next-line @next/next/no-img-element -- static local illustration
+              <img src={c.photo.src} alt={c.photo.alt} className="h-24 w-full shrink-0 rounded-xl object-cover sm:w-36" />
+            )}
+            <div className="min-w-0 space-y-2">
+              {c && (
+                <div className="text-xs text-dim">
+                  {c.place} · {HAZARD_LABEL[c.hazard]} · {c.month} contract · Trigger: {c.trigger}
+                </div>
+              )}
+              <h1 className="max-w-4xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{question(m)}</h1>
+              <p className="max-w-3xl text-[11px] leading-snug text-faint">
+                <TriggerSentence text={payoutRule(m)} /> <ReplayDisclosure className="inline" replayOf={c?.replayOf} />
+                {c && <> Settlement data: {c.source}. Its SHA-256 was committed on-chain when this round opened.</>}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -268,7 +283,7 @@ export function MarketView({ market, round, children }: { market: string; round?
 
               {tab === "map" && (
                 <PerimeterMap
-                  points={[{ key: m.address, lat: m.latE6 / 1e6, lon: m.lonE6 / 1e6, label: marketTitle(m), radiusM: m.triggerDistanceM, selected: true }]}
+                  points={[{ key: m.address, lat: m.latE6 / 1e6, lon: m.lonE6 / 1e6, label: marketTitle(m), radiusM: m.triggerDistanceM > 0 ? m.triggerDistanceM : undefined, selected: true }]}
                   settledMarket={m.outcome === "yes" || m.outcome === "no" ? m.address : undefined}
                   height={280}
                 />

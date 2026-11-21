@@ -96,7 +96,7 @@ export function OrderBook({
         )}
       </div>
       <div className="grid grid-cols-[1fr_1fr_1fr] border-b border-line px-3 pb-1.5 text-[11px] font-medium tracking-wide text-faint uppercase">
-        <span>Price</span>
+        <span>Price (¢)</span>
         <span className="text-right">Size</span>
         <span className="text-right">Makers</span>
       </div>

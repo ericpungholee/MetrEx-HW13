@@ -109,7 +109,7 @@ export function timeAgo(unixSecs: number, nowMs = Date.now()): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-/** lat_e6 → "34.045000" (display only; coordinates are approximate points). */
+/** lat_e6 → "34.045000" (display only). */
 export function formatE6(v: number): string {
   const neg = v < 0;
   const a = Math.abs(v);

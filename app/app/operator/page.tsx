@@ -3,8 +3,11 @@
 // Operator (spec-v2 §10.6). Password-protected, never linked from the trading UI. Close and settle
 // runs one server step at a time; each step reads the chain first, so the workflow resumes from
 // wherever it stopped. Every on-chain step is its own transaction with an Explorer link.
+// Multi-peril (docs/spec-multiperil.md §2.2): one round per hazard can be open at once, so the
+// operator picks a round and closes and settles it without touching the others.
 import { useState } from "react";
-import { fetchHealth, fetchLatestRound, operatorStep, USE_FIXTURES, type OperatorAction } from "@/lib/exchange-client";
+import { HAZARD_LABEL, catalogByScenario } from "@metrex/exchange";
+import { fetchHealth, fetchLatestRound, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundWithMarkets } from "@/lib/exchange-client";
 import { marketState, marketTitle } from "@/lib/exchange-format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat } from "@/components/ui";
@@ -58,18 +61,39 @@ const LABELS: Record<OperatorAction, string> = {
   status: "6. Completeness check",
 };
 
+const ROUNDS_BACK = 8n;
+
+async function fetchRecentRounds(): Promise<RoundWithMarkets[]> {
+  const latest = await fetchLatestRound();
+  if (!latest) return [];
+  const ids: bigint[] = [];
+  for (let id = latest.roundId - 1n; id >= 0n && id > latest.roundId - ROUNDS_BACK; id--) ids.push(id);
+  const older = await Promise.all(ids.map((id) => fetchRound(id)));
+  return [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
+}
+
+const hazardOf = (r: RoundWithMarkets): string => {
+  const c = catalogByScenario(r.scenarioId);
+  return c ? HAZARD_LABEL[c.hazard] : `Scenario ${r.scenarioId}`;
+};
+
 export default function OperatorPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<OperatorAction | "all" | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
-  const round = usePoll(() => fetchLatestRound(), [], 5_000);
+  const [picked, setPicked] = useState<string | null>(null);
+  const rounds = usePoll(() => fetchRecentRounds(), [], 5_000);
   const health = usePoll(() => fetchHealth(), [], 10_000);
+  const all = rounds.data ?? [];
+  // Default: the newest round that still needs work, else the newest round.
+  const r = all.find((x) => x.address === picked) ?? all.find((x) => x.state === "open" || x.resolvedCount < x.marketCount) ?? all[0] ?? null;
 
   async function step(action: OperatorAction): Promise<boolean> {
-    const res = await operatorStep(action, password, round.data?.address);
+    if (!r) return false;
+    const res = await operatorStep(action, password, r.address);
     const line = describe(action, res.ok, res.body);
-    setLog((l) => [...l, line]);
-    round.refresh();
+    setLog((l) => [...l, { ...line, text: `Round #${r.roundId.toString()}: ${line.text}` }]);
+    rounds.refresh();
     return res.ok && (action !== "reject" || line.ok);
   }
 
@@ -97,7 +121,6 @@ export default function OperatorPage() {
     }
   }
 
-  const r = round.data;
   return (
     <div className="space-y-10">
       <PageHeader title="Operator" description="Round inspection, bot and keeper health, and the Close and settle workflow. Keys stay on the server." />
@@ -109,9 +132,49 @@ export default function OperatorPage() {
         <Stat label="Matching">{health.data?.matching ?? "—"}</Stat>
       </div>
 
-      <Panel title={r ? `Latest round #${r.roundId.toString()} · ${r.label}` : "Latest round"} right={r ? `${r.state} · ${r.resolvedCount}/${r.marketCount} settled` : undefined}>
+      <Panel title="Recent rounds" right="one Open round per hazard is operator policy, not a program rule">
+        {all.length === 0 ? (
+          rounds.error ? <Unavailable>{rounds.error}</Unavailable> : <div className="text-sm text-dim">No round yet.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-faint">
+              <tr>
+                <th className="pb-2 font-medium">Round</th>
+                <th className="pb-2 font-medium">Hazard</th>
+                <th className="pb-2 font-medium">State</th>
+                <th className="pb-2 text-right font-medium">Settled</th>
+                <th className="pb-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {all.map((x) => (
+                <tr key={x.address} className={`border-t border-line ${x.address === r?.address ? "bg-bg-soft" : ""}`}>
+                  <td className="py-2.5">
+                    <span className="font-medium">#{x.roundId.toString()}</span> <span className="text-dim">{x.label}</span>
+                  </td>
+                  <td className="py-2.5">{hazardOf(x)}</td>
+                  <td className="py-2.5">{x.state}</td>
+                  <td className="num py-2.5 text-right">
+                    {x.resolvedCount}/{x.marketCount}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    <button className="btn btn-sm" disabled={busy !== null || x.address === r?.address} onClick={() => setPicked(x.address)}>
+                      {x.address === r?.address ? "Selected" : "Select"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
+      <Panel
+        title={r ? `Round #${r.roundId.toString()} · ${hazardOf(r)} · ${r.label}` : "Round"}
+        right={r ? `${r.state} · ${r.resolvedCount}/${r.marketCount} settled` : undefined}
+      >
         {!r ? (
-          round.error ? <Unavailable>{round.error}</Unavailable> : <div className="text-sm text-dim">No round yet.</div>
+          <div className="text-sm text-dim">No round selected.</div>
         ) : (
           <div className="divide-y divide-line">
             {r.markets.map((m) => (
@@ -126,7 +189,7 @@ export default function OperatorPage() {
         )}
       </Panel>
 
-      <Panel title="Close and settle">
+      <Panel title={r ? `Close and settle round #${r.roundId.toString()} (${hazardOf(r)} only)` : "Close and settle"}>
         <div className="space-y-5">
           <label className="block max-w-sm">
             <span className="text-xs font-medium tracking-wide text-faint uppercase">Operator password</span>

@@ -105,7 +105,7 @@ export default function PerimeterMapInner({
         <FitTo points={points} />
       </MapContainer>
       <div className="pointer-events-none absolute top-3 right-3 z-[500] bg-bg/90 px-2.5 py-1.5 text-xs text-dim">
-        {perimeter && <span className="text-down">■ Settled fire perimeter </span>}
+        {perimeter && <span className="text-down">■ Settled footprint </span>}
         {points.some((p) => p.radiusM !== undefined) && <span>◌ Trigger radius</span>}
       </div>
     </div>

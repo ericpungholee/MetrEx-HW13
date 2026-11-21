@@ -35,13 +35,19 @@ export function StateLabel({ state }: { state: MarketState }) {
   return <span className={`text-xs font-medium ${STATE_TONE[state]}`}>{state}</span>;
 }
 
-/** §10.1: the trigger sentence on every market page (plain text, no pills). */
-export function TriggerSentence({ className = "" }: { className?: string }) {
-  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{TRIGGER_SENTENCE}</span>;
+/** §10.1: the payout rule on every market page (plain text, no pills). Wildfire sentence by default, `payoutRule` per hazard. */
+export function TriggerSentence({ text = TRIGGER_SENTENCE, className = "" }: { text?: string; className?: string }) {
+  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{text}</span>;
 }
 
-export function ReplayDisclosure({ className = "" }: { className?: string }) {
-  return <span className={`text-[11px] leading-snug text-faint ${className}`}>{REPLAY_DISCLOSURE}</span>;
+/** §10.1 replay disclosure; `replayOf` names the real event the market replays (docs/spec-multiperil.md §7.1). */
+export function ReplayDisclosure({ className = "", replayOf }: { className?: string; replayOf?: string }) {
+  return (
+    <span className={`text-[11px] leading-snug text-faint ${className}`}>
+      {REPLAY_DISCLOSURE}
+      {replayOf && <> This market replays {replayOf}. Coverage dates are historical; trading time on-chain is the demo clock.</>}
+    </span>
+  );
 }
 
 export function InvalidDisclosure() {

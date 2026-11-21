@@ -140,7 +140,7 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
             <div className="pointer-events-none absolute top-2 right-2 border border-line bg-bg px-3 py-2 text-xs shadow-sm">
               <div className="font-medium text-ink">{hover.kind === "mid" ? "Quoted midpoint" : "Trade"}</div>
               <div className="num text-ink-secondary">
-                {formatPrice(hover.priceBps)} mUSD{hover.quantity !== undefined ? ` · ${formatShares(hover.quantity)} shares` : ""}
+                {formatPrice(hover.priceBps)}{hover.quantity !== undefined ? ` · ${formatShares(hover.quantity)} shares` : ""}
               </div>
               <div className="num text-faint">{hover.blockTime ? formatUnix(hover.blockTime) : "time pending"}</div>
             </div>

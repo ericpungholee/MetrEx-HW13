@@ -91,12 +91,20 @@ describe("simulation failures in plain words", () => {
 });
 
 describe("price text", () => {
-  it("round-trips mUSD per share and basis points", async () => {
+  it("round-trips cents per share and basis points", async () => {
     const f = await import("./exchange-format");
-    expect(f.formatPrice(430)).toBe("0.0430");
-    expect(f.parsePriceToBps("0.0430")).toBe(430);
-    expect(f.parsePriceToBps("0.5")).toBe(5000);
-    expect(f.parsePriceToBps("1")).toBeNull();
-    expect(f.parsePriceToBps("0.00001")).toBeNull();
+    expect(f.formatPrice(430)).toBe("4.30¢");
+    expect(f.formatPrice(80)).toBe("0.80¢");
+    expect(f.formatPrice(1)).toBe("0.01¢");
+    expect(f.formatPrice(9_999)).toBe("99.99¢");
+    expect(f.formatPrice(415.5)).toBe("4.155¢");
+    expect(f.parsePriceToBps("4.30")).toBe(430);
+    expect(f.parsePriceToBps("0.8")).toBe(80);
+    expect(f.parsePriceToBps("0.80¢")).toBe(80);
+    expect(f.parsePriceToBps("50")).toBe(5000);
+    expect(f.parsePriceToBps(".01")).toBe(1);
+    expect(f.parsePriceToBps("0")).toBeNull();
+    expect(f.parsePriceToBps("100")).toBeNull();
+    expect(f.parsePriceToBps("0.001")).toBeNull();
   });
 });
