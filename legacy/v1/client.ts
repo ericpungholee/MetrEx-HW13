@@ -43,7 +43,7 @@ import {
 } from "@metrex/shared";
 import idlJson from "../../target/idl/metrex.json";
 import type { Metrex } from "../../target/types/metrex";
-import { buildTransactions, packInstructionGroups } from "./batch";
+import { buildTransactions, packInstructionGroups } from "../../app/lib/batch";
 import { MUSD_MINT_HINT, PROGRAM_ID, RPC_URL, USE_FIXTURES } from "./env";
 import { getFixtureState, FIXTURE_VIEWER } from "./fixtures";
 import { explorerTx } from "./format";

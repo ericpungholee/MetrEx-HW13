@@ -6,9 +6,7 @@ import { PublicKey, Transaction, type Keypair, type TransactionInstruction } fro
 import {
   OrderSide,
   catalogByProperty,
-  catalogByScenario,
   findOrderPda,
-  ladderFor,
   randomNonce,
   type BotParams,
   type BookOrder,
@@ -31,6 +29,8 @@ import {
   type MarketBookSnapshot,
   type MarketView,
   type RpcPool,
+  isClosureHeld,
+  readHeartbeat,
 } from "@metrex/server/exchange";
 import { applyToSnapshot, planBotMarket, type BotAction, type BotConfig, type MarketPhase } from "./strategy";
 
@@ -48,6 +48,7 @@ export interface V2WorkerOptions {
   featuredPropertyId: number;
   /** Rounds to look back for cleanup and redemption (latest included). */
   roundsBack?: number;
+  legacyRehearsal?: boolean;
   heartbeat?: boolean;
   log?: (line: string) => void;
 }
@@ -125,8 +126,7 @@ export class ExchangeBotWorker {
     // NO balances, in a fixed handful of RPC calls however many markets exist.
     const state = await rpc.run((c) =>
       this.loader.load(c, {
-        // Multi-peril: one Open round per hazard, so look further back than the single-round design.
-        roundsBack: this.o.roundsBack ?? 8,
+        roundsBack: this.o.roundsBack,
         extraKeys: (markets, config) =>
           this.o.bots.flatMap((b) => {
             const me = b.keypair.publicKey;
@@ -146,9 +146,14 @@ export class ExchangeBotWorker {
       token: (mint, owner) => tokenAmountOf(state.extra.get(ataOf(mint, owner).toBase58())),
     };
 
+    const keeper = readHeartbeat("keeper");
+    const keeperSweeps = keeper.alive && keeper.heartbeat?.status.matching === true;
     const planned: Planned[] = [];
     for (const snap of state.snapshots) {
       const m = snap.market;
+      if (isClosureHeld(snap.round.address)) continue;
+      if (snap.tradingOpen && !catalogByProperty(m.propertyId) && !this.o.legacyRehearsal) continue;
+      if (!snap.tradingOpen && snap.orders.length && keeperSweeps) continue;
       // The post-only clamp needs opposing orders that are still being discovered by the loader.
       if (snap.tradingOpen && state.orderDiscoveryPending.has(m.address.toBase58())) continue;
       // Skew is off on every catalog market (one featured market per hazard, docs/spec-multiperil.md §6)
@@ -220,13 +225,14 @@ export class ExchangeBotWorker {
       const last = bot.lastAction.get(mk);
       if (last !== undefined && now - last < this.o.config.cooldownMs) continue; // RPC catch-up and cooldown
       // Per-market starting quotes and split size (docs/spec-multiperil.md §6); legacy ladder otherwise.
-      const entry = catalogByProperty(m.propertyId) ?? catalogByScenario(m.scenarioId);
+      const entry = catalogByProperty(m.propertyId);
       const actions = planBotMarket({
-        params: ladderFor(m.propertyId, m.scenarioId, bot.params.name, bot.params),
+        params: entry?.ladder.find((p) => p.name === bot.params.name) ?? bot.params,
         config: entry ? { ...this.o.config, splitPairs: entry.splitPairs } : this.o.config,
         maker,
         phase,
         featured,
+        strictPostOnly: !this.o.legacyRehearsal,
         balances: { musd: musdBal, yes, no },
         own,
         others: rows.filter((r) => r.maker !== maker),
@@ -316,10 +322,12 @@ export class ExchangeBotWorker {
     const mk = p.market.address.toBase58();
     const id = `[bot ${p.bot.params.name}]`;
     try {
+      if (isClosureHeld(p.market.round)) return false;
       const sig = await sendExchangeTx(this.o.rpc.connection, ixs, [p.bot.keypair]);
       this.sent++;
       if (orders.length) this.loader.addKnownOrders(p.market.address, orders);
       p.bot.lastAction.set(mk, Date.now());
+      this.lastError = null;
       this.log(`${id} ${what} on ${mk} ${explorerTx(sig)}`);
       return true;
     } catch (e) {
@@ -352,6 +360,7 @@ export class ExchangeBotWorker {
     try {
       for (let i = 0; i < a.orders.length; i += 4) {
         const batch = await Promise.all(a.orders.slice(i, i + 4).map((o) => cancelOrderIx(prog, m, me, collateral, o)));
+        if (isClosureHeld(m.round)) return false;
         const sig = await sendExchangeTx(this.o.rpc.connection, batch, [bot.keypair]);
         this.sent++;
         this.log(`${id} cancel ${batch.length} on ${mk} (${a.reason}) ${explorerTx(sig)}`);

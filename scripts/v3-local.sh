@@ -16,6 +16,7 @@ PORT="${PORT:-8899}"
 export METREX_KEY_DIR="$WORK/keys"
 export METREX_HEARTBEAT_DIR="$WORK/hb"
 export RPC_URL="http://127.0.0.1:$PORT"
+export BOTS_LEGACY_REHEARSAL=1
 unset RPC_URL_BACKUP METREX_ORACLE_DATA_DIR MUSD_MINT || true
 # Settlement data lives only in the oracle's directory; only the oracle steps get this variable.
 ORACLE_ENV=(env "METREX_ORACLE_DATA_DIR=$WORK/oracle-data")
@@ -30,7 +31,7 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; wait 2>/dev/null || true; }
 trap cleanup EXIT
 
-solana-test-validator --reset --quiet --ledger "$WORK/ledger" --rpc-port "$PORT" \
+solana-test-validator --reset --quiet --ledger "$WORK/ledger" --rpc-port "$PORT" --faucet-port "$((PORT + 1000))" --gossip-port "$((PORT + 2000))" \
   --upgradeable-program "$PROGRAM_ID" target/deploy/metrex_exchange.so "$ADMIN" >"$WORK/logs/validator.log" 2>&1 &
 PIDS+=($!)
 for _ in $(seq 1 60); do solana -u "$RPC_URL" cluster-version >/dev/null 2>&1 && break; sleep 1; done
@@ -42,9 +43,9 @@ pnpm -s tsx scripts/setup-devnet-v2.ts --local --create-mint --timeout 120
 step "fund-bots"
 pnpm -s tsx scripts/fund-bots.ts
 step "start v2 bots and keeper"
-pnpm -s --filter bots start:v2 >"$WORK/logs/bots.log" 2>&1 &
+node --import tsx services/bots/src/v2/index.ts >"$WORK/logs/bots.log" 2>&1 &
 PIDS+=($!)
-pnpm -s --filter indexer start:v2 >"$WORK/logs/keeper.log" 2>&1 &
+node --import tsx services/indexer/src/v2.ts >"$WORK/logs/keeper.log" 2>&1 &
 KEEPER=$!
 PIDS+=($KEEPER)
 sleep 3
@@ -58,7 +59,7 @@ step "stop the keeper; reads must keep working"
 kill "$KEEPER"; wait "$KEEPER" 2>/dev/null || true
 sleep 22
 pnpm -s tsx scripts/prove-v3-local.ts --phase reads
-pnpm -s --filter indexer start:v2 >>"$WORK/logs/keeper.log" 2>&1 &
+node --import tsx services/indexer/src/v2.ts >>"$WORK/logs/keeper.log" 2>&1 &
 PIDS+=($!)
 sleep 3
 

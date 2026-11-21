@@ -1,5 +1,5 @@
 // Trade and event index (spec-v2 §7.2): getSignaturesForAddress(program) paged newest-first, each
-// transaction's events decoded once and deduplicated by (signature, instruction, event). Fills are
+// finalized transaction's events decoded once and deduplicated by (signature, instruction, event). Fills are
 // marked finalized or confirming. In memory only: a restart rebuilds the same index from chain.
 
 import type { Connection, PublicKey } from "@solana/web3.js";
@@ -49,7 +49,7 @@ export interface TradeSource {
 export function connectionTradeSource(getConn: () => Connection, address: PublicKey): TradeSource {
   return {
     async signatures(opts) {
-      const rows = await getConn().getSignaturesForAddress(address, opts, "confirmed");
+      const rows = await getConn().getSignaturesForAddress(address, opts, "finalized");
       return rows.map((r) => ({
         signature: r.signature,
         slot: r.slot,
@@ -62,8 +62,8 @@ export function connectionTradeSource(getConn: () => Connection, address: Public
       const out: (TxRow | null)[] = [];
       for (const signature of sigs) {
         try {
-          const t = await getConn().getTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-          out.push(t?.meta ? { signature, slot: t.slot, blockTime: t.blockTime ?? null, logs: t.meta.logMessages ?? [] } : null);
+          const t = await getConn().getTransaction(signature, { commitment: "finalized", maxSupportedTransactionVersion: 0 });
+          out.push(t?.meta && !t.meta.err ? { signature, slot: t.slot, blockTime: t.blockTime ?? null, logs: t.meta.logMessages ?? [] } : null);
         } catch {
           out.push(null);
         }
@@ -97,12 +97,14 @@ interface Entry {
   /** Position in signature paging order (older = smaller), used for same-slot ordering. */
   order: number;
   events: PositionedEvent[] | null;
+  lastAttempt: number;
 }
 
 export class TradeIndex {
   private readonly entries = new Map<string, Entry>();
   private newest: string | undefined;
   private nextOrder = 0;
+  private refreshCount = 0;
   private inflight: Promise<void> | undefined;
   lastRefresh: number | undefined;
   /** True once every transaction of the initial backfill has been decoded; stays true. */
@@ -110,7 +112,7 @@ export class TradeIndex {
 
   constructor(
     private readonly source: TradeSource,
-    private readonly opts: { pageSize?: number; maxBackfill?: number; txPerRefresh?: number } = {},
+    private readonly opts: { pageSize?: number; txPerRefresh?: number } = {},
   ) {}
 
   refresh(): Promise<void> {
@@ -120,13 +122,12 @@ export class TradeIndex {
 
   private async doRefresh(): Promise<void> {
     const pageSize = this.opts.pageSize ?? 1_000;
-    const maxBackfill = this.opts.maxBackfill ?? 20_000;
     const fresh: SigRow[] = [];
     let before: string | undefined;
     for (;;) {
       const page = await this.source.signatures({ before, until: this.newest, limit: pageSize });
       fresh.push(...page);
-      if (page.length < pageSize || (!this.newest && fresh.length >= maxBackfill)) break;
+      if (page.length < pageSize) break;
       before = page[page.length - 1]?.signature;
     }
     // Oldest first so `order` grows with chain order.
@@ -136,17 +137,19 @@ export class TradeIndex {
         e.row.finalized ||= r.finalized;
         continue;
       }
-      this.entries.set(r.signature, { row: r, order: this.nextOrder++, events: r.failed ? [] : null });
+      this.entries.set(r.signature, { row: r, order: this.nextOrder++, events: r.failed ? [] : null, lastAttempt: 0 });
     }
     if (fresh.length) this.newest = fresh[fresh.length - 1]?.signature;
 
-    // Newest first, so the current round's history appears before older rounds'.
+    // Try unseen receipts first. A missing receipt must not starve later work.
     const missing = [...this.entries.values()]
       .filter((e) => e.events === null)
-      .sort((a, b) => b.order - a.order)
+      .sort((a, b) => a.lastAttempt - b.lastAttempt || b.order - a.order)
       .slice(0, this.opts.txPerRefresh ?? 200);
     const txs = await this.source.transactions(missing.map((e) => e.row.signature));
+    this.refreshCount++;
     missing.forEach((e, i) => {
+      e.lastAttempt = this.refreshCount;
       const t = txs[i];
       if (t) e.events = this.source.decode({ ...t, txOrder: e.order });
     });

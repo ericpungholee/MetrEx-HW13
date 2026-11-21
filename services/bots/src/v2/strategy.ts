@@ -62,6 +62,7 @@ export interface BotMarketInput {
   others: ReadonlyArray<BookOrder & { isBot: boolean }>;
   nowMs: number;
   lastRequoteMs: number | undefined;
+  strictPostOnly?: boolean;
 }
 
 export type BotAction =
@@ -114,12 +115,22 @@ export function needsRequote(existing: Pick<OrderAccount, "priceBps" | "remainin
 export function desiredQuotes(i: BotMarketInput): Quote[] {
   const inv = inventory(i.balances, i.own);
   const targets = targetQuotes(i.params, inv.netYes, !i.featured);
-  const clamped = clampQuotes(i.params, targets, i.others, { skewEnabled: !i.featured });
+  const liveOwn = i.own.filter((o) => o.remainingQty > 0n).map((o) => ({
+    id: o.address, maker: o.maker, outcome: o.outcome, side: o.side, priceBps: o.priceBps,
+    remaining: o.remainingQty, seq: o.seq, isBot: true,
+  }));
+  const clamped = clampQuotes(i.params, targets, [...i.others, ...liveOwn], {
+    skewEnabled: !i.featured,
+    ...(i.strictPostOnly ? { respectMinQty: 1n, respectBandBps: BPS_DENOMINATOR } : {}),
+  });
   let musdLeft = inv.musd;
   const out: Quote[] = [];
   for (const q of clamped) {
     if (!inventoryAllows(q, inv.netYes, i.params.toleranceShares)) continue;
-    let size = q.size;
+    const raisesYes = (q.outcome === Outcome.Yes) === (q.side === OrderSide.Buy);
+    const room = i.params.toleranceShares - (raisesYes ? inv.netYes : -inv.netYes);
+    // Two orders can add the same exposure (for example, a YES bid and a NO ask).
+    let size = min(q.size, room / 2n);
     if (q.side === OrderSide.Sell) {
       size = min(size, q.outcome === Outcome.Yes ? inv.yes : inv.no);
     } else {
@@ -138,7 +149,10 @@ export function splitNeeded(i: BotMarketInput): bigint {
   const inv = inventory(i.balances, i.own);
   if (inv.yes >= i.params.topSize && inv.no >= i.params.topSize) return 0n;
   const free = i.balances.musd > i.config.musdReserve ? i.balances.musd - i.config.musdReserve : 0n;
-  return min(i.config.splitPairs, free / PAYOUT_PER_SHARE);
+  const held = inv.yes > inv.no ? inv.yes : inv.no;
+  const limit = (i.params.topSize + i.config.splitPairs) * 2n;
+  if (held >= limit) return 0n;
+  return min(min(i.config.splitPairs, limit - held), free / PAYOUT_PER_SHARE);
 }
 
 export function planBotMarket(i: BotMarketInput): BotAction[] {

@@ -127,6 +127,9 @@ export function fixtureApi(path: string): Record<string, unknown> {
       bookFetchedAt: new Date().toISOString(),
     };
   }
+  if (sub === "/book" && url.searchParams.get("outcome") === "both") {
+    return { market: mk.address, tradingOpen: true, fetchedAt: new Date().toISOString(), yes: book(0), no: book(1) };
+  }
   if (sub === "/book") return { market: mk.address, outcome: url.searchParams.get("outcome") ?? "yes", tradingOpen: true, fetchedAt: new Date().toISOString(), book: book(url.searchParams.get("outcome") === "no" ? 1 : 0) };
   if (sub === "/trades") return { market: mk.address, trades: [] };
   if (sub === "/chart") return { market: mk.address, trades: [], quotes: [], empty: true, indexing: false };

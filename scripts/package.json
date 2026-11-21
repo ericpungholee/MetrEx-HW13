@@ -2,7 +2,7 @@
   "name": "scripts",
   "version": "0.1.0",
   "private": true,
-  "description": "setup-devnet, fund-bots, fund-wallet, seed-demo (D); find-properties (B). Run with pnpm tsx scripts/<name>.ts",
+  "description": "Exchange setup, data verification, funding and rehearsals.",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

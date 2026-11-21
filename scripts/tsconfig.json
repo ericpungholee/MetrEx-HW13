@@ -6,11 +6,8 @@
     ]
   },
   "include": [
-    "setup-devnet.ts",
     "fund-bots.ts",
     "fund-wallet.ts",
-    "seed-demo.ts",
-    "prove-lifecycle.ts",
     "lib/**/*.ts",
     "setup-devnet-v2.ts",
     "prepare-demo-v2.ts",
@@ -18,6 +15,9 @@
     "prove-v4-devnet.ts",
     "prepare-multiperil.ts",
     "normalize-hazards.ts",
-    "find-real-properties.ts"
+    "find-real-properties.ts",
+    "rehearse-multiperil.ts",
+    "start-demo.ts",
+    "rehearse-invalid.ts"
   ]
 }

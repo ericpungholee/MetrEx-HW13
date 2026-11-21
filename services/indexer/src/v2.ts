@@ -1,7 +1,7 @@
 // v2 exchange service (spec-v2 §7): keeper (§7.4), trade index refresh (§7.2) and heartbeat.
 // Uses the dedicated `keeper` keypair (~/.config/metrex/keeper.json), which has no authority.
 // Never reads settlement data: it imports only the oracle-free "@metrex/server/exchange" entry.
-//   pnpm --filter indexer start:v2
+//   pnpm --filter indexer start
 //   KEEPER_POLL_MS (default 2000)   KEEPER_DISABLED=1 (index + heartbeat only)
 //   INDEX_POLL_MS (default 15000): the trade index here only feeds the heartbeat (the app keeps its
 //   own), so it refreshes slowly and fetches at most 25 transactions per pass
@@ -14,6 +14,7 @@ import {
   getRpc,
   Keeper,
   loadKeypair,
+  lockWorker,
   redactUrl,
   TradeIndex,
   connectionTradeSource,
@@ -28,9 +29,10 @@ async function main(): Promise<void> {
   const disabled = envOrUndefined("KEEPER_DISABLED") === "1";
   const rpc = getRpc();
   const keeperKey = loadKeypair("keeper");
+  const unlock = await lockWorker(exchangeProgramId(), [keeperKey.publicKey]);
   const keeper = new Keeper({ rpc, keeper: keeperKey });
   const indexMs = Number(envOrUndefined("INDEX_POLL_MS") ?? 15_000);
-  const index = new TradeIndex(connectionTradeSource(() => rpc.connection, getExchangeProgram(rpc.connection).programId), { pageSize: 200, maxBackfill: 1_000, txPerRefresh: 25 });
+  const index = new TradeIndex(connectionTradeSource(() => rpc.connection, getExchangeProgram(rpc.connection).programId), { pageSize: 200, txPerRefresh: 25 });
   let lastIndex = 0;
   let lastReport = Date.now();
   console.log(`[keeper] program ${exchangeProgramId().toBase58()} rpc ${rpc.endpoints.map((c) => redactUrl(c.rpcEndpoint)).join(", ")}`);
@@ -73,6 +75,7 @@ async function main(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, Math.max(0, pollMs - (Date.now() - started))));
   }
+  unlock();
   console.log("[keeper] stopped");
 }
 

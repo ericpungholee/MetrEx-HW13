@@ -84,7 +84,7 @@ None of these touch a frozen interface. They make the text match the tested code
 | YES | Protection | 1 mUSD per share if the trigger is met |
 | NO | Risk | 1 mUSD per share if it is not |
 
-Every market page shows, verbatim: *"Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage."*
+Every market page shows, verbatim: *"Pays the full amount if the final mapped footprint of the January 2025 Palisades Fire came within 500 m of this property. Pays on fire proximity, not on damage."*
 
 ### 1.2 Principles
 
@@ -268,7 +268,7 @@ For any fill of `f` shares:
 - Taker buying from a SELL order requires `order.price ≤ limit`. Taker selling into a BUY order requires `order.price ≥ limit` (`PriceLimitExceeded`).
 - Taker buy: the taker pays `f × price × 100` to the maker and the escrow sends `f` shares to the taker. Taker sell: the taker sends `f` shares to the maker and the escrow sends `f × price × 100` to the taker.
 
-Client construction: read the book, pick up to `MAX_TAKE_LEVELS` best levels, set every level's `limit_price_bps` to the user's worst acceptable price (best price ± the visible slippage setting), and request one signature.
+Client construction: read the book, pick up to `MAX_TAKE_LEVELS` best levels, filter levels by relative tolerance from the best executable price, and sign each level with its specific price, quantity and sequence, and request one signature.
 
 **Atomicity and partial results, stated in the UI:**
 - If any quoted order was cancelled (account closed) or replaced, the whole transaction fails and nothing moves. The UI refreshes the book, re-quotes once and asks again.
@@ -285,7 +285,7 @@ Both close the Order and its escrow. The entire escrow balance, including any un
 | `cancel_order` | maker | Any time, in any round or market state, including after resolution |
 | `sweep_order` | anyone | Round Closed, **or** `now ≥ trading_ends_at`, **or** order expired, **or** `remaining == 0` |
 
-`sweep_order` creates the maker's ATA if the maker closed it, paid by the caller. Recovery therefore never depends on the maker or the operator. Winning shares locked in an old SELL order are recovered by sweeping or cancelling, then redeemed. The client combines both into one transaction.
+`sweep_order` creates the maker's ATA if the maker closed it, paid by the caller. Recovery therefore never depends on the maker or the operator. Winning shares locked in an old SELL order are recovered by sweeping or cancelling, then redeemed. The client combines sweeps and redemption when they fit in one transaction. Otherwise it confirms sweep batches, re-reads holdings at or after the last confirmation, and then builds the burn. Retry resumes from current on-chain orders and holdings.
 
 ### 5.9 Trading cutoff
 
@@ -475,19 +475,19 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 
 ### 7.1 Book
 
-- Source of truth: `getProgramAccounts(Order)` with a `memcmp` filter on `market`, refreshed every 2 s and after every confirmed transaction the service submits.
+- Source of truth: current Order accounts. A startup scan seeds the cache, then batched account reads track order state. A market sequence change triggers discovery of new orders.
 - Hidden from the book: `remaining == 0`, expired orders, orders whose maker receiving ATA is missing, and markets that are resolved or whose round is closed.
 - Separate YES and NO books. Bids descending and asks ascending, with ties broken by `seq`. Levels are aggregated by price, keeping the order list for building fills.
 - Restart: rebuild entirely from accounts. No local state survives a restart, and none needs to.
 
 ### 7.2 Trades
 
-- Parse `OrderFilled` and other events from `getSignaturesForAddress(program)`, paged back to the round's creation, reusing the stats indexer's paging. Deduplicate by `(signature, instruction index, event index)`.
-- The chart, trade list and volume use **finalized** fills. The UI may show confirmed fills marked "confirming".
+- Parse `OrderFilled` and other events from finalized signatures by market address, or by program address for the worker index. Page through all available history and deduplicate by `(signature, instruction index, event index)`. Missing receipts are retried on later passes.
+- The chart, trade list and volume use **finalized** fills. The app labels history as indexing during its initial backfill.
 
 ### 7.3 Chart (flaw #11)
 
-- **Fills:** points at confirmed execution prices, with a quantity bar per point.
+- **Fills:** points at finalized execution prices, with a quantity bar per point.
 - **Quote history:** best bid, best ask and midpoint series rebuilt by replaying `OrderPlaced`, `OrderFilled` and `OrderCancelled` events through a pure reducer in `@metrex/exchange`. These are real commitments, rebuilt from chain data, and restart-safe.
 - Labels: "Trades" and "Quoted midpoint". If neither exists, show "No quotes or trades yet". Never interpolate or invent points. The quote-history series can be cut (§14).
 
@@ -495,12 +495,12 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 
 - Every tick, for each active market and outcome: while best bid ≥ best ask and the makers differ, submit `match_orders` for the oldest eligible pair in price-time order, with `q = min(remainings)`.
 - Act only on orders seen at `confirmed`. Allow one in-flight match per order. Refetch after any failure. Never assume success.
-- After a round closes: sweep every remaining order of that round's markets in batches (permissionless, keeper pays fees, rent returns to makers).
+- After a round closes, sweep remaining orders in batches. For an operator rehearsal, defer sweeping in the selected round while the closure proof holds the orders (§10.6).
 - Uses a dedicated `keeper` keypair with no authority, kept in `~/.config/metrex/keeper.json`.
 
 ### 7.5 API (Next.js route handlers, reading the chain directly with a short in-memory cache)
 
-`GET /api/rounds/latest`, `GET /api/rounds/:id`, `GET /api/markets?round=`, `GET /api/markets/:id`, `GET /api/markets/:id/book?outcome=yes|no`, `GET /api/markets/:id/trades`, `GET /api/markets/:id/chart`, `GET /api/health` (keeper heartbeat, bots heartbeat, RPC), plus the reused `POST /api/faucet`, `GET /api/evidence/:market`, `GET /api/stats`. Operator: `POST /api/operator/settle-round` (password header, §10.5).
+`GET /api/rounds/latest`, `GET /api/rounds/:id`, `GET /api/markets?round=`, `GET /api/markets/:id`, `GET /api/markets/:id/book?outcome=yes|no|both`, `GET /api/markets/:id/trades`, `GET /api/markets/:id/chart`, `GET /api/health` (keeper heartbeat, bots heartbeat, RPC), plus `GET /api/markets?all=1`, `GET /api/orders?maker=`, `POST /api/faucet` and `GET /api/evidence/:market`. The operator uses `POST /api/operator/settle-round` with the password header and selected round (§10.6).
 
 Reads don't depend on the keeper process, so the book still shows when the keeper is down. A separate notice says matching is paused. When the service is unavailable, the UI shows "unavailable" and never cached or fabricated data presented as live.
 
@@ -605,8 +605,8 @@ Opens the featured market of `Config.latest_round`, where `NEXT_PUBLIC_FEATURED_
 - **Prices:** YES and NO headlines. Each is the book midpoint when both sides exist and the spread is ≤ 1,000 bps, otherwise the last finalized fill, otherwise "—". The label names the source ("mid", "last").
 - **Chart:** §7.3.
 - **Book:** YES/NO toggle, aggregated levels, best bid and ask, spread and depth.
-- **Trade panel:** Buy or Sell, YES or NO, Market or Limit, quantity and limit price. For a market order: a slippage setting with a 200 bps default and the worst price. Before signing, it previews the fill: X fills now at an average of Y, Z rests, and the escrow amount. The app simulates the transaction and shows a program error in plain words without opening Phantom (for example, "Trading has closed for this round").
-- **Wallet:** YES and NO holdings, available and reserved mUSD and shares (computed from the wallet's orders), open orders with cancel buttons, recent fills, and a redeem button. The redeem transaction combines the wallet's sweeps with `redeem`.
+- **Trade panel:** Buy or Sell, YES or NO, Market or Limit, quantity and limit price. For a market order: a relative price tolerance and the worst price, with the defaults defined in spec-multiperil §7.4. Before signing, it previews the fill: X fills now at an average of Y, Z rests, and the escrow amount. The app simulates the transaction and shows a program error in plain words without opening Phantom (for example, "Trading has closed for this round").
+- **Wallet:** YES and NO holdings, available and reserved mUSD and shares (computed from the wallet's orders), open orders with cancel buttons, recent fills, and a redeem button. The app combines sweeps with `redeem` when they fit and uses the resumable workflow in §5.8 for larger claims.
 - **Settlement:** outcome, perimeter, evidence hash recomputed in the browser against the chain, and the redemption amount.
 
 ### 10.4 Displayed amounts (no P&L)
@@ -623,10 +623,10 @@ Available mUSD; YES and NO holdings per market; reserved balances; open orders; 
 
 ### 10.6 Operator `/operator` (password, never linked from the trading UI)
 
-Reuses the `/demo` route's password and lock pattern. It covers round inspection, bot and keeper health, liquidity checks and the **Close and settle** workflow. The workflow is resumable and reads its state from the chain on every step:
+The password-protected route covers round inspection, bot and keeper health, liquidity checks and the **Close and settle** workflow. The workflow is resumable and reads its state from the chain on every step:
 
-1. `close_round`, skipped if already Closed. Wait for finalized.
-2. Show that trading is rejected: simulate a `take_order` on the featured market and display `RoundNotOpen`.
+1. Hold the selected round’s resting orders in local workers, then finalize `close_round` if still Open.
+2. Submit a real signed `take_order` against a preserved order. Verify finalized `RoundNotOpen` and unchanged token balances in its receipt, then release the local hold.
 3. For each market: oracle resolution (§9.3), skipped if resolved.
 4. Show the perimeter and the evidence hash match.
 5. Sweep the remaining orders (keeper).
@@ -636,7 +636,9 @@ Every on-chain step is its own verifiable transaction with an Explorer link.
 
 ---
 
-## 11. Four-minute demo
+## 11. Historical V3 rehearsal
+
+The current multi-peril demo uses the [operations guide](operations.md). The disposable validator still rehearses the original wildfire ladder below.
 
 **Round:** a fresh round with Home #1042 (featured, settles **YES**) and Home #2210 (settles NO, providing the independent NO validation in the same round). Three bots run. One funded, connected Phantom wallet. Nothing is closed in advance.
 
@@ -653,16 +655,11 @@ Numbers at zero bot inventory: buying 300 YES costs 8.6 + 5.0 = 13.6 mUSD. Selli
 
 ---
 
-## 12. Demo repeatability — `scripts/prepare-demo-v2.ts` (idempotent)
+## 12. Replay preparation and restart
 
-**Reset guarantee (program-level).** A reset is a new round, never a mutation. `create_round` writes only `Config.latest_round`, `Config.next_round_id` and the new Round. It requires the previous round to be Closed, but it doesn't touch that round. No instruction reopens a round or closes a Round, Market, mint or vault account. Every market PDA includes its round, so a new round can't reuse a market. Settled markets from earlier rounds stay redeemable forever. An earlier round that closed but didn't fully settle can still be resolved inside its window or expired after it, independently of the new round.
+`pnpm demo` validates the Devnet program, collateral mint, configured authorities and service wallet funding. It reuses open replays and prepares missing rounds from the pinned registry. Explicit rotation and expiry recovery can settle a prior round. A new round receives independent Market PDAs, collateral vaults and mints. Earlier claims stay recoverable in the portfolio. The program permits concurrent rounds. One Open replay per hazard is operator policy.
 
-1. Verify the Devnet genesis hash, the v2 program ID, Config, and that the collateral mint is the existing mUSD mint.
-2. If the latest round is Open: if it is fresh (created by this script, only bot fills) and has more than 2 h to its deadline, reuse it. Otherwise settle it first: close, resolve each market, sweep. Never reopen a round or reuse a resolved market.
-3. Create a new round with the committed dataset hash from `data/scenarios.json` and `trading_ends_at = now + 24 h`. Create markets for properties 1 and 2.
-4. Top up bots, keeper and presenter (reuse `fund-bots.ts` and `fund-wallet.ts`). Wait for the bots to split and quote.
-5. Verify the depth guarantee (§8.3), keeper and bot heartbeats, and that the oracle loads the dataset and the hash matches. Do this without evaluating or printing any outcome.
-6. Print the featured market URL, the operator URL and the checklist.
+The app and workers report readiness once all four books have executable liquidity from the three makers. See the [operations guide](operations.md) for funding and restart commands.
 
 ---
 

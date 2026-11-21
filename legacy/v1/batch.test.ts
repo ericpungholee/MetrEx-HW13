@@ -4,7 +4,7 @@ import { createAssociatedTokenAccountIdempotentInstruction, getAssociatedTokenAd
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { findMarketPda, findOfferPda } from "@metrex/shared";
 import { describe, expect, it } from "vitest";
-import { buildTransactions, MAX_TX_BYTES, measureTransactionSize, packInstructionGroups } from "./batch";
+import { buildTransactions, MAX_TX_BYTES, measureTransactionSize, packInstructionGroups } from "../../app/lib/batch";
 import { buildAcceptOfferIx, buildClaimPayoutIx, createProgram, describeError, extractErrorCode } from "./client";
 
 // Never contacted: Program construction and .instruction() are offline.

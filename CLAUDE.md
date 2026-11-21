@@ -4,18 +4,9 @@
 
 ## What this is
 
-MetrEx is an on-chain exchange for catastrophe risk, built for Hack Western 13 (MLH Best Use of Solana). Each market asks one binary question: did the final mapped footprint of a historical fire (January 2025 Palisades Fire) come within 500 m of a registered property? Fungible YES and NO SPL tokens are minted in pairs against 1 mUSD each in a market vault. They trade in a fully escrowed limit order book with real partial fills. One round closure stops trading on every market of the fire, and an oracle settles from a dataset whose hash was committed on-chain before trading. Winning shares redeem for 1 mUSD.
+MetrEx is an on-chain exchange for catastrophe risk, built for Hack Western 13 (MLH Best Use of Solana). Each market asks a binary question about one historical peril and registered property. The catalog covers wildfire, hurricane, earthquake and tornado. Fungible YES and NO SPL tokens are minted in pairs against 1 mUSD each in a market vault. They trade in a fully escrowed limit order book with real partial fills. One round closure stops trading on every market of the fire, and an oracle settles from a dataset whose hash was committed on-chain before trading. Winning shares redeem for 1 mUSD.
 
-The product has two generations in this repo:
-
-| | v1.1 (deployed, frozen, fallback at `/v1`) | v2 Exchange (deployed, serves `/`) |
-|---|---|---|
-| Model | Per-offer RFQ underwriting, transferable claim rights | Binary outcome tokens + escrowed order book |
-| Program | `programs/metrex` at `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` | `programs/metrex-exchange` at `BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko` |
-| Spec | `docs/spec.md` | **`docs/spec-v2.md`** |
-| Plan | `docs/build-plan.md` (Gates 0–6, all passed) | `docs/build-plan-v2.md` (Gates V0–V6, all passed) |
-
-YES is parametric protection for homeowners dropped by insurers. It pays on fire proximity, not on damage. MetrEx is a risk exchange, not insurance.
+The multi-peril exchange is the active product, at `/`. YES offers parametric protection on a defined historical trigger. The RFQ app is retired. Keep its deployed program, frozen libraries, outstanding claims and regression suite recoverable through [legacy recovery](docs/operations.md#legacy-recovery).
 
 ## Source of truth
 
@@ -68,6 +59,7 @@ pnpm install
 anchor build                 # also regenerates IDLs in target/idl + types
 anchor test                  # local validator, runs tests/*.ts (helpers in tests/helpers/)
 pnpm -r test                 # TS package tests
+pnpm demo                    # Devnet production app and supervised workers
 pnpm --filter app dev        # frontend
 pnpm --filter bots start     # bot worker
 pnpm tsx scripts/<name>.ts   # scripts (all idempotent)
@@ -94,7 +86,7 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 ### Authority and lifecycle
 - Admin, round controller, oracle and collateral mint come **only** from `Config`. No instruction accepts an authority argument.
 - Market coordinates come only from a registered `Property`. One market per (round, property). The property's scenario must equal the round's.
-- **One Open round per hazard (operator policy, spec-multiperil §2.2).** The program allows concurrent rounds of different scenarios. The scripts settle a hazard's stale round before opening its next one. Never present this as an on-chain guarantee. One `close_round` stops every member market of that round only. With `T = closed_at + resolution_timeout_s`, settlement and recovery are separate instructions: the oracle alone resolves (`resolve_market`, only while `now < T`), admin and oracle together invalidate in an emergency (`invalidate_market`), and anyone can expire to Invalid once `now ≥ T` (`expire_market`).
+- **One Open round per hazard (operator policy, spec-multiperil §2.2).** The program allows concurrent rounds of different scenarios. Startup reuses active rounds. Explicit rotation and expiry recovery settle an old round before opening the next replay. Never present this as an on-chain guarantee. One `close_round` stops every member market of that round only. With `T = closed_at + resolution_timeout_s`, settlement and recovery are separate instructions: the oracle alone resolves (`resolve_market`, only while `now < T`), admin and oracle together invalidate in an emergency (`invalidate_market`), and anyone can expire to Invalid once `now ≥ T` (`expire_market`).
 - Contract guarantees and off-chain policy (price-time priority, keeper speed, bot behaviour) are listed separately in spec-v2 §5.10. Never present policy as a guarantee.
 - Redemption burns the signer's own tokens and pays the signer's own mUSD account. There is no redirection and no delegate path.
 - Check mint, owner and market binding on every token account (I10).
@@ -104,7 +96,7 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 - **v2:** after Gate V0, the `metrex_exchange` account layouts, PDA seeds, instruction names and arguments, error codes, events, `MAX_TAKE_LEVELS`/`MAX_MATCH_LEVELS` and the frozen part of `packages/exchange` must not change without an explicit human instruction. Write needed changes in `docs/STATUS.md` and stop that line of work.
 
 ### Data and the oracle
-- Never invent coordinates, fire geometry or dataset hashes. Properties come from `data/DATASET.md` (selected with `scripts/find-properties.ts` under the v1 §8.3 margins). Catalog properties 4–7 are real OpenStreetMap address points from `data/market-properties.json` (`scripts/find-real-properties.ts`, raw OSM responses hash-pinned), and hazard datasets from `data/DATASET-hazards.md` (`scripts/normalize-hazards.ts`, raw hashes pinned).
+- Never invent coordinates, fire geometry or dataset hashes. Properties come from `data/DATASET.md` (selected with `scripts/find-properties.ts` under the v1 §8.3 margins). Catalog properties 6–9 are real OpenStreetMap points corroborated by residential building or parcel records from `data/market-properties.json` (`scripts/find-real-properties.ts`, raw OSM responses hash-pinned), and hazard datasets from `data/DATASET-hazards.md` (`scripts/normalize-hazards.ts`, raw hashes pinned).
 - A point inside a perimeter **hole** is not inside the footprint.
 - Evidence JSON is canonical (sorted keys, no whitespace, integers only), SHA-256 hashed. v2 evidence adds `round` and has `version: 2`. Hurricane, earthquake and tornado markets use evidence `version: 3` (spec-multiperil §5). Missing coverage is refused, never settled NO.
 - The oracle refuses a dataset whose SHA-256 differs from `round.dataset_sha256`.
@@ -118,14 +110,14 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 - Evidence and the perimeter require finalized settlement and a matching on-chain hash.
 - The homepage features the four catalog markets (`packages/exchange/src/catalog.ts`), each from the newest round of its scenario (spec-multiperil §7.2). Non-wildfire payout rules end "…, not on damage." Operator controls live only at password-protected `/operator`.
 - Explorer links use `?cluster=devnet`.
-- Since Gate V5 the exchange is at `/` and the v1 app at `/v1` (tag `v1.1-demo`). Keep `/v1` working.
+- The exchange is the sole active app. Serve historic RFQ recovery from an isolated checkout as documented in the operations guide.
 
 ### Secrets
 - Keypairs live in `~/.config/metrex/*.json`, never in the repo. Only `.env.example` is committed.
 - Never print private keys or secret env values in logs or output.
 
 ### Sensitivity
-- v1 and legacy v2 home labels (properties 1–3) are fictional. The four catalog markets (properties 4–7) use real residential addresses from OpenStreetMap, at the owner's request (spec-multiperil §3). Keep them location-only: never state or imply damage to a real home, never pick a property using damage data (OSM `damage:*`/`destroyed:`/`razed:` tags or DINS), and keep the OSM/ODbL attribution.
+- Historical v2 properties 1–3 are fictional. The active catalog uses verified real residential addresses from OpenStreetMap and county records (spec-multiperil §3). Keep them location-only: never state or imply damage to a real home, never pick a property using damage data (OSM `damage:*`/`destroyed:`/`razed:` tags or DINS), and keep the OSM/ODbL attribution.
 - Never use a real damage-inspection (DINS) record as a demo property. DINS may appear only as aggregate figures.
 
 ## Out of scope — do not build
@@ -137,7 +129,7 @@ Mainnet, real money, other risk types or fire scenarios, damage-based triggers, 
 - v1 (`docs/build-plan.md`): 0–6 all passed on 2026-11-21.
 - v2 (`docs/build-plan-v2.md` §5): V0 Freeze → V1 Binary tokens → V2 Trading protocol (+ R exit checklist) → V3 Engine and liquidity (local) → V4 Devnet (YES and NO) → V5 App replaces v1 → V6 Phantom rehearsal. All passed on 2026-11-21.
 
-Nothing reaches main that breaks v1 tests or the v1 fallback demo before V5.
+Preserve the v1 program and regression tests. Gate critical Devnet changes before merging.
 
 ## Stop and ask a human when
 

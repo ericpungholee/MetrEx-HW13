@@ -30,3 +30,6 @@ export function sendExchangeTx(
 ): Promise<string> {
   return sendTx(conn, ixs, signers, { describe: describeExchangeError, ...opts });
 }
+
+export { lockWorker } from "./worker-lock";
+export { isClosureHeld } from "./closure-hold";

@@ -1,13 +1,15 @@
-// POST /api/faucet { wallet } (spec §9.3): 0.05 devnet SOL from the faucet wallet and
+// POST /api/faucet { wallet }: 0.05 devnet SOL from the faucet wallet and
 // 25,000 mUSD minted by the mint authority. One request per wallet per 10 minutes; hard cap
 // of 100 distinct wallets per process. State is in memory (no database).
 
 import { SystemProgram, type Keypair, type PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import { createMintToInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { loadKeypair } from "../env";
+import { fetchExchangeConfig } from "../exchange/accounts";
+import { getExchangeProgram } from "../exchange/program";
 import { explorerTx } from "../explorer";
 import { getRpc, type RpcPool } from "../rpc";
-import { createAtaIdempotentIx, getSolLamports, musd, musdAta, musdMint, solToLamports } from "../token";
+import { createAtaIdempotentIx, getSolLamports, musd, musdAta, solToLamports } from "../token";
 import { sendTx } from "../tx";
 import { tooMany, unavailable } from "./errors";
 
@@ -112,7 +114,8 @@ export async function faucet(wallet: PublicKey, deps: FaucetDeps = {}): Promise<
     const rpc = deps.rpc ?? getRpc();
     const faucetKp = deps.faucet ?? loadKeypair("faucet");
     const mintAuthority = deps.mintAuthority ?? loadKeypair("mintAuthority");
-    const mint = deps.mint ?? musdMint();
+    const mint = deps.mint ?? (await rpc.run((c) => fetchExchangeConfig(getExchangeProgram(c), "finalized")))?.collateralMint;
+    if (!mint) throw unavailable("Exchange collateral mint unavailable");
     const bal = await rpc.run((c) => getSolLamports(c, faucetKp.publicKey));
     if (bal < FAUCET_SOL_LAMPORTS + FAUCET_RESERVE_LAMPORTS) throw unavailable("Faucet wallet is out of SOL");
     const ixs = faucetInstructions({

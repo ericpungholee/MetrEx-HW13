@@ -28,7 +28,7 @@ export default function config(phase: string): NextConfig {
     turbopack: { root: path.join(__dirname, "..") },
     outputFileTracingRoot: path.join(__dirname, ".."),
     outputFileTracingIncludes: {
-      "/api/**/*": ["../pnpm-workspace.yaml", "../target/idl/metrex.json", "../target/idl/metrex_exchange.json"],
+      "/api/**/*": ["../pnpm-workspace.yaml", "../target/idl/metrex_exchange.json"],
     },
   };
 }

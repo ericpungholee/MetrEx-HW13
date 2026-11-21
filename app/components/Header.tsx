@@ -1,13 +1,13 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
-import { MUSD_UNIT } from "@metrex/shared";
+import { MUSD_UNIT } from "@metrex/exchange";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { requestFaucet, describeError } from "@/lib/client";
-import { fetchHoldings, USE_FIXTURES } from "@/lib/exchange-client";
+import { describeError } from "@/lib/transactions";
+import { fetchHoldings, requestFaucet, USE_FIXTURES } from "@/lib/exchange-client";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 
@@ -26,7 +26,6 @@ const WALLET_LABELS = {
   "no-wallet": "Connect wallet",
 };
 
-// The v1 pages live under /v1 (fallback, unlinked); /operator is never linked (spec-v2 §10.6).
 const NAV = [
   { href: "/", label: "Markets" },
   { href: "/portfolio", label: "Portfolio" },
@@ -59,9 +58,8 @@ export function Header() {
     setFaucetBusy(true);
     setFaucetMsg(null);
     try {
-      const r = await requestFaucet(publicKey);
-      const err = typeof r.body?.error === "string" ? r.body.error : null;
-      setFaucetMsg(r.ok ? "Funds requested. Balance updates shortly." : (err ?? `Faucet unavailable (HTTP ${r.status})`));
+      await requestFaucet(publicKey);
+      setFaucetMsg("Devnet funding confirmed.");
       balances.refresh();
     } catch (e) {
       setFaucetMsg(describeError(e));

@@ -1,5 +1,4 @@
-// v2 market-maker worker (spec-v2 §8). `pnpm --filter bots start:v2`.
-// The v1 worker (`pnpm --filter bots start`) is unchanged and keeps serving the v1 fallback until V5.
+// Exchange market-maker worker (spec-v2 §8). `pnpm --filter bots start`.
 //   BOTS_POLL_MS          tick interval (default 2000)
 //   BOTS_COOLDOWN_MS      per-bot, per-market requote cooldown (default 3000)
 //   BOTS_SPLIT_PAIRS      pairs split when a side runs low (default 2000)
@@ -7,7 +6,7 @@
 //   RPC_MAX_RPS           client-side request cap for this process (unset = no cap); see docs/v2-build-log.md (V4, RPC rate limits)
 
 import { DEMO_BOTS } from "@metrex/exchange";
-import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, redactUrl, type KeypairName } from "@metrex/server/exchange";
+import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, lockWorker, redactUrl, type KeypairName } from "@metrex/server/exchange";
 import { assertNoOracleData } from "./guard";
 import { DEFAULT_BOT_CONFIG } from "./strategy";
 import { ExchangeBotWorker, type V2Bot } from "./worker";
@@ -37,11 +36,16 @@ async function main(): Promise<void> {
     if (!key) throw new Error(`no keypair for bot ${params.name}`);
     return { params, keypair: loadKeypair(key), lastAction: new Map() };
   });
+  const unlock = await lockWorker(exchangeProgramId(), bots.map((bot) => bot.keypair.publicKey));
   console.log(`[bots v2] program ${exchangeProgramId().toBase58()} rpc ${rpc.endpoints.map((c) => redactUrl(c.rpcEndpoint)).join(", ")}`);
   console.log(`[bots v2] poll ${pollMs} ms, cooldown ${config.cooldownMs} ms, featured property ${featuredPropertyId}`);
   for (const b of bots) console.log(`[bots v2] MetrEx market maker ${b.params.name}: ${b.keypair.publicKey.toBase58()}`);
 
-  const worker = new ExchangeBotWorker({ rpc, bots, config, featuredPropertyId });
+  const legacyRehearsal = envOrUndefined("BOTS_LEGACY_REHEARSAL") === "1";
+  if (legacyRehearsal && !["127.0.0.1", "localhost", "[::1]"].includes(new URL(rpc.connection.rpcEndpoint).hostname)) {
+    throw new Error("The legacy ladder is for local validator rehearsals only");
+  }
+  const worker = new ExchangeBotWorker({ rpc, bots, config, featuredPropertyId, legacyRehearsal });
   let stopping = false;
   let wake: (() => void) | undefined;
   const stop = (sig: string) => {
@@ -52,6 +56,7 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => stop("SIGINT"));
   process.on("SIGTERM", () => stop("SIGTERM"));
+  let failedTicks = 0;
   let lastReport = Date.now();
   while (!stopping) {
     const started = Date.now();
@@ -61,10 +66,12 @@ async function main(): Promise<void> {
     }
     try {
       await worker.tick();
+      failedTicks = 0;
     } catch (e) {
+      failedTicks++;
       console.log(`[bots v2] tick failed: ${(e as Error).message}`);
     }
-    const wait = Math.max(0, pollMs - (Date.now() - started));
+    const wait = Math.max(0, Math.min(15_000, pollMs * 2 ** Math.min(failedTicks, 4)) - (Date.now() - started));
     await new Promise<void>((resolve) => {
       const t = setTimeout(resolve, wait);
       wake = () => {
@@ -74,6 +81,7 @@ async function main(): Promise<void> {
     });
   }
   await worker.drain();
+  unlock();
   console.log("[bots v2] stopped");
 }
 

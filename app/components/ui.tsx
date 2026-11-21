@@ -1,23 +1,8 @@
 "use client";
 
-import { HISTORICAL_REPLAY_LABEL, SCENARIO_PALISADES_2025, TRIGGER_WORDING, type MarketDisplayState } from "@metrex/shared";
 import type { PublicKey } from "@solana/web3.js";
 import type { ReactNode } from "react";
 import { explorerAddress, explorerTx, formatMusd, shortKey } from "@/lib/format";
-
-const STATUS_TONE: Record<MarketDisplayState, string> = {
-  "Accepting offers": "text-ink",
-  Funded: "text-up",
-  "Closed — awaiting oracle": "text-warn",
-  "Resolved: triggered": "text-down",
-  "Resolved: not triggered": "text-up",
-  Voided: "text-dim",
-};
-
-/** Quiet status label — color carries meaning, no pill chrome. */
-export function StatusPill({ state }: { state: MarketDisplayState }) {
-  return <span className={`text-sm font-medium ${STATUS_TONE[state]}`}>{state}</span>;
-}
 
 export function Pill({ children, tone = "dim" }: { children: ReactNode; tone?: "dim" | "up" | "down" | "warn" | "info" }) {
   const cls = {
@@ -28,16 +13,6 @@ export function Pill({ children, tone = "dim" }: { children: ReactNode; tone?: "
     info: "text-ink-secondary",
   }[tone];
   return <span className={`text-sm font-medium ${cls}`}>{children}</span>;
-}
-
-/** Spec §8.5 — every market is labelled as historical replay. */
-export function ReplayLabel({ className = "" }: { className?: string }) {
-  return <p className={`text-sm text-dim ${className}`}>{HISTORICAL_REPLAY_LABEL}</p>;
-}
-
-/** Spec §3.3 — exact trigger sentence on every market page. */
-export function TriggerWording() {
-  return <p className="text-[15px] leading-relaxed text-ink-secondary">{TRIGGER_WORDING}</p>;
 }
 
 export function Musd({ value, className = "" }: { value: bigint | { toString(): string }; className?: string }) {
@@ -120,25 +95,4 @@ export function Callout({ children, tone = "neutral" }: { children: ReactNode; t
     warn: "bg-warn-soft border-warn/20",
   }[tone];
   return <div className={`border px-5 py-4 ${cls}`}>{children}</div>;
-}
-
-export const SCENARIO_NAMES: Record<number, string> = {
-  [SCENARIO_PALISADES_2025]: "Palisades Fire, January 2025",
-};
-
-export function scenarioName(id: number): string {
-  return SCENARIO_NAMES[id] ?? `Scenario ${id}`;
-}
-
-/** Funding progress: activated fill over target. */
-export function FundingBar({ activated, target, pending = 0n }: { activated: bigint; target: bigint; pending?: bigint }) {
-  const pct = (x: bigint) => (target === 0n ? 0 : Math.min(100, Number((x * 10_000n) / target) / 100));
-  return (
-    <div className="h-1.5 w-full overflow-hidden bg-bg-muted">
-      <div className="flex h-full">
-        <div className="h-full bg-ink transition-[width] duration-300" style={{ width: `${pct(activated)}%` }} />
-        {pending > 0n && <div className="h-full bg-ink/30" style={{ width: `${pct(pending)}%` }} />}
-      </div>
-    </div>
-  );
 }

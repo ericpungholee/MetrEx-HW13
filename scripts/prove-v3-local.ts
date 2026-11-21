@@ -157,10 +157,16 @@ async function phaseDemo(): Promise<void> {
     matched = (await p.account.order.fetch(jp.order)).remainingQty.toString() === "0";
   }
   assert(matched, "keeper did not match the crossed pair within 30 s");
-  await sleep(6_000); // give a duplicate match every chance to appear
   const idx = new TradeIndex(connectionTradeSource(() => conn, p.programId));
+  const matchingFills = () => idx.trades(featured.address.toBase58()).filter((t) =>
+    t.fill.buyOrder === jp.order.toBase58() && t.fill.sellOrder === placed.order.toBase58(),
+  );
+  for (let i = 0; i < 45 && !matchingFills().length; i++) {
+    await idx.refresh();
+    if (!matchingFills().length) await sleep(1_000);
+  }
   await idx.refresh();
-  const pair = idx.trades(featured.address.toBase58()).filter((t) => t.fill.buyOrder === jp.order.toBase58() && t.fill.sellOrder === placed.order.toBase58());
+  const pair = matchingFills();
   assert.equal(pair.length, 1, `expected one match, got ${pair.length}`);
   assert.equal(pair[0]!.fill.priceBps, 410, "older (resting) price");
   assert.equal(pair[0]!.fill.quantity, 20n);

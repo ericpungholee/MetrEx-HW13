@@ -12,6 +12,7 @@ import {
   fetchExchangeConfig,
   fetchExchangeMarket,
   fetchMarketsOfRound,
+  fetchOrders,
   fetchProperty,
   fetchRound,
   type ConfigView,
@@ -68,9 +69,11 @@ const loader = new ExchangeStateLoader();
 let stateCache: { at: number; value: Promise<ExchangeState | null> } | undefined;
 function liveState(): Promise<ExchangeState | null> {
   if (!stateCache || Date.now() - stateCache.at > STATE_TTL_MS) {
-    // Multi-peril: one Open round per hazard, so read further back (docs/spec-multiperil.md §2.2).
-    const value = getRpc().run((c) => loader.load(c, { roundsBack: 8 }));
-    stateCache = { at: Date.now(), value };
+    const value = getRpc().run((c) => loader.load(c));
+    stateCache = { at: Infinity, value };
+    void value.then(() => {
+      if (stateCache?.value === value) stateCache.at = Date.now();
+    }, () => undefined);
     value.catch(() => {
       if (stateCache?.value === value) stateCache = undefined;
     });
@@ -106,7 +109,7 @@ async function tradeIndex(mk: PublicKey, waitMs = 1_500): Promise<TradeIndex | n
   const key = mk.toBase58();
   let idx = tradeIndexes.get(key);
   if (!idx) {
-    idx = new TradeIndex(connectionTradeSource(() => getRpc().connection, mk), { pageSize: 200, maxBackfill: 2_000, txPerRefresh: 25 });
+    idx = new TradeIndex(connectionTradeSource(() => getRpc().connection, mk), { pageSize: 200, txPerRefresh: 25 });
     tradeIndexes.set(key, idx);
   }
   const index = idx;
@@ -237,7 +240,7 @@ export const handleFeatured = (): Promise<Response> =>
           if (r.scenarioId !== c.scenarioId) continue;
           const snap = state.snapshots.find((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId);
           if (!snap) continue;
-          const { yes } = marketBooks(snap.book);
+          const { yes, no } = marketBooks(snap.book);
           return {
             propertyId: c.propertyId,
             round: { address: r.address, roundId: r.roundId, label: r.label, state: roundState(r, Date.now()), tradingEndsAt: r.tradingEndsAt, closedAt: r.closedAt },
@@ -245,9 +248,10 @@ export const handleFeatured = (): Promise<Response> =>
             yesBestBidBps: yes.bestBidBps,
             yesBestAskBps: yes.bestAskBps,
             yesAskDepth: yes.askDepth,
+            noBestAskBps: no.bestAskBps,
           };
         }
-        return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n };
+        return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n, noBestAskBps: null };
       }),
     );
     return { markets };
@@ -266,7 +270,17 @@ export const handleRound = (id: string | undefined): Promise<Response> =>
 /** GET /api/markets?round= — defaults to the latest round. */
 export const handleMarkets = (req: Request): Promise<Response> =>
   run(async () => {
-    const q = new URL(req.url).searchParams.get("round");
+    const query = new URL(req.url).searchParams;
+    if (query.get("all") === "1") {
+      const state = await liveState();
+      if (!state) throw unavailable("Exchange is not configured on this cluster");
+      return { rounds: await Promise.all(state.rounds.map(async (round) => ({
+        ...round,
+        state: roundState(round, Date.now()),
+        markets: await Promise.all(state.snapshots.filter((s) => s.round.address.equals(round.address)).map((s) => marketSummary(s.market))),
+      }))) };
+    }
+    const q = query.get("round");
     const round = q ? key(q, "round") : (await config()).latestRound;
     const markets = await marketsOf(round);
     return { round, markets: await Promise.all(markets.map(marketSummary)) };
@@ -300,6 +314,7 @@ export const handleMarket = (id: string | undefined): Promise<Response> =>
       indexing: !idx,
       confirmingFills: fills.length - finalized.length,
       bookFetchedAt: new Date(snap.fetchedAt).toISOString(),
+      settlementDeadline: snap.round.closedAt > 0n ? snap.round.closedAt + (await config()).resolutionTimeoutS : null,
     };
   });
 
@@ -308,19 +323,25 @@ export const handleBook = (req: Request, id: string | undefined): Promise<Respon
   run(async () => {
     const mk = key(id, "market address");
     const o = new URL(req.url).searchParams.get("outcome") ?? "yes";
-    if (o !== "yes" && o !== "no") throw badRequest("outcome must be yes or no");
+    if (o !== "yes" && o !== "no" && o !== "both") throw badRequest("outcome must be yes, no or both");
     const snap = await snapshotFor(mk);
     if (!snap) throw notFound("Market not found");
     const books = marketBooks(snap.book);
-    return { market: mk, outcome: o, tradingOpen: snap.tradingOpen, fetchedAt: new Date(snap.fetchedAt).toISOString(), book: bookBody(o === "yes" ? books.yes : books.no) };
+    const state = { market: mk, tradingOpen: snap.tradingOpen, fetchedAt: new Date(snap.fetchedAt).toISOString() };
+    return o === "both"
+      ? { ...state, yes: bookBody(books.yes), no: bookBody(books.no) }
+      : { ...state, outcome: o, book: bookBody(o === "yes" ? books.yes : books.no) };
   });
 
 /** GET /api/markets/:id/trades — fills, each finalized or confirming (§7.2). */
-export const handleTrades = (id: string | undefined): Promise<Response> =>
+export const handleTrades = (id: string | undefined, req?: Request): Promise<Response> =>
   run(async () => {
     const mk = key(id, "market address");
     const idx = await tradeIndex(mk);
-    return { market: mk, indexing: !idx, trades: idx ? idx.trades(mk.toBase58()).reverse().slice(0, 200) : [] };
+    const wallet = req && new URL(req.url).searchParams.get("wallet");
+    const rows = idx?.trades(mk.toBase58()).reverse() ?? [];
+    const trades = wallet ? rows.filter((t) => t.fill.buyer === wallet || t.fill.seller === wallet) : rows.slice(0, 200);
+    return { market: mk, indexing: !idx, trades };
   });
 
 /** GET /api/markets/:id/chart — "Trades" and "Quoted midpoint" from finalized events (§7.3). */
@@ -340,7 +361,21 @@ export const handleChart = (id: string | undefined): Promise<Response> =>
  */
 export const handleOrders = (req: Request): Promise<Response> =>
   run(async () => {
-    const maker = key(new URL(req.url).searchParams.get("maker") ?? undefined, "maker");
+    const query = new URL(req.url).searchParams;
+    const maker = key(query.get("maker") ?? undefined, "maker");
+    const marketParam = query.get("market");
+    if (marketParam) {
+      const market = key(marketParam, "market");
+      return getRpc().run(async (c) => {
+        const p = getExchangeProgram(c);
+        const m = await fetchExchangeMarket(p, market);
+        if (!m) throw notFound("Market not found");
+        const r = await fetchRound(p, m.round);
+        if (!r) throw notFound("Round not found");
+        const orders = await fetchOrders(p, { market, maker });
+        return { orders: orders.map((o) => ({ ...o, marketOutcome: m.outcome, tradingOpen: roundState(r, Date.now()) === "open" })) };
+      });
+    }
     const state = await liveState();
     if (!state) throw unavailable("Exchange is not configured on this cluster");
     const m = maker.toBase58();
@@ -377,7 +412,7 @@ export const handleHealth = (): Promise<Response> =>
       /* reported as not ok */
     }
     const keeper = readHeartbeat("keeper");
-    return { rpc, keeper, bots: readHeartbeat("bots"), matching: keeper.alive ? "running" : "paused", marketMakers: marketMakers() };
+    return { rpc, keeper, bots: readHeartbeat("bots"), matching: keeper.alive && keeper.heartbeat?.status.matching === true ? "running" : "paused", marketMakers: marketMakers() };
   });
 
 /** Lookup helper for scripts and the operator page. */

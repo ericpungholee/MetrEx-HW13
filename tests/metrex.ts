@@ -954,7 +954,7 @@ describe("metrex", () => {
       const { getEvidence } = await import("../packages/server/src/oracle/evidence");
       const { resolveMarket: runOracle } = await import("../packages/server/src/oracle/resolve");
       const { closeMarket: runController } = await import("../packages/server/src/routes/close");
-      const { handleEvidence } = await import("../packages/server/src/routes/http");
+      const { handleEvidence } = await import("../packages/server/src/routes/legacy-http");
       const { RpcPool } = await import("../packages/server/src/rpc");
       const rpc = new RpcPool([conn.rpcEndpoint]);
       const dir = mkdtempSync(join(tmpdir(), "metrex-integration-"));
@@ -1492,7 +1492,7 @@ describe("metrex", () => {
 
     it("app purchase binds the signed quote and rolls back when the quoted amount differs", async () => {
       process.env.NEXT_PUBLIC_RPC_URL = conn.rpcEndpoint;
-      const { buyPosition } = await import("../app/lib/client");
+      const { buyPosition } = await import("../legacy/v1/client");
       const { KeypairWallet } = await import("../packages/server/src/program");
       const f = await simpleMarket();
       const o = await placeOffer(f.market, f.uw, f.uwToken, coverage, 400);

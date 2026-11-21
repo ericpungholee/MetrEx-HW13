@@ -89,8 +89,8 @@ describe("historical risk overlays (spec-multiperil §5)", () => {
   }[] = JSON.parse(readFileSync(join(DATA, "market-properties.json"), "utf8"));
   const cases = [
     { propertyId: 7, kind: "wildfire", file: "palisades-2025.geojson" },
-    { propertyId: 4, kind: "hurricane", file: "atlantic-hurricanes-2017-09.geojson" },
-    { propertyId: 5, kind: "earthquake", file: "south-napa-2014-08.json" },
+    { propertyId: 8, kind: "hurricane", file: "atlantic-hurricanes-2017-09.geojson" },
+    { propertyId: 9, kind: "earthquake", file: "south-napa-2014-08.json" },
     { propertyId: 6, kind: "tornado", file: "central-iowa-tornadoes-2024-05.geojson" },
   ] as const;
 

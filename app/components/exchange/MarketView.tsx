@@ -329,12 +329,14 @@ export function MarketView({ market, initialOutcome }: {
           <section aria-labelledby="rules-title" className="space-y-2 border-t border-line pt-4">
             <h2 id="rules-title" className="text-lg font-semibold tracking-tight">Market rules</h2>
             <p className="text-sm text-ink-secondary">{payoutRule(m)}</p>
-            {c && <p className="text-sm text-dim">Historical coverage · {c.month}</p>}
+            {c && <p className="text-sm text-dim">Historical replay · {c.month} ({c.coverageStart.slice(0, 10)} to {c.coverageEndExclusive.slice(0, 10)}, end exclusive)</p>}
+            <p className="text-sm text-dim">Devnet trading opened {new Date(Number(r.createdAt) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC.</p>
             {deadlines && <p className="text-sm text-dim">Devnet trading deadline {deadlines} UTC</p>}
             {c && <p className="text-sm text-dim">Settlement source · {c.source}</p>}
           </section>
           <section id="settlement" aria-labelledby="settlement-title" className="scroll-mt-20 space-y-2 border-t border-line pt-4">
             <h2 id="settlement-title" className="text-lg font-semibold tracking-tight">Settlement</h2>
+            {info.data.settlementDeadline && <p className="text-sm text-dim">Oracle settlement deadline {new Date(Number(info.data.settlementDeadline) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC.</p>}
             <Settlement key={`${m.address}:${m.evidenceHash}`} info={info.data} />
             <details className="text-xs text-dim">
               <summary className="cursor-pointer">On-chain details</summary>

@@ -2,7 +2,7 @@
 
 import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { useMemo } from "react";
-import type { WalletSigner } from "./client";
+import type { WalletSigner } from "./transactions";
 
 export function useWalletSigner(): WalletSigner | undefined {
   const wallet = useAnchorWallet();

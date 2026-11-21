@@ -64,6 +64,28 @@ describe("trade index (§7.2)", () => {
     expect(idx.trades("M").every((t) => t.finalized)).toBe(true);
   });
 
+  it("decodes later receipts while an unavailable receipt is retried, and backfills it on recovery", async () => {
+    const chain = fakeChain();
+    chain.push("older", 10, [chain.fill(1n, 10)]);
+    chain.push("missing", 11, [chain.fill(2n, 12)]);
+    let available = false;
+    const idx = new TradeIndex({
+      ...chain.source,
+      async transactions(sigs) {
+        const result = await chain.source.transactions(sigs);
+        return result.map((row) => row?.signature === "missing" && !available ? null : row);
+      },
+    }, { txPerRefresh: 1 });
+    await idx.refresh();
+    expect(idx.backfilled).toBe(false);
+    await idx.refresh();
+    expect(idx.trades("M").map((t) => t.signature)).toEqual(["older"]);
+    available = true;
+    await idx.refresh();
+    expect(idx.backfilled).toBe(true);
+    expect(idx.trades("M").map((t) => t.signature)).toEqual(["older", "missing"]);
+  });
+
   it("a restart rebuilds an identical index", async () => {
     const c = fakeChain();
     for (let i = 0; i < 7; i++) c.push(`s${i}`, 20 + Math.floor(i / 2), [c.fill(BigInt(i + 1), 400 + i)]);

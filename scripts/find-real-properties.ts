@@ -7,7 +7,7 @@
 // Raw responses are saved under data/raw/osm-addresses/ and pinned by SHA-256 in
 // data/DATASET-hazards.md, so the selection is reproducible offline. Each candidate is a residential
 // address point (addr:housenumber + addr:street, no shop/amenity/office/tourism/craft tag, building
-// tag absent or residential). It is re-evaluated exactly as the oracle will, at its integer
+// classification from a residential building tag or a verified county parcel). It is re-evaluated exactly as the oracle will, at its integer
 // micro-degree coordinates. No damage-inspection (DINS) or other damage data is used: addresses with
 // OSM damage:* or lifecycle (destroyed:, razed:, …) tags are excluded, and outcomes come only from
 // the hazard datasets, which measure proximity or intensity, not damage.
@@ -16,10 +16,8 @@
 //   7 wildfire    YES  inside the final Palisades footprint, not in a hole (≥ 500 m from flipping to
 //                      NO, since the trigger extends 500 m past every ring). The lattice picks also
 //                      required ≥ 300 m from every ring; no undamaged-tagged OSM home meets that.
-//   4 hurricane   NO   outside every Sept 2017 64-kt swath by ≥ 10 km
-//   5 earthquake  YES  nearest-node MMI ≥ 8.1 (node ≤ 1 km) and every node within 750 m at ≥ 8.0
-//                      (the lattice picks used 1.5 km; OSM has too few Napa addresses for that, and
-//                      real address points are accurate to tens of metres, not ~100 m)
+//   8 hurricane   NO   outside every Sept 2017 64-kt swath by ≥ 10 km
+//   9 earthquake  YES  nearest-node MMI ≥ 8.1 and node ≤ 1 km, at an assessor-confirmed dwelling
 //   6 tornado     YES  ≤ 150 m from an EF2+ centerline (trigger 500 m)
 // Within each window the qualifying address nearest the anchor wins; ties break on OSM type and id.
 // The label "<housenumber> <street>" must fit the 32-byte on-chain label.
@@ -33,6 +31,7 @@ import { evaluate, evaluateHazard, geodesicMeters, type IntensityGridDataset } f
 import { loadHazardDataset, loadScenarioGeometry, loadScenarioRegistry } from "@metrex/geo/node";
 
 const DATA = join(__dirname, "..", "data");
+const NAPA_PARCELS = join(DATA, "raw", "napa-residential-parcels.json");
 const RAW = join(DATA, "raw", "osm-addresses");
 const OVERPASS = process.env.OVERPASS_URL
   ? [process.env.OVERPASS_URL]
@@ -78,7 +77,7 @@ const AREAS: Area[] = [
   },
   {
     key: "miami",
-    propertyId: 4,
+    propertyId: 8,
     scenarioId: 2,
     triggerDistanceM: 0,
     place: "Miami, Florida", state: "Florida",
@@ -93,7 +92,7 @@ const AREAS: Area[] = [
   },
   {
     key: "napa",
-    propertyId: 5,
+    propertyId: 9,
     scenarioId: 3,
     triggerDistanceM: 0,
     place: "Napa, California", state: "California",
@@ -108,10 +107,7 @@ const AREAS: Area[] = [
         return { ok: false, computed: null, triggered: false }; // not covered
       }
       if (!("mmi_x10" in r.computed) || r.computed.mmi_x10 < 81) return { ok: false, computed: r.computed, triggered: r.triggered };
-      const lat = lat_e6 / 1e6;
-      const lon = lon_e6 / 1e6;
-      const ok = quake.nodes.every(([x, y, mmi]) => geodesicMeters(lat, lon, y / 1e4, x / 1e4) > 750 || mmi >= 80);
-      return { ok: ok && r.triggered, computed: r.computed, triggered: r.triggered };
+      return { ok: r.triggered, computed: r.computed, triggered: r.triggered };
     },
   },
   {
@@ -137,18 +133,16 @@ const RESIDENTIAL_BUILDINGS = new Set(["house", "detached", "residential", "semi
 const LIFECYCLE = /^(razed|destroyed|demolished|disused|abandoned|was|removed|ruins|construction|proposed):/;
 const baseKey = (k: string) => k.replace(LIFECYCLE, "");
 /**
- * Residential evidence: a residential building tag, or a bare address point carrying only addr:*
- * and source metadata. Any non-residential tag, prefixed or not, disqualifies; `building=yes` is
+ * Residential evidence comes from a residential building tag or the county assessor. Any non-residential tag, prefixed or not, disqualifies; `building=yes` is
  * ambiguous and excluded. Any damage or lifecycle tag (damage:*, destroyed:, razed:, …) also
  * disqualifies: those come from damage inspections, and no damage data may pick a property.
  */
-function isResidential(t: Record<string, string>): boolean {
+function isResidential(t: Record<string, string>, verifiedParcel: boolean): boolean {
   const keys = Object.keys(t);
   if (keys.some((k) => k.startsWith("damage:") || LIFECYCLE.test(k))) return false;
   if (keys.some((k) => !k.startsWith("addr:") && NON_RESIDENTIAL.includes(baseKey(k)))) return false;
   const buildings = keys.filter((k) => baseKey(k) === "building").map((k) => t[k]!);
-  if (buildings.length) return buildings.every((b) => RESIDENTIAL_BUILDINGS.has(b));
-  return keys.every((k) => k.startsWith("addr:") || k === "source" || k.startsWith("source:") || k === "check_date");
+  return buildings.length ? buildings.every((b) => RESIDENTIAL_BUILDINGS.has(b)) : verifiedParcel;
 }
 
 interface OsmElement {
@@ -193,6 +187,27 @@ async function fetchArea(a: Area): Promise<void> {
   console.log(`fetched ${a.key}: ${parsed.elements.length} elements, sha256 ${createHash("sha256").update(text).digest("hex")}`);
 }
 
+const osmHashes: Record<string, string> = {
+  "johnston-des-moines": "8fef59fc75f25a2f525d49eba0f4826348dc29667475b294e9bc24f2e0fbbd4e",
+  "miami": "e05baca343ea6337c887ab7d1a521c65709f665296ae587098b4ce351f815ddd",
+  "napa": "a097e53a065c3075b94538a635076ee0213dae4bea10a20faf49906dd430f7de",
+  "pacific-palisades": "dc754f97e4b78eab8dc7e564242e01592d04d89def4e86868bf4f4cd595182ee",
+};
+
+const parcelKey = (address: string) => address.trim().toUpperCase().replace(/ COURT$/, " CT").replace(/ CIRCLE$/, " CIR").replace(/ ROAD$/, " RD").replace(/ LANE$/, " LN");
+function napaResidentialAddresses(): Set<string> {
+  const raw = readFileSync(NAPA_PARCELS);
+  if (createHash("sha256").update(raw).digest("hex") !== "3eeebc23a5109c8587c9b78724134dce17a51d8867b39808a9790b6d0d6f3bda") {
+    throw new Error("Napa residential parcel pin mismatch");
+  }
+  const response = JSON.parse(raw.toString("utf8")) as {
+    features: { attributes: { StreetAddr: string; NumUnitsResidential: number | null; DwellingUnitsCount: number | null } }[];
+  };
+  return new Set(response.features.flatMap(({ attributes: a }) =>
+    (a.NumUnitsResidential ?? 0) > 0 || (a.DwellingUnitsCount ?? 0) > 0 ? [parcelKey(a.StreetAddr)] : [],
+  ));
+}
+
 const e6 = (v: number) => Math.round(v * 1e6);
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -204,12 +219,14 @@ async function main(): Promise<void> {
       await new Promise((r) => setTimeout(r, 2_000)); // be polite to the public Overpass instance
     }
   }
+  const napaAddresses = napaResidentialAddresses();
   const out: { property_id: number; label: string; lat_e6: number; lon_e6: number; scenario_id: number; trigger_distance_m: number; place: string; osm: string }[] = [];
   for (const a of AREAS) {
     const path = join(RAW, `${a.key}.json`);
     if (!existsSync(path)) throw new Error(`missing ${path}; run with --fetch`);
     const raw = readFileSync(path, "utf8");
     const sha = createHash("sha256").update(raw).digest("hex");
+    if (sha !== osmHashes[a.key]) throw new Error(`OSM source pin mismatch: ${a.key} (${sha})`);
     const elements = (JSON.parse(raw) as { elements: OsmElement[] }).elements;
     let best: { el: OsmElement; label: string; lat_e6: number; lon_e6: number; dist: number; computed: unknown; triggered: boolean } | null = null;
     // Residential candidates, nearest the anchor first (ties on OSM type/id); the first that meets
@@ -218,10 +235,10 @@ async function main(): Promise<void> {
     const candidates = elements
       .flatMap((el) => {
         const t = el.tags ?? {};
-        if (!isResidential(t)) return [];
+        const label = `${t["addr:housenumber"]} ${t["addr:street"]}`;
+        if (!isResidential(t, a.key === "napa" && napaAddresses.has(parcelKey(label)))) return [];
         const pos = el.center ?? (el.lat !== undefined && el.lon !== undefined ? { lat: el.lat, lon: el.lon } : null);
         if (!pos) return [];
-        const label = `${t["addr:housenumber"]} ${t["addr:street"]}`;
         if (bytes(label) > 32 || !/^\d+[A-Za-z]?$/.test(t["addr:housenumber"] ?? "")) return [];
         const lat_e6 = e6(pos.lat);
         const lon_e6 = e6(pos.lon);

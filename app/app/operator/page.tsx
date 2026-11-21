@@ -8,7 +8,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { HAZARD_LABEL, catalogByScenario } from "@metrex/exchange";
-import { fetchFeatured, fetchHealth, fetchLatestRound, fetchMarketInfo, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundInfo, type RoundWithMarkets } from "@/lib/exchange-client";
+import { fetchAllRounds, fetchFeatured, fetchHealth, fetchMarketInfo, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundInfo, type RoundWithMarkets } from "@/lib/exchange-client";
 import { marketState, marketTitle } from "@/lib/exchange-format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat } from "@/components/ui";
@@ -26,16 +26,13 @@ type Body = Record<string, unknown>;
 function describe(action: OperatorAction, ok: boolean, body: Body): LogLine {
   if (!ok) return { action, ok, text: String(body.error ?? "Step failed"), links: [] };
   if (action === "reject") {
-    if (body.rejected === null) {
-      return { action, ok: true, text: "Round closure is finalized. Skipped the trade simulation because all resting orders are gone.", links: [] };
-    }
-    if (body.rejected === true && body.roundNotOpen === true) {
-      return { action, ok: true, text: "Verified that the program rejects trades after closure.", links: [] };
-    }
-    const text = body.rejected === false
-      ? "A trade still simulated successfully. Do not settle yet."
-      : `Closure proof failed. ${String(body.error ?? "Retry the trade simulation.")}`;
-    return { action, ok: false, text, links: [] };
+    const ok = body.rejected === true && body.roundNotOpen === true && typeof body.explorer === "string";
+    return {
+      action,
+      ok,
+      text: ok ? "Finalized trade rejected after closure. Token balances were unchanged." : String(body.error ?? "Closure verification failed."),
+      links: ok ? [{ href: String(body.explorer), label: "Closure rejection" }] : [],
+    };
   }
   if (action === "status") {
     return {
@@ -62,15 +59,8 @@ const LABELS: Record<OperatorAction, string> = {
   status: "Check settlement",
 };
 
-const ROUNDS_BACK = 8n;
-
 async function fetchRecentRounds(): Promise<RoundWithMarkets[]> {
-  const latest = await fetchLatestRound();
-  if (!latest) return [];
-  const ids: bigint[] = [];
-  for (let id = latest.roundId - 1n; id >= 0n && id > latest.roundId - ROUNDS_BACK; id--) ids.push(id);
-  const older = await Promise.all(ids.map((id) => fetchRound(id)));
-  return [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
+  return (await fetchAllRounds()).reverse();
 }
 
 const hazardOf = (r: Pick<RoundInfo, "scenarioId">): string => {

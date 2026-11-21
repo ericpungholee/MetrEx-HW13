@@ -1,12 +1,11 @@
 "use client";
 
 // §10.3 wallet panel: holdings, available and reserved balances (from the wallet's own orders),
-// open orders with cancel, recent fills, and redeem (sweeps + redeem in one transaction).
+// open orders with cancel, recent fills, and redeem.
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useState } from "react";
 import { OrderSide } from "@metrex/exchange";
 import {
-  buildRedeem,
   cancelOrder,
   redemptionValue,
   reservedOf,
@@ -65,9 +64,8 @@ export function WalletPanel({
     if (!signer || !publicKey || !have) return;
     setBusy("redeem");
     try {
-      const ixs = await buildRedeem(publicKey, market, mine, have);
-      const r = await run(`Redeem ${formatMusd(claim)} mUSD`, (opts) => sendRedeem(signer, ixs, opts));
-      if (r) onDone();
+      await run(`Redeem ${formatMusd(claim)} mUSD`, (opts) => sendRedeem(signer, market, opts));
+      onDone();
     } finally {
       setBusy(null);
     }

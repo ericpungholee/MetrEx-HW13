@@ -160,3 +160,10 @@ The full `anchor test` build and validator run passed all 145 tests (78 v1 and 6
 - **Other quality items.** The portfolio still omits completed redemption history (§10.5). The production npm audit reported seven high and four moderate transitive advisories. Runtime reachability was not established. The Rust lockfile scan flagged two unmaintained crates. RustSec lists locked `borsh` 0.10.4 as patched, and the workspace leaves the logging feature required by the `rand` advisory disabled. [Borsh advisory](https://rustsec.org/advisories/RUSTSEC-2023-0033.html) · [Rand advisory](https://rustsec.org/advisories/RUSTSEC-2026-0097.html)
 
 After the two fixes, all 198 workspace tests, TypeScript checks and the production build passed again. A browser run with stubbed operator responses verified all four proof cases (verified, skipped, unrelated error and successful simulated trade). It also verified that raw evidence retries after an initial HTTP 404 and that a hash mismatch hides the evidence link.
+
+
+## Multi-peril reliability rehearsal — November 21, 2026
+
+The RFQ runtime was retired and its on-chain program and recovery regressions preserved. A residential audit replaced the former hurricane and earthquake properties. The four market rehearsals used the existing Devnet deployment. Wildfire used Chrome and Phantom, and the other hazards used automated Devnet signers against the live operator API. A separate round verified both Invalid burns. [Market addresses, evidence hashes, exact wallet deltas and receipts](multiperil-verification.md).
+
+The final supervisor restart retained all four new market addresses and their orders. The maker lease refused a second process for the same identities. [Readiness status](STATUS.md).

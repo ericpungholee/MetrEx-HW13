@@ -122,27 +122,29 @@ async function main(): Promise<void> {
     log.tx("initialize_config", await sendExchangeTx(conn, [ix], [admin]));
   }
 
-  log.step("properties (data/properties.json, same three points as v1)");
-  const registry = readJsonIfExists<ScenarioRegistry>(scenariosPath());
-  const { rows, errors } = validateProperties(readJsonIfExists<unknown>(propertiesPath()), registry);
-  for (const e of errors) log.fail(e);
-  problems += errors.length;
-  for (const r of rows) {
-    const existing = await fetchProperty(p, r.property_id);
-    if (existing) {
-      const same = existing.latE6 === r.lat_e6 && existing.lonE6 === r.lon_e6 && existing.scenarioId === r.scenario_id && existing.triggerDistanceM === r.trigger_distance_m && existing.label === r.label;
-      if (same) log.ok(`property ${r.property_id} "${r.label}"`);
-      else {
-        log.fail(`property ${r.property_id} is registered with different data`);
-        problems++;
+  if (LOCAL) {
+    log.step("properties (data/properties.json, same three points as v1)");
+    const registry = readJsonIfExists<ScenarioRegistry>(scenariosPath());
+    const { rows, errors } = validateProperties(readJsonIfExists<unknown>(propertiesPath()), registry);
+    for (const e of errors) log.fail(e);
+    problems += errors.length;
+    for (const r of rows) {
+      const existing = await fetchProperty(p, r.property_id);
+      if (existing) {
+        const same = existing.latE6 === r.lat_e6 && existing.lonE6 === r.lon_e6 && existing.scenarioId === r.scenario_id && existing.triggerDistanceM === r.trigger_distance_m && existing.label === r.label;
+        if (same) log.ok(`property ${r.property_id} "${r.label}"`);
+        else {
+          log.fail(`property ${r.property_id} is registered with different data`);
+          problems++;
+        }
+      } else if (DRY_RUN || (!cfg && !mint)) {
+        log.todo(`register_property(${r.property_id}, "${r.label}")`);
+      } else {
+        const ix = await registerExchangePropertyIx(p, admin.publicKey, {
+          propertyId: r.property_id, label: encodeLabel(r.label), latE6: r.lat_e6, lonE6: r.lon_e6, scenarioId: r.scenario_id, triggerDistanceM: r.trigger_distance_m,
+        });
+        log.tx(`register_property ${r.property_id}`, await sendExchangeTx(conn, [ix], [admin]));
       }
-    } else if (DRY_RUN || (!cfg && !mint)) {
-      log.todo(`register_property(${r.property_id}, "${r.label}")`);
-    } else {
-      const ix = await registerExchangePropertyIx(p, admin.publicKey, {
-        propertyId: r.property_id, label: encodeLabel(r.label), latE6: r.lat_e6, lonE6: r.lon_e6, scenarioId: r.scenario_id, triggerDistanceM: r.trigger_distance_m,
-      });
-      log.tx(`register_property ${r.property_id}`, await sendExchangeTx(conn, [ix], [admin]));
     }
   }
   if (LOCAL && (await getSolLamports(conn, admin.publicKey)) < solToLamports("1")) log.warn("admin has < 1 SOL");
