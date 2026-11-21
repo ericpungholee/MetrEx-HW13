@@ -545,7 +545,7 @@ export type MetrexExchange = {
         {
           "name": "previousRound",
           "docs": [
-            "`config.latest_round`; required once any round exists. Read-only."
+            "`config.latest_round` when passed. Optional and unused since multi-peril. Read-only."
           ],
           "optional": true
         },
@@ -3856,9 +3856,24 @@ export type MetrexExchange = {
       "value": "[114, 111, 117, 110, 100]"
     },
     {
+      "name": "scenarioHurricanes201709",
+      "type": "u16",
+      "value": "2"
+    },
+    {
+      "name": "scenarioIowaTornadoes202405",
+      "type": "u16",
+      "value": "4"
+    },
+    {
       "name": "scenarioPalisades2025",
       "type": "u16",
       "value": "1"
+    },
+    {
+      "name": "scenarioSouthNapa201408",
+      "type": "u16",
+      "value": "3"
     },
     {
       "name": "shareDecimals",

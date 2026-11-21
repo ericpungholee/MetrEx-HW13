@@ -40,8 +40,12 @@ pub fn handler(
             && lon_e6.unsigned_abs() <= MAX_ABS_LON_E6.unsigned_abs(),
         ExchangeError::InvalidCoordinates
     );
-    require!(trigger_distance_m > 0, ExchangeError::InvalidTriggerDistance);
-    require!(scenario_id == SCENARIO_PALISADES_2025, ExchangeError::UnsupportedScenario);
+    require!(is_supported_scenario(scenario_id), ExchangeError::UnsupportedScenario);
+    if is_point_scenario(scenario_id) {
+        require!(trigger_distance_m == 0, ExchangeError::InvalidTriggerDistance);
+    } else {
+        require!(trigger_distance_m > 0, ExchangeError::InvalidTriggerDistance);
+    }
 
     let p = &mut ctx.accounts.property;
     p.property_id = property_id;

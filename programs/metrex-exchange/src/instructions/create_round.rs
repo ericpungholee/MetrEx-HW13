@@ -1,5 +1,8 @@
 //! `create_round(scenario_id, dataset_sha256, label, trading_ends_at)` (spec-v2 §6.3, §12).
-//! At most one Open round. Writes only Config and the new Round: earlier rounds are never touched.
+//! Writes only Config and the new Round: earlier rounds are never touched.
+//! Multi-peril (docs/spec-multiperil.md §2.2): several rounds may be Open at once, one per scenario
+//! by operator policy. `previous_round` is still accepted (and still must be `config.latest_round`
+//! when passed) so the instruction's accounts are unchanged, but it is no longer required.
 
 use anchor_lang::prelude::*;
 
@@ -27,7 +30,7 @@ pub struct CreateRound<'info> {
     )]
     pub round: Box<Account<'info, Round>>,
 
-    /// `config.latest_round`; required once any round exists. Read-only.
+    /// `config.latest_round` when passed. Optional and unused since multi-peril. Read-only.
     #[account(constraint = previous_round.key() == config.latest_round @ ExchangeError::PreviousRoundOpen)]
     pub previous_round: Option<Box<Account<'info, Round>>>,
 
@@ -44,15 +47,7 @@ pub fn handler(
     let now = Clock::get()?.unix_timestamp;
     let config = &mut ctx.accounts.config;
 
-    if config.latest_round != Pubkey::default() {
-        let prev = ctx
-            .accounts
-            .previous_round
-            .as_ref()
-            .ok_or_else(|| error!(ExchangeError::PreviousRoundOpen))?;
-        require!(prev.status == RoundStatus::Closed, ExchangeError::PreviousRoundOpen);
-    }
-    require!(scenario_id == SCENARIO_PALISADES_2025, ExchangeError::UnsupportedScenario);
+    require!(is_supported_scenario(scenario_id), ExchangeError::UnsupportedScenario);
     require!(dataset_sha256 != [0u8; 32], ExchangeError::InvalidEvidenceHash);
     let max_end = now
         .checked_add(MAX_ROUND_DURATION_S)

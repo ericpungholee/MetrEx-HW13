@@ -9,3 +9,4 @@ export * from "./events";
 export * from "./chart";
 export * from "./keeper";
 export * from "./errors";
+export * from "./catalog";

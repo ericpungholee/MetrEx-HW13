@@ -70,6 +70,24 @@ pub const PATH_EXPIRY: u8 = 3;
 // --- Scenarios ---
 #[constant]
 pub const SCENARIO_PALISADES_2025: u16 = 1;
+// Multi-peril (docs/spec-multiperil.md §2). Additive: no layout, seed or argument changes.
+#[constant]
+pub const SCENARIO_HURRICANES_2017_09: u16 = 2;
+#[constant]
+pub const SCENARIO_SOUTH_NAPA_2014_08: u16 = 3;
+#[constant]
+pub const SCENARIO_IOWA_TORNADOES_2024_05: u16 = 4;
+
+/// Scenarios this build accepts in `register_property` and `create_round`.
+pub fn is_supported_scenario(scenario_id: u16) -> bool {
+    (SCENARIO_PALISADES_2025..=SCENARIO_IOWA_TORNADOES_2024_05).contains(&scenario_id)
+}
+
+/// Scenarios evaluated at the property point itself (inside a swath, intensity at the point).
+/// Their properties must carry `trigger_distance_m == 0`; every other scenario needs `> 0`.
+pub fn is_point_scenario(scenario_id: u16) -> bool {
+    scenario_id == SCENARIO_HURRICANES_2017_09 || scenario_id == SCENARIO_SOUTH_NAPA_2014_08
+}
 
 #[constant]
 pub const PROGRAM_VERSION: u8 = 2;
