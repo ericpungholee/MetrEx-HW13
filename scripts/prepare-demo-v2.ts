@@ -1,5 +1,7 @@
-// prepare-demo-v2.ts (spec-v2 §12): settle any stale round, open a fresh round with markets for
-// properties 1 and 2, wait for the bots, and verify the demo ladder. Idempotent. Never evaluates or
+// prepare-demo-v2.ts (spec-v2 §12): settle any stale wildfire round, open a fresh round with markets for
+// properties 1 and 2, wait for the bots, and verify the demo ladder. Multi-peril (docs/spec-multiperil.md
+// §2.2): other hazards' rounds may be open at the same time, so this script only looks at scenario 1
+// rounds and never touches the others (scripts/prepare-multiperil.ts opens those). Idempotent. Never evaluates or
 // prints a settlement outcome before that market's finalized resolution.
 //   pnpm tsx scripts/prepare-demo-v2.ts [--local] [--hours 24] [--wait 60] [--no-wait]
 // Run fund-bots.ts first; start the v2 bots (`pnpm --filter bots start:v2`) and the keeper
@@ -9,7 +11,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PublicKey } from "@solana/web3.js";
-import { DEMO_BOTS, MUSD_UNIT, findRoundPda, marketAddresses } from "@metrex/exchange";
+import { DEMO_BOTS, MUSD_UNIT, SCENARIO_PALISADES_2025, catalogByProperty, findRoundPda, marketAddresses } from "@metrex/exchange";
 import { encodeLabel, type ScenarioRegistry } from "@metrex/shared";
 import {
   createMarketIx,
@@ -42,6 +44,8 @@ const LOCAL = args.includes("--local");
 const FEATURED = 1;
 const OTHER = 2;
 const FRESH_MIN_S = 2n * 3600n;
+/** How far back to look for the newest wildfire round (one Open round per hazard). */
+const ROUNDS_BACK = 8n;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
@@ -71,11 +75,27 @@ async function main(): Promise<void> {
   );
 
   // 2. Stale round: reuse only a fresh one (only bot activity, > 2 h left); otherwise settle it.
-  log.step("latest round");
+  log.step("latest wildfire round");
   let reuse: RoundView | null = null;
-  if (!config.latestRound.equals(PublicKey.default)) {
-    const latest = await fetchRound(p, config.latestRound, "confirmed");
-    if (!latest) throw new Error("latest round account missing");
+  let latest: RoundView | null = null;
+  for (let id = config.nextRoundId - 1n; id >= 0n && id >= config.nextRoundId - ROUNDS_BACK; id--) {
+    const r = await fetchRound(p, findRoundPda(p.programId, id)[0], "confirmed");
+    if (r?.scenarioId === SCENARIO_PALISADES_2025) {
+      latest = r;
+      break;
+    }
+  }
+  // The catalog wildfire market (real address, scripts/prepare-multiperil.ts) owns the wildfire
+  // round now. Settling it here, or opening a second wildfire round, would break the
+  // one-Open-round-per-hazard policy (docs/spec-multiperil.md §2.2).
+  const catalogWildfire = catalogByProperty(7);
+  if (latest && catalogWildfire && !args.includes("--legacy")) {
+    const { market } = marketAddresses(p.programId, latest.address, catalogWildfire.propertyId);
+    if (await conn.getAccountInfo(market)) {
+      throw new Error(`round ${latest.roundId} is the catalog wildfire round; use scripts/prepare-multiperil.ts (or pass --legacy to settle it here)`);
+    }
+  }
+  if (latest) {
     const now = await chainNow(conn, "confirmed");
     const markets = await fetchMarketsOfRound(p, latest.address);
     const unresolved = markets.filter((m) => m.outcome === "unresolved");
@@ -105,7 +125,7 @@ async function main(): Promise<void> {
       });
       log.ok(`settled round ${latest.roundId} in ${steps.length} steps`);
     } else if (!reuse) log.ok(`round ${latest.roundId} is closed and settled`);
-  } else log.ok("no earlier round");
+  } else log.ok("no earlier wildfire round");
 
   // 3. New round with the committed dataset hash, markets for properties 1 and 2.
   let round: RoundView;
@@ -173,9 +193,9 @@ async function main(): Promise<void> {
     let chainS = "";
     const deadline = Date.now() + waitS * 1000;
     do {
-      const state = await loader.load(conn, { roundsBack: 1 });
+      const state = await loader.load(conn, { roundsBack: Number(config.nextRoundId - round.roundId) + 1 });
       const snap = state?.snapshots.find((s) => s.market.address.equals(m.address));
-      if (snap) bad = [...checkBotsQuoting(snap.book, bots), ...(m.propertyId === FEATURED ? checkDepthGuarantee(snap.book, bots) : [])];
+      if (snap) bad = [...checkBotsQuoting(snap.book, bots), ...(m.propertyId === FEATURED ? checkDepthGuarantee(snap.book, bots, catalogByProperty(FEATURED)?.ladder ?? DEMO_BOTS) : [])];
       if (snap && !bad.length) {
         // On-chain measure: the newest resting bot quote's created_at against the market's (Clock sysvar seconds).
         const newest = snap.orders.filter((o) => o.maker in bots).reduce((t, o) => (o.createdAt > t ? o.createdAt : t), 0n);
@@ -187,7 +207,7 @@ async function main(): Promise<void> {
     if (bad.length) {
       for (const b of bad) log.fail(`property ${m.propertyId}: ${b}`);
       problems++;
-    } else log.ok(`property ${m.propertyId}: three bots quote both books, no crosses${m.propertyId === FEATURED ? ", §8.3 ladder exact" : ""} (${((Date.now() - marketsStart) / 1000).toFixed(1)} s after this script began creating markets${chainS})`);
+    } else log.ok(`property ${m.propertyId}: three bots quote both books, no crosses${m.propertyId === FEATURED ? ", catalog ladder exact" : ""} (${((Date.now() - marketsStart) / 1000).toFixed(1)} s after this script began creating markets${chainS})`);
   }
   for (const hb of ["bots", "keeper"] as const) {
     const r = readHeartbeat(hb);

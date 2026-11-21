@@ -30,3 +30,4 @@ id.json
 
 # v2 bot/keeper heartbeats (spec-v2 §7.5)
 .metrex/
+data/raw/usgs-napa-2014/grid.xml

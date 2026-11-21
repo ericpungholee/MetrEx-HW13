@@ -15,6 +15,9 @@
     "setup-devnet-v2.ts",
     "prepare-demo-v2.ts",
     "prove-v3-local.ts",
-    "prove-v4-devnet.ts"
+    "prove-v4-devnet.ts",
+    "prepare-multiperil.ts",
+    "normalize-hazards.ts",
+    "find-real-properties.ts"
   ]
 }

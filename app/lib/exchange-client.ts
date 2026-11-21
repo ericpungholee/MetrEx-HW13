@@ -65,6 +65,7 @@ export interface MarketSummary {
   address: string;
   round: string;
   propertyId: number;
+  scenarioId: number;
   label: string | null;
   latE6: number;
   lonE6: number;
@@ -225,6 +226,7 @@ function parseMarketSummary(m: J): MarketSummary {
     address: str(m.address),
     round: str(m.round),
     propertyId: num(m.propertyId),
+    scenarioId: num(m.scenarioId ?? 1),
     label: m.label === null || m.label === undefined ? null : str(m.label),
     latE6: num(m.latE6),
     lonE6: num(m.lonE6),
@@ -326,6 +328,35 @@ export async function fetchLatestRound(): Promise<RoundWithMarkets | null> {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
   }
+}
+
+/** One homepage card (docs/spec-multiperil.md §7.2): the newest round of a catalog market and its YES book top. */
+export interface FeaturedMarket {
+  propertyId: number;
+  round: { address: string; roundId: bigint; label: string; state: RoundState; tradingEndsAt: bigint; closedAt: bigint } | null;
+  market: MarketSummary | null;
+  yesBestBidBps: number | null;
+  yesBestAskBps: number | null;
+  yesAskDepth: bigint;
+}
+
+const optNum = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+export async function fetchFeatured(): Promise<FeaturedMarket[]> {
+  const body = await getJson("/api/featured");
+  return ((body.markets as J[]) ?? []).map((f) => {
+    const r = f.round as J | null;
+    return {
+      propertyId: num(f.propertyId),
+      round: r
+        ? { address: str(r.address), roundId: big(r.roundId), label: str(r.label), state: str(r.state) as RoundState, tradingEndsAt: big(r.tradingEndsAt), closedAt: big(r.closedAt) }
+        : null,
+      market: f.market ? parseMarketSummary(f.market as J) : null,
+      yesBestBidBps: optNum(f.yesBestBidBps),
+      yesBestAskBps: optNum(f.yesBestAskBps),
+      yesAskDepth: big(f.yesAskDepth),
+    };
+  });
 }
 
 export async function fetchRound(id: string | bigint): Promise<RoundWithMarkets | null> {
@@ -592,7 +623,7 @@ export function previewTrade(book: readonly BookOrder[], intent: TradeIntent, me
     restQty = r.unfilled;
   } else {
     limitPriceBps = intent.priceBps ?? 0;
-    if (!Number.isInteger(limitPriceBps) || limitPriceBps < MIN_PRICE_BPS || limitPriceBps > MAX_PRICE_BPS) problems.push("Price must be between 0.0001 and 0.9999 mUSD.");
+    if (!Number.isInteger(limitPriceBps) || limitPriceBps < MIN_PRICE_BPS || limitPriceBps > MAX_PRICE_BPS) problems.push("Price must be between 0.01¢ and 99.99¢.");
     const r = planLimitOrder(book, { outcome, side, qty: quantity, priceBps: clampPrice(limitPriceBps), maker: me });
     fills = r.fills;
     restQty = r.rests;

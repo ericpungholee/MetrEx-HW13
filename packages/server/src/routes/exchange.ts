@@ -3,7 +3,7 @@
 // can't be read, the response says "unavailable"; cached data is never presented as live.
 
 import { PublicKey } from "@solana/web3.js";
-import { findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type OutcomeBook } from "@metrex/exchange";
+import { CATALOG, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type OutcomeBook } from "@metrex/exchange";
 import { loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { getRpc } from "../rpc";
 import {
@@ -68,7 +68,8 @@ const loader = new ExchangeStateLoader();
 let stateCache: { at: number; value: Promise<ExchangeState | null> } | undefined;
 function liveState(): Promise<ExchangeState | null> {
   if (!stateCache || Date.now() - stateCache.at > STATE_TTL_MS) {
-    const value = getRpc().run((c) => loader.load(c, { roundsBack: 3 }));
+    // Multi-peril: one Open round per hazard, so read further back (docs/spec-multiperil.md §2.2).
+    const value = getRpc().run((c) => loader.load(c, { roundsBack: 8 }));
     stateCache = { at: Date.now(), value };
     value.catch(() => {
       if (stateCache?.value === value) stateCache = undefined;
@@ -159,6 +160,7 @@ async function marketSummary(m: MarketView) {
     address: m.address,
     round: m.round,
     propertyId: m.propertyId,
+    scenarioId: m.scenarioId,
     label: property?.label ?? null,
     latE6: m.latE6,
     lonE6: m.lonE6,
@@ -218,6 +220,37 @@ export const handleLatestRound = (): Promise<Response> =>
     const r = await getRpc().run((conn) => fetchRound(getExchangeProgram(conn), c.latestRound));
     if (!r) throw notFound("Round not found");
     return roundBody(r);
+  });
+
+/**
+ * GET /api/featured — the homepage (docs/spec-multiperil.md §7.2): for each catalog market, its
+ * newest round among the recent ones and the live YES book top. Prices come from on-chain orders only.
+ */
+export const handleFeatured = (): Promise<Response> =>
+  run(async () => {
+    const state = await liveState();
+    if (!state) throw unavailable("Exchange is not configured on this cluster");
+    const newestFirst = [...state.rounds].sort((a, b) => (a.roundId < b.roundId ? 1 : -1));
+    const markets = await Promise.all(
+      CATALOG.map(async (c) => {
+        for (const r of newestFirst) {
+          if (r.scenarioId !== c.scenarioId) continue;
+          const snap = state.snapshots.find((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId);
+          if (!snap) continue;
+          const { yes } = marketBooks(snap.book);
+          return {
+            propertyId: c.propertyId,
+            round: { address: r.address, roundId: r.roundId, label: r.label, state: roundState(r, Date.now()), tradingEndsAt: r.tradingEndsAt, closedAt: r.closedAt },
+            market: await marketSummary(snap.market),
+            yesBestBidBps: yes.bestBidBps,
+            yesBestAskBps: yes.bestAskBps,
+            yesAskDepth: yes.askDepth,
+          };
+        }
+        return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n };
+      }),
+    );
+    return { markets };
   });
 
 /** GET /api/rounds/:id — by numeric round id or round address. */

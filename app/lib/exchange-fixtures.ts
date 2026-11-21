@@ -52,8 +52,9 @@ const market = (address: string, propertyId: number, label: string, latE6: numbe
   pairsOutstanding: "6000",
 });
 
-// Fixture points are placeholders near the fire area, not registered property coordinates.
-const markets = [market(FIXTURE_KEYS.market1, 1, "Home #1042 (fixture)", 34_045_000, -118_530_000), market(FIXTURE_KEYS.market2, 2, "Home #2210 (fixture)", 34_080_000, -118_600_000)];
+// Fixture markets reuse the catalog wildfire property's registered point (data/market-properties.json);
+// the second is a placeholder outside the fire area. Fixture prices are sample data, never shown live.
+const markets = [market(FIXTURE_KEYS.market1, 7, "16185 Sunset Boulevard (fixture)", 34_048_776, -118_538_346), market(FIXTURE_KEYS.market2, 2, "Home #2210 (fixture)", 34_080_000, -118_600_000)];
 
 type Row = [maker: string, priceBps: number, qty: number, seq: number];
 // §8.2 at zero inventory: YES bids 410 C, 400 B, 370 A; asks 430 A, 500 B, 590 C. NO = complements.
@@ -101,6 +102,16 @@ export function fixtureApi(path: string): Record<string, unknown> {
     };
   }
   if (p === "/api/orders") return { orders: [] };
+  if (p === "/api/featured") {
+    return {
+      markets: [7, 4, 5, 6].map((propertyId) => {
+        const mk = markets.find((x) => x.propertyId === propertyId);
+        return mk
+          ? { propertyId, round, market: mk, yesBestBidBps: 410, yesBestAskBps: 430, yesAskDepth: "350" }
+          : { propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: "0" };
+      }),
+    };
+  }
   const m = /^\/api\/markets\/([^/]+)(\/[a-z]+)?$/.exec(p);
   const mk = markets.find((x) => x.address === m?.[1]);
   if (!m || !mk) throw new Error("Market not found");

@@ -5,8 +5,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { canonicalize, buildEvidenceV2, type BuiltEvidenceV2, type EvidenceRecordV2 } from "@metrex/geo";
-import { loadScenarioGeometry, loadScenarioRegistry } from "@metrex/geo/node";
+import {
+  canonicalize,
+  buildEvidenceV2,
+  buildEvidenceV3,
+  type BuiltEvidenceV2,
+  type BuiltEvidenceV3,
+  type EvidenceRecordV2,
+  type EvidenceRecordV3,
+  type HazardDataset,
+} from "@metrex/geo";
+import { loadHazardDataset, loadScenarioGeometry, loadScenarioRegistry } from "@metrex/geo/node";
+type MultiPolygon = { type: "MultiPolygon"; coordinates: number[][][][] };
 import type { Keypair, PublicKey } from "@solana/web3.js";
 import { getScenario } from "@metrex/shared";
 import { oracleDataDir, loadKeypair } from "../env";
@@ -57,7 +67,13 @@ export function assertDatasetHash(bytes: Uint8Array, round: Pick<RoundView, "dat
   return actual;
 }
 
-/** Loads the scenario file for a round and checks it against `round.dataset_sha256`. Evaluates nothing. */
+/** Scenario 1 (wildfire) keeps the v2 perimeter path and evidence v2; scenarios 2+ are hazard datasets. */
+export const WILDFIRE_SCENARIO_ID = 1;
+
+/**
+ * Loads the scenario file for a round and checks it against `round.dataset_sha256`. Evaluates nothing.
+ * Wildfire returns `geometry`; every other hazard returns its parsed `dataset` (docs/spec-multiperil.md §4).
+ */
 export function loadCommittedDataset(round: RoundView, dir: string = oracleDataDir()) {
   const registry = loadScenarioRegistry(dir);
   let scenario;
@@ -67,23 +83,35 @@ export function loadCommittedDataset(round: RoundView, dir: string = oracleDataD
     throw badRequest(`Unknown scenario_id ${round.scenarioId}; refusing to resolve`);
   }
   assertDatasetHash(readFileSync(join(dir, scenario.file)), round);
-  const { geometry } = loadScenarioGeometry(registry, round.scenarioId, dir); // also checks the registry hash
-  return { registry, scenario, geometry };
+  if (round.scenarioId === WILDFIRE_SCENARIO_ID) {
+    const { geometry } = loadScenarioGeometry(registry, round.scenarioId, dir); // also checks the registry hash
+    return { registry, scenario, geometry, dataset: null };
+  }
+  const { dataset } = loadHazardDataset(registry, round.scenarioId, dir); // hash, structure and pinned rule
+  return { registry, scenario, geometry: null, dataset: dataset as HazardDataset };
 }
 
-/** §9.3 steps 3–4: evidence v2 from the on-chain Market coordinates only. */
-export function buildExchangeEvidence(market: MarketView, round: RoundView, programId: PublicKey, dir?: string): BuiltEvidenceV2 {
-  const { scenario, geometry } = loadCommittedDataset(round, dir);
-  const built = buildEvidenceV2({
+export type BuiltExchangeEvidence = BuiltEvidenceV2 | BuiltEvidenceV3;
+
+/** §9.3 steps 3–4: evidence v2 (wildfire) or v3 (other hazards) from the on-chain Market coordinates only. */
+export function buildExchangeEvidence(market: MarketView, round: RoundView, programId: PublicKey, dir?: string): BuiltExchangeEvidence {
+  if (market.scenarioId !== round.scenarioId) throw new Error("Market scenario does not match its round");
+  const { scenario, geometry, dataset } = loadCommittedDataset(round, dir);
+  const common = {
     market: market.address.toBase58(),
     programId: programId.toBase58(),
     round: round.address.toBase58(),
     property: { id: market.propertyId, lat_e6: market.latE6, lon_e6: market.lonE6 },
     scenarioId: market.scenarioId,
     triggerDistanceM: market.triggerDistanceM,
-    scenario,
-    geometry,
-  });
+  };
+  let built: BuiltExchangeEvidence;
+  try {
+    built = geometry ? buildEvidenceV2({ ...common, scenario, geometry }) : buildEvidenceV3({ ...common, scenario, dataset: dataset! });
+  } catch (e) {
+    // A property the dataset does not cover is refused, never settled NO (spec-multiperil §4.3).
+    throw conflict(`Evidence cannot be built: ${(e as Error).message}. Refusing to resolve.`);
+  }
   const r = built.record;
   const ok =
     sha256Hex(built.canonical) === built.hashHex &&
@@ -193,26 +221,42 @@ export async function getExchangeEvidence(market: PublicKey, deps: { rpc?: RpcPo
   if (!bytes) throw notFound("No evidence for this market yet");
   const hashHex = sha256Hex(bytes);
   if (!exchangeSettlementMatches(m, m.outcome === "yes", hashHex)) throw unavailable("Evidence temporarily unavailable");
-  let record: EvidenceRecordV2;
+  let record: EvidenceRecordV2 | EvidenceRecordV3;
   try {
-    record = JSON.parse(bytes.toString("utf8")) as EvidenceRecordV2;
+    record = JSON.parse(bytes.toString("utf8")) as EvidenceRecordV2 | EvidenceRecordV3;
   } catch {
     throw unavailable("Evidence temporarily unavailable");
   }
-  if (record.version !== 2 || record.market !== market.toBase58() || record.round !== m.round.toBase58() || record.triggered !== (m.outcome === "yes")) {
+  const expectedVersion = record.scenario_id === WILDFIRE_SCENARIO_ID ? 2 : 3;
+  if (record.version !== expectedVersion || record.market !== market.toBase58() || record.round !== m.round.toBase58() || record.triggered !== (m.outcome === "yes")) {
     throw unavailable("Evidence temporarily unavailable");
   }
   return { market: market.toBase58(), canonical: bytes.toString("utf8"), hashHex, record, onChain: { outcome: m.outcome, evidenceHash: hashHex, matches: true } };
 }
 
-/** §9.3 step 6 with `?perimeter=1`: the fire perimeter, only behind the same finalized, hash-matched gate. */
-export async function getExchangeSettledPerimeter(market: PublicKey, deps: { rpc?: RpcPool; dataDir?: string } = {}) {
+/**
+ * §9.3 step 6 with `?perimeter=1`: the settlement footprint, only behind the same finalized, hash-matched
+ * gate. Wildfire returns the fire perimeter; a hurricane returns the 64-kt swath pieces. Tornado
+ * tracks and earthquake grids have no polygon footprint and return null (the evidence carries the result).
+ */
+export async function getExchangeSettledPerimeter(
+  market: PublicKey,
+  deps: { rpc?: RpcPool; dataDir?: string } = {},
+): Promise<MultiPolygon | null> {
   const evidence = await getExchangeEvidence(market, deps);
   try {
     const dir = deps.dataDir ?? oracleDataDir();
-    const { scenario, geometry } = loadScenarioGeometry(loadScenarioRegistry(dir), evidence.record.scenario_id, dir);
+    const registry = loadScenarioRegistry(dir);
+    if (evidence.record.scenario_id === WILDFIRE_SCENARIO_ID) {
+      const { scenario, geometry } = loadScenarioGeometry(registry, evidence.record.scenario_id, dir);
+      if (scenario.sha256.toLowerCase() !== evidence.record.dataset.sha256) throw new Error("Dataset changed");
+      return geometry;
+    }
+    const { scenario, dataset } = loadHazardDataset(registry, evidence.record.scenario_id, dir);
     if (scenario.sha256.toLowerCase() !== evidence.record.dataset.sha256) throw new Error("Dataset changed");
-    return geometry;
+    if (dataset.metrex.rule.method !== "inside_footprint" || dataset.type !== "FeatureCollection") return null;
+    const coordinates = dataset.features.flatMap((f) => (f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : []));
+    return { type: "MultiPolygon", coordinates };
   } catch {
     throw unavailable("Perimeter temporarily unavailable");
   }

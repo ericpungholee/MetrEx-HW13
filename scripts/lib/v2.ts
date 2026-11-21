@@ -1,7 +1,7 @@
 // Shared helpers for the v2 scripts. Pure where possible; never prints secrets.
 
 import { PublicKey } from "@solana/web3.js";
-import { BPS_DENOMINATOR, DEMO_BOTS, Outcome, crossedPairs, outcomeBook, type BookOrder } from "@metrex/exchange";
+import { BPS_DENOMINATOR, DEMO_BOTS, Outcome, crossedPairs, outcomeBook, type BookOrder, type BotParams } from "@metrex/exchange";
 
 export const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 
@@ -28,13 +28,15 @@ export type BotMakers = Record<string, string>;
  * §8.3 depth guarantee on the featured market at zero inventory: the exact shipped YES ladder
  * (bids C 100 @ 410, B 150 @ 400, A 200 @ 370; asks A 200 @ 430, B 150 @ 500, C 100 @ 590), each level
  * a single bot order, and the NO book quoted at the exact complements. Returns the failures.
+ * With a catalog `ladder` (docs/spec-multiperil.md §6) it checks that ladder's exact levels instead,
+ * and the 410/300 presenter-script checks apply only to the shipped DEMO_BOTS ladder.
  */
-export function checkDepthGuarantee(book: readonly BookOrder[], bots: BotMakers): string[] {
+export function checkDepthGuarantee(book: readonly BookOrder[], bots: BotMakers, ladder: readonly BotParams[] = DEMO_BOTS): string[] {
   const bad: string[] = [];
   const name = (maker: string) => bots[maker] ?? "user";
   const want = (outcome: 0 | 1) => {
-    const bids = DEMO_BOTS.map((p) => ({ bot: p.name, price: p.refBps - p.halfSpreadBps, size: p.topSize }));
-    const asks = DEMO_BOTS.map((p) => ({ bot: p.name, price: p.refBps + p.halfSpreadBps, size: p.topSize }));
+    const bids = ladder.map((p) => ({ bot: p.name, price: p.refBps - p.halfSpreadBps, size: p.topSize }));
+    const asks = ladder.map((p) => ({ bot: p.name, price: p.refBps + p.halfSpreadBps, size: p.topSize }));
     if (outcome === Outcome.Yes) return { bids, asks };
     return {
       bids: asks.map((a) => ({ ...a, price: BPS_DENOMINATOR - a.price })),
@@ -53,6 +55,7 @@ export function checkDepthGuarantee(book: readonly BookOrder[], bots: BotMakers)
     if (JSON.stringify(got(b.asks)) !== JSON.stringify(exp(sortAsks))) bad.push(`${label} asks ${JSON.stringify(got(b.asks))} ≠ ${JSON.stringify(exp(sortAsks))}`);
     if (crossedPairs(book, outcome).length) bad.push(`${label} book is crossed`);
   }
+  if (ladder !== DEMO_BOTS) return bad;
   const yes = outcomeBook(book, Outcome.Yes);
   const atOrAbove410 = yes.bids.filter((l) => l.priceBps >= 410).reduce((a, l) => a + l.quantity, 0n);
   if (atOrAbove410 !== 100n) bad.push(`YES depth at ≥ 410 is ${atOrAbove410}, the partial fill needs exactly 100`);

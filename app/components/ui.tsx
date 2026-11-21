@@ -72,9 +72,9 @@ export function Panel({ title, right, children, className = "" }: { title?: Reac
   return (
     <section className={`${className}`}>
       {(title || right) && (
-        <div className="mb-4 flex items-baseline justify-between gap-4 border-b border-line pb-3">
-          <h2 className="text-sm font-medium tracking-wide text-dim uppercase">{title}</h2>
-          {right && <div className="text-sm text-faint">{right}</div>}
+        <div className="mb-3 flex items-baseline justify-between gap-4 border-b border-line pb-2">
+          <h2 className="text-xs font-medium tracking-wide text-faint uppercase">{title}</h2>
+          {right && <div className="text-xs text-faint">{right}</div>}
         </div>
       )}
       <div>{children}</div>
@@ -102,10 +102,10 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-2xl">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{title}</h1>
-        {description && <div className="mt-2 text-[15px] leading-relaxed text-dim">{description}</div>}
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{title}</h1>
+        {description && <div className="mt-1 text-xs leading-snug text-faint">{description}</div>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>

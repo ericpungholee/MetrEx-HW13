@@ -1,0 +1,1320 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-21T17:37:21Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 11680192698,
+  "lat": 38.2441635,
+  "lon": -122.2991680,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad",
+    "brand": "Auberge Resorts Collection",
+    "name": "Stanly Ranch",
+    "opening_hours": "24/7",
+    "operator": "Auberge Resorts",
+    "phone": "+1-866-421-5122",
+    "resort": "resort",
+    "tourism": "hotel",
+    "website": "https://aubergeresorts.com/stanlyranch/",
+    "wikidata": "Q4819025",
+    "wikipedia": "en:Auberge Resorts"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642163,
+  "lat": 38.2467158,
+  "lon": -122.2995486,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1401",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642164,
+  "lat": 38.2465823,
+  "lon": -122.3000653,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1403",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642165,
+  "lat": 38.2464698,
+  "lon": -122.3006156,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1405",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642166,
+  "lat": 38.2468492,
+  "lon": -122.3008103,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1421",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642167,
+  "lat": 38.2468798,
+  "lon": -122.3003007,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1417",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682642168,
+  "lat": 38.2464851,
+  "lon": -122.3010209,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1407",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682643069,
+  "lat": 38.2465726,
+  "lon": -122.3015199,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1409",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11682643070,
+  "lat": 38.2468950,
+  "lon": -122.3015907,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1411",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11683709683,
+  "lat": 38.2446701,
+  "lon": -122.3003327,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "220",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11683709684,
+  "lat": 38.2448844,
+  "lon": -122.2999899,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "210",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11683709685,
+  "lat": 38.2450604,
+  "lon": -122.3001797,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "220",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11683709686,
+  "lat": 38.2453332,
+  "lon": -122.3003146,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "240",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11683709687,
+  "lat": 38.2448173,
+  "lon": -122.3009028,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "260",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11685008897,
+  "lat": 38.2456201,
+  "lon": -122.3012327,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad",
+    "amenity": "bar",
+    "name": "Basin"
+  }
+},
+{
+  "type": "node",
+  "id": 11685818209,
+  "lat": 38.2461397,
+  "lon": -122.3141892,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1280",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Cuttings Wharf Road"
+  }
+},
+{
+  "type": "node",
+  "id": 11685818210,
+  "lat": 38.2460939,
+  "lon": -122.3147120,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1280",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Cuttings Wharf Road",
+    "name": "Etude Winery",
+    "operator": "Etude Winery",
+    "phone": "+1-707-257-5782",
+    "shop": "wine",
+    "website": "https://www.etudewines.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 11686015337,
+  "lat": 38.2445583,
+  "lon": -122.2936760,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1451",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane",
+    "name": "Migration Winery",
+    "operator": "Duckhorn Wine Company",
+    "shop": "wine",
+    "website": "https://www.migrationwines.com"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888509,
+  "lat": 38.2427130,
+  "lon": -122.3039640,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "100",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888510,
+  "lat": 38.2428021,
+  "lon": -122.3038190,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "102",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888512,
+  "lat": 38.2429157,
+  "lon": -122.3035050,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "104",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888513,
+  "lat": 38.2432264,
+  "lon": -122.3038417,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "108",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888515,
+  "lat": 38.2429472,
+  "lon": -122.3042200,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "112",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888516,
+  "lat": 38.2430620,
+  "lon": -122.3040990,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "110",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888517,
+  "lat": 38.2443245,
+  "lon": -122.3056110,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "300",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888518,
+  "lat": 38.2444144,
+  "lon": -122.3054250,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "302",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888519,
+  "lat": 38.2445174,
+  "lon": -122.3051728,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "304",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888520,
+  "lat": 38.2448381,
+  "lon": -122.3054792,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "308",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888521,
+  "lat": 38.2446991,
+  "lon": -122.3056939,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "310",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888522,
+  "lat": 38.2445912,
+  "lon": -122.3058730,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "312",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888523,
+  "lat": 38.2434905,
+  "lon": -122.3045596,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "202",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888524,
+  "lat": 38.2434372,
+  "lon": -122.3044358,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888525,
+  "lat": 38.2437272,
+  "lon": -122.3042750,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "204",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888526,
+  "lat": 38.2438248,
+  "lon": -122.3040490,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "206",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888527,
+  "lat": 38.2439658,
+  "lon": -122.3038060,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "208",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888528,
+  "lat": 38.2441718,
+  "lon": -122.3039560,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "210",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888529,
+  "lat": 38.2442505,
+  "lon": -122.3041216,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "212",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888530,
+  "lat": 38.2441192,
+  "lon": -122.3043410,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "214",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11686888531,
+  "lat": 38.2438172,
+  "lon": -122.3047230,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "218",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11687172960,
+  "lat": 38.2440236,
+  "lon": -122.3045111,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "216",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Auberge Path"
+  }
+},
+{
+  "type": "node",
+  "id": 11687172961,
+  "lat": 38.2447063,
+  "lon": -122.3052905,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "306",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vine Row Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11687173097,
+  "lat": 38.2430477,
+  "lon": -122.3037177,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "106",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vintners Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973929,
+  "lat": 38.2455940,
+  "lon": -122.2987318,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "100",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973930,
+  "lat": 38.2443368,
+  "lon": -122.2989503,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "112",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973931,
+  "lat": 38.2443679,
+  "lon": -122.2990042,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "110",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973932,
+  "lat": 38.2435757,
+  "lon": -122.3002403,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "202",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973933,
+  "lat": 38.2444939,
+  "lon": -122.3017938,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973934,
+  "lat": 38.2425095,
+  "lon": -122.3039363,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "101",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Way"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973935,
+  "lat": 38.2451597,
+  "lon": -122.3063024,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "400",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973946,
+  "lat": 38.2454694,
+  "lon": -122.3065057,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "401",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973947,
+  "lat": 38.2457072,
+  "lon": -122.3066704,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "403",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973948,
+  "lat": 38.2458844,
+  "lon": -122.3067883,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "405",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973949,
+  "lat": 38.2459722,
+  "lon": -122.3065850,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "407",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973950,
+  "lat": 38.2460600,
+  "lon": -122.3063797,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "409",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973951,
+  "lat": 38.2461335,
+  "lon": -122.3061866,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "411",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973952,
+  "lat": 38.2462053,
+  "lon": -122.3060057,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "415",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973953,
+  "lat": 38.2460361,
+  "lon": -122.3059325,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "417",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973954,
+  "lat": 38.2459371,
+  "lon": -122.3058186,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "419",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973955,
+  "lat": 38.2454837,
+  "lon": -122.3058674,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "402",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973956,
+  "lat": 38.2456466,
+  "lon": -122.3056398,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "404",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11688973957,
+  "lat": 38.2457503,
+  "lon": -122.3054853,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "406",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Vineyard Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072040,
+  "lat": 38.2446585,
+  "lon": -122.2939614,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1451",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Lane"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072059,
+  "lat": 38.2415323,
+  "lon": -122.3024180,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "100",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Home Hill Road"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072060,
+  "lat": 38.2409804,
+  "lon": -122.3018348,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Home Hill Road"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072061,
+  "lat": 38.2408670,
+  "lon": -122.3033472,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "101",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Home Hill Road"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072979,
+  "lat": 38.2472624,
+  "lon": -122.3024003,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "906",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Infinity Bend"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072980,
+  "lat": 38.2472508,
+  "lon": -122.3026766,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "904",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Infinity Bend"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072981,
+  "lat": 38.2466984,
+  "lon": -122.3040046,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "800",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072982,
+  "lat": 38.2465567,
+  "lon": -122.3038789,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "802",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072983,
+  "lat": 38.2464135,
+  "lon": -122.3036701,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "804",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072984,
+  "lat": 38.2465261,
+  "lon": -122.3034224,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "806",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072985,
+  "lat": 38.2465998,
+  "lon": -122.3032932,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "808",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072986,
+  "lat": 38.2467068,
+  "lon": -122.3031392,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "810",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072987,
+  "lat": 38.2468763,
+  "lon": -122.3029959,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "812",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072988,
+  "lat": 38.2469972,
+  "lon": -122.3031870,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "814",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072989,
+  "lat": 38.2471293,
+  "lon": -122.3033250,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "816",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Riperian Circle"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072990,
+  "lat": 38.2473141,
+  "lon": -122.3032631,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "910",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Way"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072991,
+  "lat": 38.2476588,
+  "lon": -122.3036135,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "907",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Way"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072992,
+  "lat": 38.2479520,
+  "lon": -122.3034613,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "909",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Way"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072993,
+  "lat": 38.2471571,
+  "lon": -122.3040222,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "709",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Nichols Trellis"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072994,
+  "lat": 38.2473183,
+  "lon": -122.3041090,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "707",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Nichols Trellis"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072995,
+  "lat": 38.2473391,
+  "lon": -122.3043939,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "705",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Nichols Trellis"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072996,
+  "lat": 38.2471334,
+  "lon": -122.3045301,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "703",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Nichols Trellis"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072997,
+  "lat": 38.2469847,
+  "lon": -122.3044222,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "701",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Nichols Trellis"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072998,
+  "lat": 38.2465206,
+  "lon": -122.3048610,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "515",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689072999,
+  "lat": 38.2463677,
+  "lon": -122.3051406,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "501",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689073000,
+  "lat": 38.2465289,
+  "lon": -122.3053105,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "503",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689073001,
+  "lat": 38.2466498,
+  "lon": -122.3054096,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "505",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689073002,
+  "lat": 38.2467554,
+  "lon": -122.3052680,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "507",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689073003,
+  "lat": 38.2468152,
+  "lon": -122.3051070,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "509",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11689073004,
+  "lat": 38.2466859,
+  "lon": -122.3049938,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "511",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Allen Court"
+  }
+},
+{
+  "type": "node",
+  "id": 11691652279,
+  "lat": 38.2465848,
+  "lon": -122.2800420,
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "970",
+    "addr:postcode": "94558",
+    "addr:state": "CA",
+    "addr:street": "Anselmo Court"
+  }
+},
+{
+  "type": "way",
+  "id": 33698863,
+  "center": {
+    "lat": 38.2651976,
+    "lon": -122.2759223
+  },
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "2295",
+    "addr:postcode": "94558",
+    "addr:state": "CA",
+    "addr:street": "Streblow Drive",
+    "description": "18 hole Par 72",
+    "leisure": "golf_course",
+    "name": "Napa Golf Course at Kennedy Park",
+    "phone": "+1-707-255-4333",
+    "website": "https://www.playnapa.com/"
+  }
+},
+{
+  "type": "way",
+  "id": 43136891,
+  "center": {
+    "lat": 38.2504122,
+    "lon": -122.3253028
+  },
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "1500",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Los Carneros Avenue",
+    "crop": "grape",
+    "landuse": "vineyard",
+    "name": "Saintsbury"
+  }
+},
+{
+  "type": "way",
+  "id": 1256455098,
+  "center": {
+    "lat": 38.2450305,
+    "lon": -122.3002160
+  },
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad",
+    "amenity": "restaurant",
+    "building": "yes",
+    "cuisine": "american",
+    "name": "Bear"
+  }
+},
+{
+  "type": "way",
+  "id": 1256455099,
+  "center": {
+    "lat": 38.2451985,
+    "lon": -122.3000104
+  },
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad",
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1256455100,
+  "center": {
+    "lat": 38.2454357,
+    "lon": -122.3003367
+  },
+  "tags": {
+    "addr:city": "Napa",
+    "addr:housenumber": "200",
+    "addr:postcode": "94559",
+    "addr:state": "CA",
+    "addr:street": "Stanly Crossroad",
+    "building": "yes",
+    "building:levels": "1",
+    "name": "Glasshouse Barn"
+  }
+}
+
+  ]
+}

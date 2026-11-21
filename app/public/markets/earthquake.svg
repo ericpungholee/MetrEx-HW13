@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-label="Illustration: family house on a lawn with a ground fault line">
+<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd7ea"/><stop offset="1" stop-color="#eef5f9"/></linearGradient></defs>
+<rect width="320" height="240" fill="url(#s)"/>
+<path d="M0 150 C80 130 160 140 320 128 V240 H0Z" fill="#a7c08a" opacity=".6"/>
+<rect y="176" width="320" height="64" fill="#86a86a"/>
+<g transform="translate(92 96)"><polygon points="0,40 68,0 136,40" fill="#7b3f2e"/><rect x="10" y="40" width="116" height="56" fill="#b4573f"/><rect x="22" y="52" width="26" height="22" fill="#f4efe7"/><rect x="88" y="52" width="26" height="22" fill="#f4efe7"/><rect x="58" y="58" width="22" height="38" fill="#3d3a36"/><rect x="96" y="6" width="12" height="24" fill="#6a3426"/></g>
+<path d="M20 214 l34 -6 14 10 30 -12 22 8 40 -10 18 9 36 -8 26 6 40 -9" fill="none" stroke="#4a3a2a" stroke-width="3" stroke-linejoin="round"/>
+<g fill="none" stroke="#5d6b78" stroke-width="2" opacity=".55"><path d="M40 120 q8 -8 0 -16 M52 124 q14 -14 0 -28 M280 120 q-8 -8 0 -16 M268 124 q-14 -14 0 -28"/></g>
+</svg>

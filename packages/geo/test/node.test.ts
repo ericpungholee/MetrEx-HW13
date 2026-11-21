@@ -20,7 +20,9 @@ describe("loadScenarioGeometry", () => {
   });
 
   it("refuses an unknown scenario id", () => {
-    expect(() => loadScenarioGeometry(registry, 2, DATA_DIR)).toThrow(/Unknown scenario_id 2/);
+    expect(() => loadScenarioGeometry(registry, 99, DATA_DIR)).toThrow(/Unknown scenario_id 99/);
+    // Multi-peril scenarios exist but are not fire perimeters: the wildfire loader still refuses them.
+    expect(() => loadScenarioGeometry(registry, 2, DATA_DIR)).toThrow(/not a single-MultiPolygon/);
     expect(() => loadScenarioGeometry(registry, 0, DATA_DIR)).toThrow(/Unknown scenario_id/);
   });
 

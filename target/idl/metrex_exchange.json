@@ -539,7 +539,7 @@
         {
           "name": "previous_round",
           "docs": [
-            "`config.latest_round`; required once any round exists. Read-only."
+            "`config.latest_round` when passed. Optional and unused since multi-peril. Read-only."
           ],
           "optional": true
         },
@@ -3850,9 +3850,24 @@
       "value": "[114, 111, 117, 110, 100]"
     },
     {
+      "name": "SCENARIO_HURRICANES_2017_09",
+      "type": "u16",
+      "value": "2"
+    },
+    {
+      "name": "SCENARIO_IOWA_TORNADOES_2024_05",
+      "type": "u16",
+      "value": "4"
+    },
+    {
       "name": "SCENARIO_PALISADES_2025",
       "type": "u16",
       "value": "1"
+    },
+    {
+      "name": "SCENARIO_SOUTH_NAPA_2014_08",
+      "type": "u16",
+      "value": "3"
     },
     {
       "name": "SHARE_DECIMALS",

@@ -4,6 +4,17 @@ _Last updated: 2026-11-21_
 
 Both generations are complete. The v2 exchange (binary YES/NO outcome tokens and an escrowed order book) passed every gate from V0 to V6 and is deployed on Devnet. The app at `/` is the exchange. The frozen v1.1 program and its app at `/v1` remain the fallback demo.
 
+**Multi-peril (branch `feat/multi-peril`, 2026-11-21, live on Devnet, not committed).** Four property markets, one each for wildfire, hurricane, earthquake and tornado, on the same exchange. The spec is [spec-multiperil.md](spec-multiperil.md) and the datasets are in [../data/DATASET-hazards.md](../data/DATASET-hazards.md). The owner approved a small `metrex_exchange` upgrade (scenarios 1–4, concurrent rounds of different hazards) with no layout, seed, instruction, argument, error or event change. The program was upgraded in place on 2026-11-21 ([tx](https://explorer.solana.com/tx/3NCiDMWnMivyrJKjAoyrncwQao7MyxW58MFnRB5k1LjVUHtSbFQBbNeQDVV45khyHSuY9n3VKqVU5pcEzJ36AvDi?cluster=devnet)). The dumped bytes equal the tested build (SHA-256 `e0d979cb…c3b2` plus zero padding), and the upgrade authority is still admin. At the owner's request the four catalog markets use real OpenStreetMap residential addresses, picked without damage data (spec-multiperil §3).
+
+| Market | Property | Round | Market account |
+|---|---|---|---|
+| Wildfire · 16185 Sunset Boulevard, Pacific Palisades | 7 | #12 | [`6MevYsSr…`](https://explorer.solana.com/address/6MevYsSrWMnHMBEzdtYcg2D5TXgT399o3Ri87xP9ppT?cluster=devnet) |
+| Hurricane · 1111 Memorial Drive, Coral Gables | 4 | #13 | [`GFHq8FX5…`](https://explorer.solana.com/address/GFHq8FX5oZ8uD6QoqxYxMt9yAs82rmVNXTbX2m9XgvLD?cluster=devnet) |
+| Earthquake · 909 Stanly Way, Napa | 5 | #14 | [`2Bvt8RJx…`](https://explorer.solana.com/address/2Bvt8RJx8hgDoryuLSb7iggZpQpBg5x91deSQXYDUxL6?cluster=devnet) |
+| Tornado · 7007 Peckham Street, Johnston | 6 | #15 | [`HC1BdUU6…`](https://explorer.solana.com/address/HC1BdUU6xrMNRdEzxoCpBZXp14CgGZY6ywhyE6CYXsvW?cluster=devnet) |
+
+Trading on all four ends about 48 h after 17:50 UTC on 2026-11-21. The bots quote each market at its catalog ladder.
+
 This page holds the current state only. Per-gate detail lives in the build logs:
 
 | Record | Contents |
@@ -30,6 +41,8 @@ This page holds the current state only. Per-gate detail lives in the build logs:
 
 v1.1 Gates 0–6 all passed on 2026-11-20 and 2026-11-21 (see [v1-build-log.md](v1-build-log.md)).
 
+Multi-peril verification (2026-11-21, local): `anchor test` 149 passing (v1 and v2, including the new multi-peril block). Package tests: exchange 41, geo 46, server 56, bots 39 and app 18. App and scripts typecheck clean. `normalize-hazards --check` reproduces all three dataset hashes.
+
 Last full verification (post-V6): `anchor test` 145 passing (78 v1, 67 v2), 198 workspace tests, TypeScript checks, Clippy, production build, fixture guard and the V3 disposable-validator replay.
 
 ## Deployed on Devnet
@@ -43,7 +56,14 @@ Last full verification (post-V6): `anchor test` 145 passing (78 v1, 67 v2), 198 
 
 ## Open items
 
-None of these block the demo.
+None of these block the v2 demo.
+
+- **A second bot instance with the same keys appeared once.** On 2026-11-21 at 17:51–17:52 UTC, bots A and B signed orders at the legacy 4¢ ladder that the local worker never planned. Nothing on this machine was the source, so another copy of the old bot code ran somewhere else. It caused three bot-vs-bot keeper matches on the wildfire market (17:51:54–56). Since then it has been silent. The local worker was restarted, and a 4-minute watch found no foreign bot-signed transactions. If it comes back, move the bot wallets' mUSD and SOL to fresh keys so the other copy can't quote.
+- **Old keeper still running.** PID 85205 (started 08:27, 3-round look-back) runs alongside the new keeper (8 rounds). That's harmless, but stop the old one when convenient.
+- **Production app rebuilt.** It serves on `127.0.0.1:3015` with `METREX_ORACLE_DATA_DIR` set to the private oracle folder. The old 09:46 process stopped listening but has not fully exited (PID 97470).
+- **Dense market UI merged (2026-11-21).** `cursor/kalshi-style-market-ui-71bc` (30474d8) is merged under the multi-peril work. The catalog header, per-hazard payout rule, replay source, coverage mode, ¢ prices and real-address footer are kept in its layout. At the owner's instruction, the §10.1 invalid disclosure now reads in cents: "…every share pays 0.50 mUSD (50¢). Buying above 50¢ can lose money on invalid." spec-v2 §10.1 was updated to match.
+- `prepare-multiperil.ts` now owns all four hazards. `prepare-demo-v2.ts` refuses to touch the catalog wildfire round unless given `--legacy`. One Open round per hazard is operator policy, not a program rule (spec-multiperil §2.2). The oracle data folder holds all four datasets.
+- **Multi-peril imagery.** Cards use local illustrations, not the approved stock photos (spec-multiperil §7.3).
 
 - **Wallet redemption (§10.3), deferred for the hackathon.** Redemption bundles every resting order's sweep into one transaction. A wallet with eight resting YES sells produced 1,252 bytes against the 1,232-byte limit. The one-order demo claim fits and was verified on Devnet. Large wallets can cancel orders before redeeming. Splitting the claim needs an owner decision, since §10.3 asks for one transaction.
 - **Portfolio history (§10.5).** Completed redemptions are not listed. Only claimable amounts are shown.
@@ -53,7 +73,7 @@ None of these block the demo.
 
 ## Running the demo
 
-- `pnpm tsx scripts/prepare-demo-v2.ts` reuses a fresh round or closes a stale one, settles it and opens a new round. It verifies the bot ladder, worker heartbeats and the private dataset hash.
+- `pnpm tsx scripts/prepare-demo-v2.ts` reuses a fresh **wildfire** round or closes a stale one, settles it and opens a new round. It ignores other hazards' rounds. `pnpm tsx scripts/prepare-multiperil.ts` does the same for the hurricane, earthquake and tornado rounds, and registers their properties. It verifies the bot ladder, worker heartbeats and the private dataset hash.
 - Workers: `pnpm --filter bots start:v2` and `pnpm --filter indexer start:v2` (keeper and trade index, `KEEPER_DISABLED=1` stops matching). Both refuse to start when `METREX_ORACLE_DATA_DIR` is set.
 - Only the app server's oracle routes read `METREX_ORACLE_DATA_DIR`. The operator page at `/operator` closes and settles a round step by step.
 - Rehearsal lesson from V6: when showing a resting order surviving closure, pause the keeper from closure until Phantom confirms the combined sweep-and-redeem, or the keeper sweeps the order first. `scripts/prove-v6-rejection.ts --order <address> --submit` sends the live closure rejection and checks it.

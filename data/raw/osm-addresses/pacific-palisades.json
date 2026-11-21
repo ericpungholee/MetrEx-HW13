@@ -1,0 +1,1092 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-21T17:35:17Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 2380557122,
+  "lat": 34.0463902,
+  "lon": -118.5256630,
+  "tags": {
+    "addr:housename": "CVS",
+    "addr:housenumber": "864",
+    "addr:postcode": "90272",
+    "addr:street": "Swarthmore Avenue",
+    "amenity": "pharmacy",
+    "brand": "CVS Pharmacy",
+    "brand:website": "https://www.cvs.com/",
+    "brand:wikidata": "Q2078880",
+    "dispensing": "yes",
+    "healthcare": "pharmacy",
+    "name": "CVS Pharmacy",
+    "short_name": "CVS",
+    "website": "https://www.cvs.com/store-locator/pacific-palisades-ca-pharmacies/864-swarthmore-avenue-pacific-palisades-ca-90272/storeid=9775"
+  }
+},
+{
+  "type": "node",
+  "id": 2380560097,
+  "lat": 34.0452746,
+  "lon": -118.5253519,
+  "tags": {
+    "addr:housename": "Village School",
+    "addr:housenumber": "780",
+    "addr:postcode": "90272",
+    "addr:street": "Swarthmore Avenue",
+    "amenity": "school",
+    "name": "Village School"
+  }
+},
+{
+  "type": "node",
+  "id": 2707561693,
+  "lat": 34.0391125,
+  "lon": -118.5541150,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17380",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "amenity": "cafe",
+    "branch": "Vons Pacific Palisades 2266",
+    "brand": "Starbucks",
+    "brand:wikidata": "Q37158",
+    "cuisine": "coffee_shop",
+    "name": "Starbucks",
+    "official_name": "Starbucks Coffee",
+    "phone": "+1 310-454-2502",
+    "ref": "20223",
+    "takeaway": "yes",
+    "website": "https://www.starbucks.com/store-locator/store/20223/vons-pacific-palisades-2266-17380-sunset-blvd-pacific-palisades-ca-902724102-u"
+  }
+},
+{
+  "type": "node",
+  "id": 2812582564,
+  "lat": 34.0472715,
+  "lon": -118.5261305,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "15300",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "was:name": "Starbucks"
+  }
+},
+{
+  "type": "node",
+  "id": 5725891221,
+  "lat": 34.0437985,
+  "lon": -118.5105525,
+  "tags": {
+    "addr:housenumber": "789",
+    "addr:street": "Amalfi Drive",
+    "name": "Maison Johnny Halliday",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 6040238685,
+  "lat": 34.0421100,
+  "lon": -118.5474668,
+  "tags": {
+    "addr:city": "Los Angeles",
+    "addr:housenumber": "16940",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard"
+  }
+},
+{
+  "type": "node",
+  "id": 6171198485,
+  "lat": 34.0301690,
+  "lon": -118.5187333,
+  "tags": {
+    "addr:housenumber": "205",
+    "addr:street": "Chautauqua Boulevard",
+    "name": "Case Study House #9",
+    "tourism": "attraction"
+  }
+},
+{
+  "type": "node",
+  "id": 8591490882,
+  "lat": 34.0404549,
+  "lon": -118.5533565,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17334",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "amenity": "fast_food",
+    "brand": "Subway",
+    "brand:wikidata": "Q244457",
+    "cuisine": "sandwich",
+    "name": "Subway",
+    "opening_hours": "Mo-Fr 06:30-20:00; Sa 07:30-20:00; Su 09:00-20:00",
+    "phone": "+1 310-573-7338",
+    "takeaway": "yes",
+    "website": "https://restaurants.subway.com/united-states/ca/pacific-palisades/17334-sunset-blvd"
+  }
+},
+{
+  "type": "node",
+  "id": 9184211398,
+  "lat": 34.0732540,
+  "lon": -118.5615826,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17005",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Palisades Circle",
+    "leisure": "park",
+    "name": "Santa Ynez Private Recreational Center",
+    "operator": "Palisades Highlands Homeowners Owners"
+  }
+},
+{
+  "type": "node",
+  "id": 9650192982,
+  "lat": 34.0464897,
+  "lon": -118.5238720,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "960",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Monument Street",
+    "name": "The Gardens at Palisades",
+    "shop": "mall"
+  }
+},
+{
+  "type": "node",
+  "id": 9684331799,
+  "lat": 34.0456900,
+  "lon": -118.5256626,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "15243",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "La Cruz Drive",
+    "amenity": "post_office",
+    "name": "US Postal Service",
+    "opening_hours": "Mo-Fr 09:00-17:00; Sa 09:00-15:00",
+    "operator": "United States Postal Service",
+    "operator:short": "USPS",
+    "operator:type": "public",
+    "operator:website": "https://www.usps.com",
+    "operator:wikidata": "Q668687",
+    "operator:wikipedia": "en:United States Postal Service"
+  }
+},
+{
+  "type": "node",
+  "id": 9684405267,
+  "lat": 34.0451900,
+  "lon": -118.5258645,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "15240",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "La Cruz Drive",
+    "amenity": "school",
+    "grades": "K-6",
+    "name": "Seven Arrows Elementary",
+    "website": "https://www.sevenarrows.org"
+  }
+},
+{
+  "type": "node",
+  "id": 9684412470,
+  "lat": 34.0446411,
+  "lon": -118.5262034,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "780",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Swarthmore Avenue",
+    "amenity": "school",
+    "grades": "K-6",
+    "name": "Village School",
+    "website": "https://www.village-school.org/"
+  }
+},
+{
+  "type": "node",
+  "id": 9684451618,
+  "lat": 34.0464089,
+  "lon": -118.5262625,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "859",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Swarthmore Avenue",
+    "name": "Shoppe Amber Interiors",
+    "opening_hours": "Mo-Sa 10:00-18:00; Su 11:00-17:00",
+    "phone": "+1-310-230-1106",
+    "shop": "furniture",
+    "website": "https://shoppe.amberinteriordesign.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 9684453824,
+  "lat": 34.0465845,
+  "lon": -118.5264314,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "863",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Swarthmore Avenue",
+    "razed:amenity": "restaurant",
+    "razed:cuisine": "pizza",
+    "razed:name": "Beech Street Cafe",
+    "razed:phone": "310-573-1940",
+    "razed:website": "https://www.beechstreetcafe.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 11004370904,
+  "lat": 34.0468167,
+  "lon": -118.5274664,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "873",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Via de la Paz",
+    "name": "Bruce Lurie Gallery",
+    "tourism": "gallery"
+  }
+},
+{
+  "type": "node",
+  "id": 11004550705,
+  "lat": 34.0467548,
+  "lon": -118.5274734,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "871",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Via de la Paz",
+    "name": "M. Elle Design",
+    "office": "architect"
+  }
+},
+{
+  "type": "node",
+  "id": 11492760273,
+  "lat": 34.0468037,
+  "lon": -118.5238275,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "984",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Monument Street",
+    "addr:unit": "204",
+    "contact:instagram": "https://www.instagram.com/thumoswellness/",
+    "healthcare": "alternative",
+    "healthcare:speciality": "acupuncture;traditional_chinese_medicine",
+    "name": "Thumos Health Center, Inc",
+    "phone": "+1 323-372-5150",
+    "website": "https://thumoshealthcenter.com/"
+  }
+},
+{
+  "type": "node",
+  "id": 11980259899,
+  "lat": 34.0478915,
+  "lon": -118.5440505,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "16605",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "addr:unit": "103",
+    "amenity": "fast_food",
+    "brand": "Domino's",
+    "brand:wikidata": "Q839466",
+    "cuisine": "pizza",
+    "name": "Domino's",
+    "opening_hours": "Mo-Th 10:00-24:00; Fr-Sa 10:00-01:00; Su 10:00-24:00",
+    "phone": "+1 310-454-1035",
+    "ref": "8546",
+    "takeaway": "yes",
+    "website": "https://pizza.dominos.com/california/pacific-palisades/16605-sunset-blvd-suite-103"
+  }
+},
+{
+  "type": "node",
+  "id": 11980259900,
+  "lat": 34.0464203,
+  "lon": -118.5243030,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "15207",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "West Sunset Boulevard",
+    "amenity": "fast_food",
+    "brand": "Chipotle",
+    "brand:wikidata": "Q465751",
+    "cuisine": "mexican",
+    "name": "Chipotle",
+    "official_name": "Chipotle Mexican Grill",
+    "phone": "+1 310-230-0153",
+    "takeaway": "yes",
+    "website": "https://locations.chipotle.com/ca/pacific-palisades/15207-w-sunset-blvd"
+  }
+},
+{
+  "type": "node",
+  "id": 13289626844,
+  "lat": 34.0438927,
+  "lon": -118.5526375,
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17208",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "West Sunset Boulevard",
+    "information": "office",
+    "name": "Lake Shrine Visitor Center",
+    "tourism": "information"
+  }
+},
+{
+  "type": "way",
+  "id": 23014640,
+  "center": {
+    "lat": 34.0449798,
+    "lon": -118.5640877
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17985",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "fee": "no",
+    "fee:note": "Admission free, parking $25",
+    "museum": "history",
+    "name": "The Getty Villa",
+    "opening_hours": "Mo 10:00-17:00; We-Su 10:00-17:00",
+    "operator": "The J. Paul Getty Trust",
+    "operator:type": "private",
+    "phone": "+1-310-440-7300",
+    "tourism": "museum",
+    "website": "https://www.getty.edu/visit/villa/",
+    "wikidata": "Q180401"
+  }
+},
+{
+  "type": "way",
+  "id": 44652700,
+  "center": {
+    "lat": 34.0453082,
+    "lon": -118.5022055
+  },
+  "tags": {
+    "access": "private",
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "1250",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Capri Drive",
+    "club": "yes",
+    "description": "18 hole Par 71",
+    "ele": "104",
+    "gnis:feature_id": "1664196",
+    "leisure": "golf_course",
+    "name": "Riviera Country Club",
+    "phone": "+1-310-454-6591",
+    "source": "Bing, OSM",
+    "website": "https://www.therivieracountryclub.com/",
+    "wikidata": "Q7338863",
+    "wikipedia": "en:Riviera Country Club"
+  }
+},
+{
+  "type": "way",
+  "id": 72986904,
+  "center": {
+    "lat": 34.0380952,
+    "lon": -118.5397324
+  },
+  "tags": {
+    "addr:city": "Los Angeles",
+    "addr:housenumber": "16321",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "damage:event": "2025 California wildfires",
+    "disused:landuse": "residential",
+    "landuse": "brownfield",
+    "name": "Pacific Palisades Bowl Mobile Estates",
+    "residential": "trailer_park",
+    "source": "usgs_imagery_2006"
+  }
+},
+{
+  "type": "way",
+  "id": 72986913,
+  "center": {
+    "lat": 34.0377876,
+    "lon": -118.5361171
+  },
+  "tags": {
+    "addr:city": "Los Angeles",
+    "addr:housenumber": "16001",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "damage:event": "2025 California wildfires",
+    "disused:landuse": "residential",
+    "landuse": "brownfield",
+    "name": "Tahitian Terrace Mobile Home Park",
+    "residential": "trailer_park",
+    "source": "usgs_imagery_2006;survey;image",
+    "source_ref": "AM909_DSCS6418"
+  }
+},
+{
+  "type": "way",
+  "id": 193420774,
+  "center": {
+    "lat": 34.0450662,
+    "lon": -118.5224839
+  },
+  "tags": {
+    "addr:housenumber": "15045",
+    "addr:postcode": "90272-3719",
+    "addr:street": "West Sunset Boulevard",
+    "amenity": "fire_station",
+    "building": "yes",
+    "ele": "107.6",
+    "height": "11.9",
+    "lacounty:ain": "4423028900",
+    "lacounty:bld_id": "403427839228",
+    "name": "Los Angeles Fire Department Fire Station 69",
+    "operator": "Los Angeles Fire Department",
+    "operator:wikidata": "Q3122786",
+    "source": "Los Angeles Fire Department"
+  }
+},
+{
+  "type": "way",
+  "id": 414612749,
+  "center": {
+    "lat": 34.0716617,
+    "lon": -118.5577487
+  },
+  "tags": {
+    "addr:housenumber": "17058",
+    "addr:street": "Avenida de Santa Ynez",
+    "building": "house",
+    "building:levels": "2",
+    "building:units": "1",
+    "ele": "231.5",
+    "height": "8.6",
+    "house": "residential",
+    "lacounty:ain": "4431002002",
+    "lacounty:bld_id": "392769848928"
+  }
+},
+{
+  "type": "way",
+  "id": 414615234,
+  "center": {
+    "lat": 34.0422584,
+    "lon": -118.5543897
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17281",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "West Sunset Boulevard",
+    "amenity": "fire_station",
+    "building": "yes",
+    "ele": "27.5",
+    "height": "5.9",
+    "lacounty:ain": "4416002900",
+    "lacounty:bld_id": "393720838210",
+    "name": "Los Angeles Fire Department Fire Station 23",
+    "operator": "Los Angeles Fire Department",
+    "operator:wikidata": "Q3122786",
+    "source": "Los Angeles Fire Department"
+  }
+},
+{
+  "type": "way",
+  "id": 414615365,
+  "center": {
+    "lat": 34.0462487,
+    "lon": -118.5559525
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "520",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Paseo Miramar",
+    "building": "yes",
+    "building:levels": "2",
+    "building:units": "1",
+    "contact:website": "http://www.villa-aurora.org/index.php?page=kunstlerresidenz-kulturdenkmal",
+    "ele": "119.5",
+    "height": "10.0",
+    "historic": "yes",
+    "lacounty:ain": "4416007024",
+    "lacounty:bld_id": "393237839671",
+    "name": "Villa Aurora",
+    "start_date": "1927",
+    "wikidata": "Q2524832"
+  }
+},
+{
+  "type": "way",
+  "id": 414615384,
+  "center": {
+    "lat": 34.0403340,
+    "lon": -118.5605895
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17575",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "building": "yes",
+    "ele": "21.6",
+    "height": "9.5",
+    "historic": "building",
+    "lacounty:ain": "4416012030",
+    "lacounty:bld_id": "391878837534",
+    "name": "Thelma Todd Landmark Building",
+    "start_date": "1928"
+  }
+},
+{
+  "type": "way",
+  "id": 414615477,
+  "center": {
+    "lat": 34.0422924,
+    "lon": -118.5665243
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17948",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Porto Marina Way",
+    "building": "yes",
+    "ele": "59.7",
+    "height": "16.2",
+    "lacounty:ain": "4416015046",
+    "lacounty:bld_id": "390037838245",
+    "name": "Villa de Leon"
+  }
+},
+{
+  "type": "way",
+  "id": 414615519,
+  "center": {
+    "lat": 34.0392424,
+    "lon": -118.5557330
+  },
+  "tags": {
+    "addr:city": "Pacific Palasades",
+    "addr:housenumber": "17381",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "West Sunset Blvd",
+    "building": "commercial",
+    "building:levels": "2",
+    "ele": "26.2",
+    "height": "14.9",
+    "lacounty:ain": "4416003026",
+    "lacounty:bld_id": "393490837232",
+    "name": "Sunset Coast Plaza",
+    "start_date": "1985"
+  }
+},
+{
+  "type": "way",
+  "id": 414633545,
+  "center": {
+    "lat": 34.0508954,
+    "lon": -118.5490951
+  },
+  "tags": {
+    "addr:city": "Los Angeles",
+    "addr:housenumber": "801",
+    "addr:state": "CA",
+    "addr:street": "Enchanted Way",
+    "building:units": "1",
+    "damage:event": "2025 California wildfires",
+    "damage:type": "fire",
+    "destroyed:building": "house",
+    "ele": "160.2",
+    "height": "6.2",
+    "lacounty:ain": "4419002005",
+    "lacounty:bld_id": "395332841356",
+    "start_date": "1957"
+  }
+},
+{
+  "type": "way",
+  "id": 414640701,
+  "center": {
+    "lat": 34.0389726,
+    "lon": -118.5546330
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17299",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "amenity": "fast_food",
+    "brand": "Taco Bell",
+    "brand:wikidata": "Q752941",
+    "building": "yes",
+    "building:units": "1",
+    "cuisine": "tex-mex",
+    "ele": "16.6",
+    "height": "8.4",
+    "lacounty:ain": "4415019008",
+    "lacounty:bld_id": "393645837020",
+    "name": "Taco Bell",
+    "opening_hours": "Mo-Th 06:00-24:00; Fr 06:00-02:00; Sa 07:00-02:00; Su 08:00-24:00",
+    "phone": "+1 310-459-7645",
+    "start_date": "1968",
+    "takeaway": "yes",
+    "website": "https://locations.tacobell.com/ca/pacific-palisades/17299-pacific-coast-hwy.html"
+  }
+},
+{
+  "type": "way",
+  "id": 414642101,
+  "center": {
+    "lat": 34.0426862,
+    "lon": -118.5525116
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17190",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "amenity": "place_of_worship",
+    "building": "yes",
+    "building:units": "26",
+    "ele": "71.0",
+    "height": "16.1",
+    "lacounty:ain": "4415017007",
+    "lacounty:bld_id": "394351838374",
+    "name": "Self-Realization Fellowship Lake Shrine",
+    "phone": "+1-310-454-4114",
+    "religion": "buddhist",
+    "service_times": "Tu-Sa 09:00-16:30; Su 12:00-16:30 || Su 12:00-16:00 open \"Temple Hours\"",
+    "start_date": "1947",
+    "website": "https://lakeshrine.org/",
+    "wikidata": "Q7447993"
+  }
+},
+{
+  "type": "way",
+  "id": 414642692,
+  "center": {
+    "lat": 34.0392883,
+    "lon": -118.5539844
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "17380",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Sunset Boulevard",
+    "brand": "Vons",
+    "brand:wikidata": "Q7941609",
+    "building": "yes",
+    "building:units": "1",
+    "designation": "Safeway 2266",
+    "ele": "15.8",
+    "height": "6.6",
+    "lacounty:ain": "4415019012",
+    "lacounty:bld_id": "393844837139",
+    "name": "Vons",
+    "opening_hours": "Mo-Su 06:00-23:00",
+    "phone": "+1 310-454-2502",
+    "shop": "supermarket",
+    "start_date": "1968",
+    "website": "https://local.vons.com/ca/pacific-palisades/17380-sunset-blvd.html"
+  }
+},
+{
+  "type": "way",
+  "id": 420494072,
+  "center": {
+    "lat": 34.0484792,
+    "lon": -118.5262579
+  },
+  "tags": {
+    "addr:housenumber": "15340",
+    "addr:street": "Albright Street",
+    "building:units": "1",
+    "damage:event": "2025 California wildfires",
+    "damage:type": "fire",
+    "destroyed:building": "house",
+    "ele": "116.9",
+    "height": "13",
+    "lacounty:ain": "4423016033",
+    "lacounty:bld_id": "402205840507",
+    "start_date": "1973"
+  }
+},
+{
+  "type": "way",
+  "id": 421933095,
+  "center": {
+    "lat": 34.0382360,
+    "lon": -118.5194516
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "565",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Toyopa Drive",
+    "building": "house",
+    "building:units": "1",
+    "ele": "88.7",
+    "height": "5.5",
+    "lacounty:ain": "4411013013",
+    "lacounty:bld_id": "404287836721",
+    "start_date": "1953"
+  }
+},
+{
+  "type": "way",
+  "id": 422260730,
+  "center": {
+    "lat": 34.0337023,
+    "lon": -118.5156854
+  },
+  "tags": {
+    "addr:housenumber": "435",
+    "addr:street": "Upper Mesa Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "58.8",
+    "height": "9.9",
+    "lacounty:ain": "4410020041",
+    "lacounty:bld_id": "405431835047",
+    "start_date": "1998"
+  }
+},
+{
+  "type": "way",
+  "id": 422260823,
+  "center": {
+    "lat": 34.0335230,
+    "lon": -118.5155578
+  },
+  "tags": {
+    "addr:housenumber": "425",
+    "addr:street": "Upper Mesa Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "61.4",
+    "height": "9.7",
+    "lacounty:ain": "4410020016",
+    "lacounty:bld_id": "405484834961",
+    "start_date": "1974"
+  }
+},
+{
+  "type": "way",
+  "id": 422260824,
+  "center": {
+    "lat": 34.0343008,
+    "lon": -118.5160056
+  },
+  "tags": {
+    "addr:housenumber": "455",
+    "addr:street": "Upper Mesa Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "55.4",
+    "height": "11.5",
+    "lacounty:ain": "4410020042",
+    "lacounty:bld_id": "405353835261",
+    "start_date": "1992"
+  }
+},
+{
+  "type": "way",
+  "id": 422261065,
+  "center": {
+    "lat": 34.0308502,
+    "lon": -118.5141565
+  },
+  "tags": {
+    "addr:housenumber": "345",
+    "addr:street": "West Channel Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "26.0",
+    "height": "8.8",
+    "lacounty:ain": "4410022007",
+    "lacounty:bld_id": "405886834054",
+    "start_date": "1915"
+  }
+},
+{
+  "type": "way",
+  "id": 422261066,
+  "center": {
+    "lat": 34.0305719,
+    "lon": -118.5155331
+  },
+  "tags": {
+    "addr:housenumber": "305",
+    "addr:street": "Mesa Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "20.4",
+    "height": "6.1",
+    "lacounty:ain": "4410018016",
+    "lacounty:bld_id": "405461833900",
+    "start_date": "1948"
+  }
+},
+{
+  "type": "way",
+  "id": 422261290,
+  "center": {
+    "lat": 34.0333355,
+    "lon": -118.5155026
+  },
+  "tags": {
+    "addr:housenumber": "419",
+    "addr:street": "Upper Mesa Road",
+    "building": "house",
+    "building:units": "1",
+    "ele": "62.5",
+    "height": "10.8",
+    "lacounty:ain": "4410020014",
+    "lacounty:bld_id": "405497834911",
+    "start_date": "1964"
+  }
+},
+{
+  "type": "way",
+  "id": 422297097,
+  "center": {
+    "lat": 34.0483694,
+    "lon": -118.5292174
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "941",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Temescal Canyon Road",
+    "building:units": "1",
+    "damage:event": "2025 California wildfires",
+    "damage:type": "fire",
+    "destroyed": "yes",
+    "destroyed:building": "theatre",
+    "disused:amenity": "theatre",
+    "ele": "100.9",
+    "height": "8.4",
+    "lacounty:ain": "4412001042",
+    "lacounty:bld_id": "401357840400",
+    "name": "Pierson Playhouse, Theatre Palisades",
+    "start_date": "1986",
+    "wikidata": "Q131941226"
+  }
+},
+{
+  "type": "way",
+  "id": 422297218,
+  "center": {
+    "lat": 34.0376868,
+    "lon": -118.5229934
+  },
+  "tags": {
+    "addr:housenumber": "525",
+    "addr:postcode": "90272",
+    "addr:street": "Alma Real Drive",
+    "building": "house",
+    "building:levels": "2",
+    "building:units": "1",
+    "ele": "92.8",
+    "height": "7.0",
+    "lacounty:ain": "4411019012",
+    "lacounty:bld_id": "403217836527",
+    "start_date": "1970"
+  }
+},
+{
+  "type": "way",
+  "id": 440289554,
+  "center": {
+    "lat": 34.0397696,
+    "lon": -118.5032308
+  },
+  "tags": {
+    "addr:city": "Santa Monica",
+    "addr:housenumber": "1414",
+    "addr:postcode": "90402",
+    "addr:state": "CA",
+    "addr:street": "San Vicente Boulevard",
+    "building": "house",
+    "building:levels": "3",
+    "ele": "93.6",
+    "healthcare": "rehabilitation",
+    "healthcare:speciality": "behavior",
+    "height": "6.4",
+    "lacounty:ain": "4279021003",
+    "lacounty:bld_id": "409207837247",
+    "name": "Lightfully Behavioral Health",
+    "operator": "Lightfully"
+  }
+},
+{
+  "type": "way",
+  "id": 447095160,
+  "center": {
+    "lat": 34.0458321,
+    "lon": -118.5478637
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "16821",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Marquez Avenue",
+    "amenity": "school",
+    "name": "Marquez Charter Elementary School",
+    "wikidata": "Q131842497"
+  }
+},
+{
+  "type": "way",
+  "id": 641350259,
+  "center": {
+    "lat": 34.0401333,
+    "lon": -118.5495216
+  },
+  "tags": {
+    "addr:city": "Los Angeles",
+    "addr:housenumber": "17015",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Pacific Coast Highway",
+    "damage:event": "2025 California wildfires",
+    "disused:landuse": "residential",
+    "landuse": "brownfield",
+    "name": "Malibu Village",
+    "residential": "trailer_park"
+  }
+},
+{
+  "type": "way",
+  "id": 712666219,
+  "center": {
+    "lat": 34.0319181,
+    "lon": -118.5118892
+  },
+  "tags": {
+    "addr:city": "Santa Monica",
+    "addr:housenumber": "421",
+    "addr:postcode": "90402",
+    "addr:state": "CA",
+    "addr:street": "Entrada Dr",
+    "amenity": "school",
+    "name": "Canyon Charter Elementary School",
+    "phone": "+1-310-454-7510",
+    "website": "https://www.canyoncharter.com/",
+    "wheelchair": "limited"
+  }
+},
+{
+  "type": "way",
+  "id": 785741188,
+  "center": {
+    "lat": 34.0368437,
+    "lon": -118.5254293
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "851",
+    "addr:state": "CA",
+    "addr:street": "Alma Real Drive",
+    "boundary": "protected_area",
+    "leisure": "nature_reserve",
+    "name": "George Wolfberg Park at Potrero Canyon",
+    "wikidata": "Q116229235"
+  }
+},
+{
+  "type": "way",
+  "id": 983015335,
+  "center": {
+    "lat": 34.0493568,
+    "lon": -118.5028078
+  },
+  "tags": {
+    "addr:city": "Pacific Palisades",
+    "addr:housenumber": "1164",
+    "addr:postcode": "90272",
+    "addr:state": "CA",
+    "addr:street": "Napoli Drive",
+    "building": "house"
+  }
+},
+{
+  "type": "relation",
+  "id": 6181038,
+  "center": {
+    "lat": 34.0487759,
+    "lon": -118.5383461
+  },
+  "tags": {
+    "addr:housenumber": "16185",
+    "addr:street": "Sunset Boulevard",
+    "building": "apartments",
+    "building:units": "11",
+    "ele": "101.8",
+    "height": "7.5",
+    "lacounty:ain": "4420002012",
+    "lacounty:bld_id": "398579840576",
+    "start_date": "1957",
+    "type": "multipolygon"
+  }
+}
+
+  ]
+}

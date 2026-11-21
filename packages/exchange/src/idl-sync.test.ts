@@ -68,6 +68,9 @@ describe("IDL sync (V0 freeze)", () => {
       ["PATH_EMERGENCY", X.ResolutionPath.Emergency],
       ["PATH_EXPIRY", X.ResolutionPath.Expiry],
       ["SCENARIO_PALISADES_2025", X.SCENARIO_PALISADES_2025],
+      ["SCENARIO_HURRICANES_2017_09", X.SCENARIO_HURRICANES_2017_09],
+      ["SCENARIO_SOUTH_NAPA_2014_08", X.SCENARIO_SOUTH_NAPA_2014_08],
+      ["SCENARIO_IOWA_TORNADOES_2024_05", X.SCENARIO_IOWA_TORNADOES_2024_05],
       ["PROGRAM_VERSION", X.PROGRAM_VERSION],
     ];
     for (const [name, v] of pairs) expect(c(name), name).toBe(String(v));

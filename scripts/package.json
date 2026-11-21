@@ -17,6 +17,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/shapefile": "^0.6.4",
+    "shapefile": "0.6.6",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

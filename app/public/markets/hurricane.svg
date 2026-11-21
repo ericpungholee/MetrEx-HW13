@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-label="Illustration: house with palm trees under storm clouds">
+<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fb3c4"/><stop offset="1" stop-color="#dfe8ee"/></linearGradient></defs>
+<rect width="320" height="240" fill="url(#s)"/>
+<path d="M20 60 q20 -22 46 -8 q14 -20 40 -6 q24 -6 30 14 H20z M190 48 q18 -18 40 -6 q20 -16 42 2 q20 0 24 14 H190z" fill="#7d8e9c" opacity=".7"/>
+<rect y="180" width="320" height="60" fill="#8fb07a"/>
+<g transform="translate(96 112)"><polygon points="0,30 64,0 128,30" fill="#c7764f"/><rect x="8" y="30" width="112" height="50" fill="#f7f2ea"/><rect x="20" y="42" width="24" height="20" fill="#5f87a6"/><rect x="84" y="42" width="24" height="20" fill="#5f87a6"/><rect x="54" y="48" width="20" height="32" fill="#3e4c58"/></g>
+<g stroke="#5b4a35" stroke-width="5" fill="none" stroke-linecap="round"><path d="M60 190 q4 -50 14 -90"/><path d="M262 190 q-2 -46 -14 -84"/></g>
+<g fill="#4c7a43"><path d="M74 100 q-30 -6 -44 10 q24 -4 44 -10z M74 100 q22 -16 44 -8 q-24 2 -44 8z M74 100 q-8 -24 6 -38 q2 20 -6 38z"/><path d="M248 106 q-28 -10 -46 4 q24 -2 46 -4z M248 106 q24 -14 44 -4 q-22 0 -44 4z M248 106 q-4 -26 10 -38 q0 20 -10 38z"/></g>
+<g stroke="#ffffff" stroke-width="2" opacity=".6"><path d="M150 30 l-12 40 M180 26 l-12 40 M210 34 l-12 40 M120 38 l-12 40"/></g>
+</svg>

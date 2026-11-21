@@ -39,6 +39,9 @@ import {
   PAYOUT_PER_SHARE,
   ResolutionPath,
   SCENARIO_PALISADES_2025,
+  SCENARIO_HURRICANES_2017_09,
+  SCENARIO_SOUTH_NAPA_2014_08,
+  SCENARIO_IOWA_TORNADOES_2024_05,
   findConfigPda,
   findEscrowPda,
   findOrderPda,
@@ -178,9 +181,16 @@ describe("metrex-exchange (v2, Gates V1–V2)", () => {
     }));
   }
 
-  function createRound(roundId: number, endsAt: number, previous: PublicKey | null, signer = controller, hash = DATASET_SHA256) {
+  function createRound(
+    roundId: number,
+    endsAt: number,
+    previous: PublicKey | null,
+    signer = controller,
+    hash = DATASET_SHA256,
+    scenario = SCENARIO_PALISADES_2025,
+  ) {
     return program.methods
-      .createRound(SCENARIO_PALISADES_2025, hash, encodeLabel(`Test round ${roundId}`), bn(endsAt))
+      .createRound(scenario, hash, encodeLabel(`Test round ${roundId}`), bn(endsAt))
       .accountsPartial({
         roundController: signer.publicKey,
         config: configPda,
@@ -415,8 +425,13 @@ describe("metrex-exchange (v2, Gates V1–V2)", () => {
       await expectError(reg(51, 90_000_001, 0), "InvalidCoordinates");
       await expectError(reg(52, 0, -180_000_001), "InvalidCoordinates");
       await expectError(reg(53, 0, 0, SCENARIO_PALISADES_2025, 0), "InvalidTriggerDistance");
-      // Only scenario 1 exists, so a property can never carry a scenario that mismatches its round.
-      await expectError(reg(54, 0, 0, 2), "UnsupportedScenario");
+      // Multi-peril: scenarios 1–4 exist; 0 and 5 do not.
+      await expectError(reg(54, 0, 0, 5), "UnsupportedScenario");
+      await expectError(reg(55, 0, 0, 0), "UnsupportedScenario");
+      // Point scenarios (hurricane 2, earthquake 3) need trigger 0; distance scenarios (1, 4) need > 0.
+      await expectError(reg(56, 0, 0, SCENARIO_HURRICANES_2017_09, 500), "InvalidTriggerDistance");
+      await expectError(reg(57, 0, 0, SCENARIO_SOUTH_NAPA_2014_08, 1), "InvalidTriggerDistance");
+      await expectError(reg(58, 0, 0, SCENARIO_IOWA_TORNADOES_2024_05, 0), "InvalidTriggerDistance");
       await expectFailureContaining(reg(1, 0, 0), "already in use");
     });
   });
@@ -443,12 +458,6 @@ describe("metrex-exchange (v2, Gates V1–V2)", () => {
       expect(c.nextRoundId.toNumber()).to.equal(2);
       const ev = await events(sig);
       expect(ev.map((e) => e.name)).to.include("roundcreated");
-    });
-
-    it("I6: rejects a second Open round, with or without the previous round account", async () => {
-      const endsAt = (await chainNow()) + 3600;
-      await expectError(createRound(2, endsAt, round1), "PreviousRoundOpen");
-      await expectError(createRound(2, endsAt, null), "PreviousRoundOpen");
     });
 
     it("I2: creates three markets with 0-decimal mints, market mint authority and no freeze authority", async () => {
@@ -651,7 +660,6 @@ describe("metrex-exchange (v2, Gates V1–V2)", () => {
 
     it("round 2 opens without touching any byte of round 1", async () => {
       snap = await snapshot(round1Accounts());
-      await expectError(createRound(2, (await chainNow()) + 60, null), "PreviousRoundOpen");
       round2EndsAt = (await chainNow()) + 8;
       await createRound(2, round2EndsAt, round1);
       await expectError(closeRound(round2, carol), "Unauthorized"); // before trading_ends_at
@@ -1499,6 +1507,85 @@ describe("metrex-exchange (v2, Gates V1–V2)", () => {
         await closeRound(round4, carol);
         await check(M7);
       });
+    });
+  });
+
+  // ================= Multi-peril (docs/spec-multiperil.md §2) =================
+
+  describe("multi-peril: one round per hazard, open at the same time", () => {
+    const HURRICANE_PROPERTY = 104;
+    const QUAKE_PROPERTY = 105;
+    const TORNADO_PROPERTY = 106;
+    const hazardHash = (n: string) => [...createHash("sha256").update(`dataset:${n}`).digest()];
+    const [round5] = findRoundPda(pid, 5);
+    const [round6] = findRoundPda(pid, 6);
+    const [round7] = findRoundPda(pid, 7);
+    const H = track("R5/hurricane", round5, HURRICANE_PROPERTY);
+    const Q = track("R6/earthquake", round6, QUAKE_PROPERTY);
+    const T = track("R7/tornado", round7, TORNADO_PROPERTY);
+    const wrong = track("R5/tornado property", round5, TORNADO_PROPERTY);
+
+    it("registers one property per new hazard with its trigger convention", async () => {
+      const regH = (id: number, lat: number, lon: number, scenario: number, trigger: number) =>
+        program.methods
+          .registerProperty(id, encodeLabel(`Hazard property #${id}`), lat, lon, scenario, trigger)
+          .accountsPartial({ admin: admin.publicKey, config: configPda, property: findPropertyPda(pid, id)[0] })
+          .rpc();
+      await regH(HURRICANE_PROPERTY, 25_722_000, -80_278_000, SCENARIO_HURRICANES_2017_09, 0);
+      await regH(QUAKE_PROPERTY, 38_254_000, -122_292_000, SCENARIO_SOUTH_NAPA_2014_08, 0);
+      await regH(TORNADO_PROPERTY, 41_699_000, -93_729_000, SCENARIO_IOWA_TORNADOES_2024_05, 500);
+      const q = await program.account.property.fetch(findPropertyPda(pid, QUAKE_PROPERTY)[0]);
+      expect(q.scenarioId).to.equal(SCENARIO_SOUTH_NAPA_2014_08);
+      expect(q.triggerDistanceM).to.equal(0);
+    });
+
+    it("opens three rounds of different scenarios concurrently, each with its own deadline", async () => {
+      const now = await chainNow();
+      await expectError(createRound(5, now + 3600, null, controller, hazardHash("x"), 5), "UnsupportedScenario");
+      await createRound(5, now + 3600, null, controller, hazardHash("hurricane"), SCENARIO_HURRICANES_2017_09);
+      await createRound(6, now + 7200, round5, controller, hazardHash("earthquake"), SCENARIO_SOUTH_NAPA_2014_08);
+      await createRound(7, now + 5400, null, controller, hazardHash("tornado"), SCENARIO_IOWA_TORNADOES_2024_05);
+      for (const [r, s] of [[round5, 2], [round6, 3], [round7, 4]] as const) {
+        const acct = await program.account.round.fetch(r);
+        expect(Object.keys(acct.status)[0]).to.equal("open");
+        expect(acct.scenarioId).to.equal(s);
+      }
+      expect((await program.account.config.fetch(configPda)).latestRound.toBase58()).to.equal(round7.toBase58());
+    });
+
+    it("binds each market to its round's scenario", async () => {
+      await expectError(createMarket(wrong), "ScenarioMismatch");
+      for (const mk of [H, Q, T]) {
+        await createMarket(mk);
+        ledger.accounts.push(mk.vault);
+        const acct = await program.account.market.fetch(mk.market);
+        expect(acct.round.toBase58()).to.equal(mk.round.toBase58());
+      }
+      expect((await program.account.market.fetch(Q.market)).triggerDistanceM).to.equal(0);
+      expect((await program.account.market.fetch(T.market)).triggerDistanceM).to.equal(500);
+    });
+
+    it("fractional-cent prices: a 1 bps (0.01¢) quote is exact", async () => {
+      for (const mk of [H, Q, T]) await split(mk, alice, 1_000);
+      // 100,000 shares at 1 bps = 100,000 × 1 × 100 base units = 10 mUSD; at 80 bps = 800 mUSD.
+      expect(quote(100_000n, 1)).to.equal(10_000_000n);
+      expect(quote(100_000n, 80)).to.equal(800_000_000n);
+      for (const mk of [H, Q, T]) await assertMarketInvariants(mk);
+    });
+
+    it("closing one hazard's round stops only that round; the others keep trading", async () => {
+      await closeRound(round5);
+      await expectError(split(H, alice, 1), "RoundNotOpen");
+      await split(Q, alice, 1);
+      await split(T, alice, 1);
+      await resolve(H, false);
+      expect(outcomeName((await program.account.market.fetch(H.market)).outcome)).to.equal("no");
+      await expectError(resolve(Q, true), "RoundNotClosed");
+      await closeRound(round6);
+      await closeRound(round7);
+      await resolve(Q, true);
+      await resolve(T, true);
+      for (const mk of [H, Q, T]) await assertMarketInvariants(mk);
     });
   });
 });

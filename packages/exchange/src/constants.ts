@@ -27,6 +27,10 @@ export const MAX_TAKE_LEVELS = 4;
 export const MAX_MATCH_LEVELS = 3;
 
 export const SCENARIO_PALISADES_2025 = 1;
+// Multi-peril (docs/spec-multiperil.md §2). Additive constants; mirror programs/metrex-exchange.
+export const SCENARIO_HURRICANES_2017_09 = 2;
+export const SCENARIO_SOUTH_NAPA_2014_08 = 3;
+export const SCENARIO_IOWA_TORNADOES_2024_05 = 4;
 export const PROGRAM_VERSION = 2;
 
 export const Outcome = { Yes: 0, No: 1 } as const;
