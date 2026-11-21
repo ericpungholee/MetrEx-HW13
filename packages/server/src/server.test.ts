@@ -1,17 +1,18 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { loadScenarioRegistry } from "@metrex/geo/node";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 import { errorCode, MUSD_UNIT, type ScenarioRegistry } from "@metrex/shared";
 import { MARKET_STATUS_INDEX, OFFER_STATUS_INDEX, OFFSETS, filters, type MarketView } from "./accounts";
-import { expandHome, loadKeypairFile, parsePublicKey, repoRoot } from "./env";
+import { dataDir, expandHome, loadKeypairFile, parsePublicKey, repoRoot } from "./env";
 import { explorerAddress, explorerTx } from "./explorer";
 import { programDataAddress } from "./ix";
 import { loadIdl } from "./program";
 import { getEvidence } from "./oracle/evidence";
 import { sha256Hex, writeEvidence } from "./oracle/evidence-store";
-import { loadScenarioGeometryLocal, type GeoAdapter } from "./oracle/geo-adapter";
+import { realGeo, type GeoAdapter } from "./oracle/geo-adapter";
 import { assertResolvable, buildMarketEvidence } from "./oracle/resolve";
 import { HttpError } from "./routes/errors";
 import { FAUCET_MUSD, FAUCET_SOL_LAMPORTS, FaucetLimiter, faucetInstructions } from "./routes/faucet";
@@ -302,17 +303,18 @@ describe("oracle", () => {
     await expect(buildMarketEvidence(market(), pid, registry, bad, "/tmp")).rejects.toThrow(/coordinates/);
   });
 
-  it("loads scenario geometry only when the file hash matches the registry", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "metrex-data-"));
-    const body = '{"type":"Feature"}';
-    writeFileSync(join(dir, "test.geojson"), body);
-    const reg: ScenarioRegistry = { "1": { ...registry["1"]!, sha256: sha256Hex(body) } };
-    await expect(loadScenarioGeometryLocal(reg, 1, dir)).resolves.toEqual({ type: "Feature" });
-    const tampered: ScenarioRegistry = { "1": { ...registry["1"]!, sha256: "00".repeat(32) } };
-    await expect(loadScenarioGeometryLocal(tampered, 1, dir)).rejects.toThrow(/does not match/);
-    await expect(loadScenarioGeometryLocal(reg, 2, dir)).rejects.toThrow(/Unknown scenario_id/);
-    const escape: ScenarioRegistry = { "1": { ...registry["1"]!, file: "../x.geojson" } };
-    await expect(loadScenarioGeometryLocal(escape, 1, dir)).rejects.toThrow(/escapes/);
+  it.each([
+    [1, 34_045_000, -118_526_000, true],
+    [2, 34_057_000, -118_458_000, false],
+  ])("builds canonical evidence for packaged demo property %i", async (propertyId, latE6, lonE6, triggered) => {
+    const dir = dataDir();
+    const scenarios = loadScenarioRegistry(dir);
+    const m = market({ propertyId, latE6, lonE6 });
+    const first = await buildMarketEvidence(m, pid, scenarios, realGeo, dir);
+    const second = await buildMarketEvidence(m, pid, scenarios, realGeo, dir);
+    expect(first.record.triggered).toBe(triggered);
+    expect(first.canonical).toBe(second.canonical);
+    expect(sha256Hex(first.canonical)).toBe(first.hashHex);
   });
 
   it("stores canonical bytes and serves them with a matching hash", async () => {

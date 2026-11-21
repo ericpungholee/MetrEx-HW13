@@ -109,5 +109,12 @@ export function handleEvidence(req: Request, market: string | undefined): Promis
 
 /** GET /api/stats */
 export function handleStats(): Promise<Response> {
-  return run(async () => json(await getStats()));
+  return run(async () => {
+    const stats = await getStats();
+    return json({
+      ...stats,
+      txTotal: stats.totalTransactions,
+      txLast10Min: stats.last10Minutes,
+    });
+  });
 }

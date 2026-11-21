@@ -64,44 +64,7 @@ async function main(): Promise<void> {
   console.log(`  admin balance ${sol(adminSol)}`);
   if (adminSol < solToLamports("0.05")) log.warn("admin has < 0.05 SOL; transactions below will fail");
 
-  // ---------- 1. mUSD mint ----------
-  log.step("mUSD mint (6 decimals, authority = mint-authority, no freeze authority)");
-  const envMint = envOrUndefined("MUSD_MINT");
-  const fileMint = readMintFile();
-  if (envMint && fileMint && envMint !== fileMint.toBase58()) {
-    log.warn(`MUSD_MINT ${envMint} differs from ${musdMintFile()} (${fileMint.toBase58()}); using MUSD_MINT`);
-  }
-  let mint: PublicKey | undefined = envMint ? new PublicKey(envMint) : fileMint;
-  if (mint) {
-    const info = await conn.getAccountInfo(mint);
-    if (!info) {
-      log.fail(`mint ${mint.toBase58()} (from ${envMint ? "MUSD_MINT" : musdMintFile()}) does not exist on this cluster.`);
-      log.fail("Remove the stale value/file to create a new mint, or point RPC_URL at the right cluster.");
-      exitWith(1);
-    }
-    const m = await getMint(conn, mint, "confirmed", TOKEN_PROGRAM_ID);
-    if (m.decimals !== MUSD_DECIMALS) {
-      log.fail(`mint has ${m.decimals} decimals, expected ${MUSD_DECIMALS}`);
-      problems++;
-    }
-    if (!m.mintAuthority?.equals(mintAuthority)) {
-      log.fail(`mint authority is ${m.mintAuthority?.toBase58() ?? "none"}, expected mint-authority`);
-      problems++;
-    }
-    if (m.freezeAuthority) log.warn(`mint has a freeze authority ${m.freezeAuthority.toBase58()}`);
-    log.ok(`exists: ${mint.toBase58()}`);
-  } else if (DRY_RUN) {
-    log.todo("create a new mUSD mint and save it to " + musdMintFile());
-  } else {
-    const mintKp = Keypair.generate();
-    mint = await createMint(conn, admin, mintAuthority, null, MUSD_DECIMALS, mintKp, { commitment: "confirmed" }, TOKEN_PROGRAM_ID);
-    mkdirSync(dirname(musdMintFile()), { recursive: true });
-    writeFileSync(musdMintFile(), JSON.stringify({ mint: mint.toBase58() }, null, 2) + "\n");
-    log.ok(`created ${mint.toBase58()} (saved to ${musdMintFile()})`);
-  }
-  if (mint) log.addr("mint", mint);
-
-  // ---------- 2. Program + upgrade authority ----------
+  // ---------- 1. Program + upgrade authority ----------
   log.step("program deployment and upgrade authority (initialize_config requires admin = upgrade authority)");
   const progInfo = await conn.getAccountInfo(pid);
   let canInit = true;
@@ -138,10 +101,60 @@ async function main(): Promise<void> {
     }
   }
 
+  const cfgPk = configPda(program);
+  const cfg = progInfo?.executable ? await program.account.config.fetchNullable(cfgPk) : null;
+  if (oracle.equals(controller)) {
+    log.fail("oracle and controller keys must differ (spec §2)");
+    problems++;
+  }
+  if (problems && !DRY_RUN) exitWith(problems);
+
+  // ---------- 2. mUSD mint ----------
+  log.step("mUSD mint (6 decimals, authority = mint-authority, no freeze authority)");
+  const envMint = envOrUndefined("MUSD_MINT");
+  const fileMint = readMintFile();
+  if (envMint && fileMint && envMint !== fileMint.toBase58()) {
+    log.warn(`MUSD_MINT ${envMint} differs from ${musdMintFile()} (${fileMint.toBase58()}); using MUSD_MINT`);
+  }
+  let mint = envMint ? new PublicKey(envMint) : fileMint ?? cfg?.mint;
+  if (mint) {
+    const info = await conn.getAccountInfo(mint);
+    if (!info) {
+      log.fail(`mint ${mint.toBase58()} (from ${envMint ? "MUSD_MINT" : musdMintFile()}) does not exist on this cluster.`);
+      log.fail("Remove the stale value/file to create a new mint, or point RPC_URL at the right cluster.");
+      exitWith(1);
+    }
+    const m = await getMint(conn, mint, "confirmed", TOKEN_PROGRAM_ID);
+    if (m.decimals !== MUSD_DECIMALS) {
+      log.fail(`mint has ${m.decimals} decimals, expected ${MUSD_DECIMALS}`);
+      problems++;
+    }
+    if (!m.mintAuthority?.equals(mintAuthority)) {
+      log.fail(`mint authority is ${m.mintAuthority?.toBase58() ?? "none"}, expected mint-authority`);
+      problems++;
+    }
+    if (m.freezeAuthority) {
+      log.fail(`mint has a freeze authority ${m.freezeAuthority.toBase58()}`);
+      problems++;
+    }
+    if (problems && !DRY_RUN) exitWith(problems);
+    log.ok(`exists: ${mint.toBase58()}`);
+  } else if (DRY_RUN) {
+    log.todo("create a new mUSD mint and save it to " + musdMintFile());
+  } else {
+    const mintKp = Keypair.generate();
+    mint = await createMint(conn, admin, mintAuthority, null, MUSD_DECIMALS, mintKp, { commitment: "confirmed" }, TOKEN_PROGRAM_ID);
+    log.ok(`created ${mint.toBase58()}`);
+  }
+  if (mint && !envMint && !fileMint && !DRY_RUN) {
+    mkdirSync(dirname(musdMintFile()), { recursive: true });
+    writeFileSync(musdMintFile(), JSON.stringify({ mint: mint.toBase58() }, null, 2) + "\n");
+    log.ok(`saved mint address to ${musdMintFile()}`);
+  }
+  if (mint) log.addr("mint", mint);
+
   // ---------- 3. Config ----------
   log.step("Config");
-  const cfgPk = configPda(program);
-  const cfg = progInfo ? await program.account.config.fetchNullable(cfgPk) : null;
   if (cfg) {
     const checks: [string, PublicKey, PublicKey | undefined][] = [
       ["admin", cfg.admin, admin.publicKey],
@@ -156,10 +169,7 @@ async function main(): Promise<void> {
       }
     }
     log.ok(`exists: ${cfgPk.toBase58()}`);
-  } else if (oracle.equals(controller)) {
-    log.fail("oracle and controller keys must differ (spec §2)");
-    problems++;
-  } else if (!canInit || !mint) {
+  } else if (!canInit || !mint || oracle.equals(controller)) {
     log.warn("skipped: program/mint not ready");
   } else if (DRY_RUN) {
     log.todo(`initialize_config(oracle=${oracle.toBase58()}, controller=${controller.toBase58()})`);
@@ -168,6 +178,7 @@ async function main(): Promise<void> {
     log.tx("initialize_config", await sendTx(conn, [ix], [admin]));
   }
   log.addr("config", cfgPk);
+  if (problems && !DRY_RUN) exitWith(problems);
 
   // ---------- 4. Properties ----------
   log.step("properties (data/properties.json)");

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0d12;
+  --color-panel: #10151c;
+  --color-panel2: #151b24;
+  --color-line: #1f2733;
+  --color-ink: #d7dee8;
+  --color-dim: #8592a3;
+  --color-faint: #5a6675;
+  --color-up: #19c37d;
+  --color-down: #f0505a;
+  --color-warn: #f5b041;
+  --color-info: #4ea1ff;
+  --color-fixture: #d946ef;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+  font-size: 13px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+table.dense {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.dense th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+table.dense td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+table.dense tr:hover td {
+  background: var(--color-panel2);
+}
+table.dense th.r,
+table.dense td.r {
+  text-align: right;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel2);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--color-dim);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--color-info);
+  border-color: var(--color-info);
+  color: #04111f;
+}
+.btn-up {
+  background: var(--color-up);
+  border-color: var(--color-up);
+  color: #03140c;
+}
+.btn-down {
+  background: transparent;
+  border-color: var(--color-down);
+  color: var(--color-down);
+}
+.input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  width: 100%;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+/* Wallet adapter button: match the exchange look */
+.wallet-adapter-button {
+  height: 32px !important;
+  font-size: 12px !important;
+  padding: 0 12px !important;
+  border-radius: 4px !important;
+  background: var(--color-panel2) !important;
+  border: 1px solid var(--color-line) !important;
+}
+
+/* Leaflet sits on a dark page */
+.leaflet-container {
+  background: #0d1117;
+  font: inherit;
+}
+.dark-tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}

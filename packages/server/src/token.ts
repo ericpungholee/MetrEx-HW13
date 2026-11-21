@@ -17,8 +17,8 @@ export function musdMintFile(): string {
 }
 
 export function readMintFile(path: string = musdMintFile()): PublicKey | undefined {
-  if (!existsSync(path)) return undefined;
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as { mint?: unknown };
+  if (!existsSync(/* turbopackIgnore: true */ path)) return undefined;
+  const parsed = JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as { mint?: unknown };
   if (typeof parsed.mint !== "string") throw new Error(`${path} has no "mint" field`);
   return new PublicKey(parsed.mint);
 }

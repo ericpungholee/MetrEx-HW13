@@ -64,9 +64,9 @@ export function loadKeypairFile(path: string): Keypair {
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(full, "utf8"));
-  } catch (e) {
-    // Never include file contents in the error.
-    throw new Error(`Cannot read keypair file ${full}: ${(e as Error).message.split("\n")[0]}`);
+  } catch {
+    // JSON parser errors can include fragments of the keypair file.
+    throw new Error(`Cannot read keypair file ${full}`);
   }
   if (!Array.isArray(raw) || raw.length !== 64 || !raw.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)) {
     throw new Error(`Keypair file ${full} is not a 64-byte JSON array`);
@@ -89,7 +89,7 @@ export function loadKeypair(name: KeypairName): Keypair {
 export function repoRoot(start: string = process.cwd()): string {
   const fromEnv = envOrUndefined("METREX_REPO_ROOT");
   if (fromEnv) return resolve(expandHome(fromEnv));
-  let dir = resolve(start);
+  let dir = resolve(/* turbopackIgnore: true */ start);
   for (;;) {
     if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
     const parent = dirname(dir);
@@ -107,7 +107,7 @@ export function dataDir(): string {
 
 export function resolveFromRoot(p: string): string {
   const e = expandHome(p);
-  return isAbsolute(e) ? e : join(repoRoot(), e);
+  return isAbsolute(e) ? e : join(/* turbopackIgnore: true */ repoRoot(), e);
 }
 
 export function parsePublicKey(value: string, what = "public key"): PublicKey {

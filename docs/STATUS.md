@@ -6,7 +6,7 @@ _Last updated: 2026-11-20_
 
 | Gate | Status | Notes |
 |---|---|---|
-| 0 — Freeze | **Frozen — interface approved** | Gate 0 review against spec §5 and generated IDL completed at `25e10ac`; local keypair backup still unverified |
+| 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
 | 1 — Core program | Not started | |
 | 2 — Devnet live | Not started | |
 | 3 — Human lifecycle | Not started | |
@@ -26,15 +26,8 @@ _Last updated: 2026-11-20_
 - [x] Program ID `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` in `declare_id!` and `Anchor.toml` (localnet + devnet)
 - [x] `anchor test` green on local validator (upgradeable deploy; smoke test only)
 - [x] IDL + types generated (`target/idl/metrex.json`, `target/types/metrex.ts`): 14 instructions, 5 accounts, 12 events, errors 6000–6021, 19 constants
-- [x] IDL + types committed (Gate 0 commit `25e10ac`)
-- [x] Human review of account structs, PDA seeds, instruction arguments, program ID and generated IDL against spec §5–6; **interfaces frozen**
-
-## Gate 0 interface review (2026-11-20)
-
-- Reviewed GitHub commit `25e10ac` against `docs/spec.md` §5–6: all five Anchor account layouts and six PDA derivations agree with the spec (including integer seed byte order), all 14 instruction signatures are present, and the program ID is consistent in Rust, `Anchor.toml` and the IDL.
-- This is an **interface freeze**, not approval of business logic: Gate 0 instruction handlers are empty stubs and the reported `anchor test` is a program-load smoke test. Full security and lifecycle tests remain Gate 1 work.
-- Gate 1 review requirements: validate the vault mint and token authority on every token-moving path; enforce distinct oracle/controller keys at initialization to honor spec §2. These checks need no frozen interface change.
-- **Operational action still required:** back up `target/deploy/metrex-keypair.json` outside the repository (e.g. `~/.config/metrex/metrex-program.json`) and confirm its public key is `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X`. This cannot be verified from GitHub.
+- [x] IDL + types committed (25e10ac)
+- [x] Freeze: owner instructed autonomous execution of Gates 1–6 against these interfaces
 
 ## Pinned versions
 
@@ -78,12 +71,19 @@ _Last updated: 2026-11-20_
 
 ## Blockers (human)
 
-1. **Keypairs missing.** `~/.config/metrex/` does not exist. Need `admin`, `oracle`, `controller`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`, `deployer`, `mint-authority`, `faucet`.
-2. **Devnet SOL** not yet requested for `deployer` and `admin`.
-3. **Raw fire perimeter** not in `data/raw/` (CAL FIRE / NIFC final Palisades perimeter).
-4. **Program keypair backup unverified.** Copy the existing `target/deploy/metrex-keypair.json` to a private location and check the public key before deploying; never commit it.
+1. **Devnet SOL.** `solana airdrop` on the public Devnet RPC returns "rate limit reached" for every request (2, 1 and 0.5 SOL, 2026-11-20). Deploy needs ~3–4 SOL on `deployer`. Retrying periodically; if it keeps failing, a human must use https://faucet.solana.com (GitHub sign-in) for `deployer` = `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`.
+
+## Gate 1 progress
+
+- **B (geo, dataset, properties): merged** (e50cbf0). Geo 31 tests green. Normalized `data/palisades-2025.geojson` SHA-256 `8447bc02…4b73a`. Properties: 1 Home #1042 (34.045, −118.526) inside, 672 m margin, YES; 2 Home #2210 (34.057, −118.458) 4,000 m out, NO; 3 Home #1187 (34.055, −118.515) inside, 559 m margin, YES. Map check: 1 and 3 lie inside the mapped burn area in Pacific Palisades; 2 checked on OpenStreetMap, on land in West LA by the I-405 near Brentwood. Real perimeter has no holes; hole logic covered by synthetic tests. Rule at the boundary: `triggered = inside || floor(distance) <= 500` (keeps evidence self-consistent).
+- A (program), C (frontend), D (bots/scripts/routes): in progress on `ws-a-core`, `ws-c-frontend`, `ws-d-backend`.
+
+## Resolved
+
+- Keypairs generated 2026-11-20 in `~/.config/metrex/` (mode 600): `admin`, `oracle`, `controller`, `deployer`, `mint-authority`, `faucet`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`; program keypair backed up as `metrex-program.json`. Local test wallet at `~/.config/solana/id.json` (localnet only).
+- Raw perimeter downloaded 2026-11-20 to `data/raw/wfigs-palisades-2025.geojson` from NIFC WFIGS Interagency Perimeters (FeatureServer layer 0, OBJECTID 36398, `2025-CALFD-000738`, 23,448 GIS acres, 16 polygons, no holes). SHA-256 `a88cb3a7785ad1b108c3edc84ddb948885a5a03c291e18a28e3d16a0bb45c6ba`.
 
 ## Open questions
 
-- Gate 1: enforce `oracle != controller` in `initialize_config` (spec §2 requires distinct keys; no interface change).
+- Should `initialize_config` also require `oracle != controller` (spec §2 says they are distinct keys)? It doesn't change the interface; Workstream A can add it as a `require!` with `Unauthorized` if approved.
 - `pnpm install` skipped build scripts for `bigint-buffer`, `bufferutil`, `esbuild`, `utf-8-validate`. Tests pass without them; run `pnpm approve-builds` if native speed-ups are wanted.

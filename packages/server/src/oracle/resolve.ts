@@ -3,6 +3,8 @@
 // using ONLY the on-chain market coordinates, writes the canonical evidence file, then signs
 // resolve_market(triggered, sha256(canonical)) with the oracle key.
 
+import type { BuiltEvidence } from "@metrex/geo";
+import { loadScenarioRegistry } from "@metrex/geo/node";
 import type { Keypair, PublicKey } from "@solana/web3.js";
 import { getScenario, type EvidenceRecord, type ScenarioRegistry } from "@metrex/shared";
 import { fetchMarket, type MarketView } from "../accounts";
@@ -13,8 +15,8 @@ import { getProgram } from "../program";
 import { getRpc, type RpcPool } from "../rpc";
 import { sendTx } from "../tx";
 import { badRequest, conflict, KeyedLock, notFound, unavailable } from "../routes/errors";
-import { loadScenarioRegistry, sha256Hex, writeEvidence } from "./evidence-store";
-import { realGeo, type BuiltEvidence, type GeoAdapter } from "./geo-adapter";
+import { sha256Hex, writeEvidence } from "./evidence-store";
+import { realGeo, type GeoAdapter } from "./geo-adapter";
 
 export interface ResolveResult {
   market: string;
@@ -111,7 +113,7 @@ export async function resolveMarket(market: PublicKey, deps: ResolveDeps = {}): 
     if (!config.oracleAuthority.equals(oracle.publicKey)) {
       throw unavailable("Configured oracle key does not match config.oracle_authority");
     }
-    const registry = await loadScenarioRegistry(dir);
+    const registry = loadScenarioRegistry(dir);
     const c = rpc.connection;
     const program = getProgram(c);
     const built = await buildMarketEvidence(m, program.programId, registry, geo, dir);

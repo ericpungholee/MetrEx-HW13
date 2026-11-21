@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PublicKey } from "@solana/web3.js";
-import type { ScenarioRegistry } from "@metrex/shared";
 
 export function evidenceDir(dataDir: string): string {
   return join(dataDir, "evidence");
@@ -36,9 +35,4 @@ export async function readEvidenceBytes(dataDir: string, market: PublicKey): Pro
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
   }
-}
-
-export async function loadScenarioRegistry(dataDir: string): Promise<ScenarioRegistry> {
-  const raw = await readFile(join(dataDir, "scenarios.json"), "utf8");
-  return JSON.parse(raw) as ScenarioRegistry;
 }
