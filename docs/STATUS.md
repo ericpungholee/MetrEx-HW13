@@ -4,12 +4,12 @@ _Last updated: 2026-11-21_
 
 ## v2 Exchange (current work)
 
-The owner's v2 draft (binary outcome tokens and an escrowed order book) was reviewed for design flaws and rewritten as [spec-v2.md](spec-v2.md). Section 0 lists the 28 flaws and their fixes, and §14 maps what v2 reuses from v1. The gates and agent briefs are in [build-plan-v2.md](build-plan-v2.md). No v2 code exists yet. The v1.1 program, app and tests are unchanged and remain the fallback demo.
+The owner's v2 draft (binary outcome tokens and an escrowed order book) was reviewed for design flaws and rewritten as [spec-v2.md](spec-v2.md). Section 0 lists the 28 flaws and their fixes, and §14 maps what v2 reuses from v1. The gates and agent briefs are in [build-plan-v2.md](build-plan-v2.md). The v1.1 program, app and tests are unchanged and remain the fallback demo. v2 is local only: nothing is deployed.
 
 | Gate | Status | Notes |
 |---|---|---|
-| V0 — Freeze | In progress | Spec frozen 2026-11-21 after the §0.1 freeze review |
-| V1 — Binary tokens | Not started | |
+| V0 — Freeze | **Passed** 2026-11-21 | `programs/metrex-exchange` compiles with every §6.6 context. IDL `target/idl/metrex_exchange.json` committed: 16 instructions, 5 accounts, 10 events, 38 errors. `@metrex/exchange` (constants, PDAs, math, ladder, book) has 20 tests, including the IDL sync |
+| V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
 | V2 — Trading protocol | Not started | Security review (R) runs after this gate |
 | V3 — Engine and liquidity (local) | Not started | |
 | V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
@@ -26,9 +26,21 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 - **D6** No warm-up trades.
 - **D7** No blind replay.
 
-### Keys to generate at V0
+### Keys (generated at V0)
 
-`~/.config/metrex/metrex-exchange-program.json` (back it up) and `~/.config/metrex/keeper.json`. v2 reuses the existing mUSD mint, mint authority, admin, controller, oracle, bot, faucet and presenter keys.
+`~/.config/metrex/metrex-exchange-program.json` (program ID `BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko`, copied to `target/deploy/`) and `~/.config/metrex/keeper.json`. Both are mode 600 and outside the repo. v2 reuses the existing mUSD mint, mint authority, admin, controller, oracle, bot, faucet and presenter keys.
+
+### V1 build notes
+
+- The order instructions (`place_order`, `take_order`, `match_orders`, `cancel_order`, `sweep_order`) have their frozen account contexts. Their bodies return `NotImplemented` until V2, and a test checks this.
+- `Cargo.lock` pins `blake3 = 1.8.2`. 1.8.7 pulls a crate that needs edition 2024, which platform-tools Rust 1.84 can't parse. Build with `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`.
+- `anchor-spl` needs the `token_2022_extensions` feature for `init_if_needed` ATAs to compile.
+- The Anchor test glob is quoted (`'tests/*.ts'`). Unquoted, the shell expanded `tests/**/*.ts` to `tests/helpers/invariants.ts` only, and mocha then ran 0 tests with exit code 0.
+- Spec corrections after the freeze are in spec-v2 §0.2: the skew sign and the respect rule (both bot policy), and the timeout bounds wording. No interface changed.
+
+### Next: Gate V2 (trading protocol)
+
+Implement the bodies of `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` against the frozen contexts (§5). Add I3, I4 and I10–I12, every §13.1 Orders, Fills and Recovery case, and the 4-level take and 3-level limit size test. Then a fresh-agent security review (R).
 
 ### Effect on v1 open items
 

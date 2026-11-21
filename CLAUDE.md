@@ -47,7 +47,7 @@ If code and spec disagree, the spec wins. If the spec looks wrong, **stop and re
 programs/metrex/              v1.1 program. FROZEN; never modify or upgrade
 programs/metrex-exchange/     v2 program (V0)
 tests/metrex.ts               v1 Anchor tests (must keep passing)
-tests/exchange.ts             v2 Anchor tests, assertMarketInvariants after every op (§13.1)
+tests/exchange.ts             v2 Anchor tests; tests/helpers/invariants.ts = assertMarketInvariants (§13.1)
 packages/shared/              v1, FROZEN
 packages/exchange/            v2 shared TS (frozen parts at V0)
 packages/geo/                 trigger evaluation + evidence (v2 builder is additive)
@@ -65,7 +65,7 @@ docs/                         spec-v2.md, build-plan-v2.md, STATUS.md, spec.md (
 ```bash
 pnpm install
 anchor build                 # also regenerates IDLs in target/idl + types
-anchor test                  # local validator, runs tests/**/*.ts
+anchor test                  # local validator, runs tests/*.ts (helpers in tests/helpers/)
 pnpm -r test                 # TS package tests
 pnpm --filter app dev        # frontend
 pnpm --filter bots start     # bot worker

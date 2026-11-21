@@ -59,6 +59,15 @@ The owner approved v2 and asked for six checks before the freeze. Results:
 | 5 | Reliable one-wallet partial fill | Found a flaw: inventory skew after the presenter's buy can raise Bot B's bid above Bot C's, so the 200-share sell could fill 150, or all 200 if bots end up quoting the same price. Fix: the featured market runs with skew off, and each bot's bid prices are fixed and distinct (§8.3). An executable test replays the whole demo sequence against the bot ladder (§13.2) |
 | 6 | Reset with a new round without touching settled accounts | `create_round` writes only Config and the new Round. No instruction reopens or closes a Round, Market, mint or vault. Market PDAs include the round, so a new round can never reuse a market. A test checks that every byte of the earlier round's accounts is unchanged after a reset, and that the earlier market still redeems afterward (§12, §13.1) |
 
+### 0.2 Corrections after the freeze (Gate V1, 2026-11-21)
+
+None of these touch a frozen interface. They make the text match the tested code.
+
+- §8.2 skew had the wrong sign. It now reads `ref − clamp(…)`, so a bot short YES raises its quotes. The ladder code and tests already did this, and skew is off on the featured market anyway.
+- §8.2 now states the bot respect rule (≥ 10 shares, within 300 bps), which stops dust orders from erasing bot depth. It is policy.
+- §6.6 `initialize_config` now states the timeout bounds that §3 and §6.1 already gave, instead of "timeout > 0".
+- Unreachable by construction, kept as defensive checks: `ScenarioMismatch` (only scenario 1 exists, and `register_property` rejects any other) and `InsufficientPairs` (supplies never exceed `pairs_outstanding`, so a holder can't own more pairs than are booked).
+
 **Product-level tradeoff (not a flaw, flagged for the owner):** v1 was hedger-initiated, and the homeowner created the contract. In v2 the operator lists markets and a homeowner buys YES. Size is preserved, since 1 YES = 1 mUSD of protection. Location was already limited to registered properties. The pitch changes from "list your risk" to "buy protection on a listed risk".
 
 ---
@@ -378,7 +387,7 @@ Fills and matches take Market and Round **read-only**, so they don't serialize b
 
 | Instruction | Signer | Preconditions | Effects |
 |---|---|---|---|
-| `initialize_config(round_controller, oracle_authority, resolution_timeout_s)` | upgrade authority | Config absent; roles distinct and non-default; mint 6 decimals, no freeze authority; timeout > 0 | Create Config |
+| `initialize_config(round_controller, oracle_authority, resolution_timeout_s)` | upgrade authority | Config absent; roles distinct and non-default; mint 6 decimals, no freeze authority; timeout within `[MIN_RESOLUTION_TIMEOUT_S, MAX_RESOLUTION_TIMEOUT_S]` | Create Config |
 | `register_property(id, label, lat_e6, lon_e6, scenario_id, trigger_m)` | `admin` | As in v1.1 | Create Property |
 | `create_round(scenario_id, dataset_sha256, label, trading_ends_at)` | `round_controller` | No Open round (§6.3); hash non-zero; `trading_ends_at > now` | Create Round (Open); `latest_round = round`; `next_round_id += 1` |
 | `create_market()` | `round_controller` | Round Open and `now < trading_ends_at`; Property exists; scenarios match; PDA unused | Create Market, both mints and the vault; `round.market_count += 1` |
@@ -514,10 +523,11 @@ On a new Open market: split the configured inventory, then quote both books. Kee
 
 At zero inventory this gives YES bids 410 (C), 400 (B), 370 (A) and asks 430 (A), 500 (B), 590 (C). The highest bid is below the lowest ask, so the default ladder never crosses, and the post-only clamp is only a safety net. A test asserts this for the shipped parameters.
 
-1. Skew: `ref' = ref + clamp(k × net_yes / tolerance, ±skew_max)`. **On the featured market `skew_max = 0`** (§8.3). Inventory limits still apply there by dropping levels, never by moving prices.
+1. Skew: `ref' = ref − clamp(round(skew_max × net_yes / tolerance), ±skew_max)`. A bot long YES lowers its quotes to sell YES, and a bot short YES raises them to buy it back. **On the featured market `skew_max = 0`** (§8.3). Inventory limits still apply there by dropping levels, never by moving prices.
 2. YES bid = `ref' − h`, YES ask = `ref' + h`.
 3. **Complement NO quotes:** NO bid = 10,000 − YES ask, NO ask = 10,000 − YES bid. A bot's own quotes can then never offer split-and-sell or buy-and-merge arbitrage.
-4. **Post-only clamp** against the live book (all makers, including other bots and users): bid ≤ best opposing ask − 1, ask ≥ best opposing bid + 1, applied to both books after step 3. Drop any level that clamping would invert. Bots never take liquidity, never cross each other and never fill a user's resting order through the keeper. This is what keeps the demo's resting remainder resting.
+4. **Post-only clamp** against the live book: bid ≤ best opposing ask − 1, ask ≥ best opposing bid + 1, applied to both books after step 3. The clamp counts every sibling bot order, plus every user order of at least `RESPECT_MIN_QTY = 10` shares whose YES-equivalent price (the price on the YES book, `10,000 − price` on the NO book) is within `RESPECT_BAND_BPS = 300` of the bot's reference. Against sibling bots it also enforces the cross-book bounds `my_bid + their_opposite_bid ≤ 10,000` and `my_ask + their_opposite_ask ≥ 10,000`. Drop any level that clamping would invert. Bots never cross each other and never cross a respected user order. This is what keeps the demo's resting remainder resting (100 shares at 410 are respected by all three bots).
+   *Why the respect rule:* without it, a 1-share ask at 1 bps would push every bot bid to 0 and erase the book. A user order outside the rule can be crossed by a bot and then matched by the keeper at the user's own resting price, so the user still gets exactly its limit. This is policy (§5.10), not a contract guarantee.
 
 Property test: for random books and inventories, no bot quote crosses the book, and for every bot `yes_bid + no_bid ≤ 10,000` and `yes_ask + no_ask ≥ 10,000`.
 
