@@ -27,3 +27,6 @@ id.json
 
 # Agent worktrees
 .claude/
+
+# v2 bot/keeper heartbeats (spec-v2 §7.5)
+.metrex/

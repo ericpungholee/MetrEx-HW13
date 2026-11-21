@@ -87,3 +87,23 @@ export function verifyEvidenceText(text: string): { hashHex: string; isCanonical
   const hashHex = bytesToHex(sha256Bytes(new TextEncoder().encode(canonical)));
   return { hashHex, isCanonical: canonical === text };
 }
+
+// ---------- v2 (spec-v2 §9.3): additive. The v1 builder and record above are unchanged. ----------
+
+export const EVIDENCE_VERSION_V2 = 2 as const;
+
+/** v1 record plus `round`, with `version: 2` and `program_id` = the v2 program. */
+export type EvidenceRecordV2 = Omit<EvidenceRecord, "version"> & { round: string; version: typeof EVIDENCE_VERSION_V2 };
+
+export interface BuiltEvidenceV2 extends Omit<BuiltEvidence, "record"> {
+  record: EvidenceRecordV2;
+}
+
+export function buildEvidenceV2(input: BuildEvidenceInput & { round: string }): BuiltEvidenceV2 {
+  if (!BASE58.test(input.round)) throw new Error("round must be a base58 public key");
+  const v1 = buildEvidence(input);
+  const record: EvidenceRecordV2 = { ...v1.record, round: input.round, version: EVIDENCE_VERSION_V2 };
+  const canonical = canonicalize(record);
+  const hashBytes = sha256Bytes(new TextEncoder().encode(canonical));
+  return { record, canonical, hashHex: bytesToHex(hashBytes), hashBytes };
+}

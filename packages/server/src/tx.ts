@@ -13,6 +13,8 @@ export interface SendOptions {
   /** Attempts on blockhash expiry (each re-checks the previous signature first). Default 3. */
   attempts?: number;
   commitment?: "confirmed" | "finalized";
+  /** Maps program logs to a readable error (default: the v1 error table). */
+  describe?: (logs: readonly string[]) => string | undefined;
 }
 
 export class TxError extends Error {
@@ -59,7 +61,7 @@ export async function sendTx(
     try {
       sig = await conn.sendRawTransaction(tx.serialize(), { preflightCommitment: "confirmed" });
     } catch (e) {
-      throw toTxError(e);
+      throw toTxError(e, opts.describe);
     }
     lastSig = sig;
     try {
@@ -67,12 +69,12 @@ export async function sendTx(
       if (res.value.err) {
         const t = await conn.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
         const logs = t?.meta?.logMessages ?? [];
-        throw new TxError(describeLogs(logs) ?? `Transaction failed: ${JSON.stringify(res.value.err)}`, logs, sig);
+        throw new TxError((opts.describe ?? describeLogs)(logs) ?? `Transaction failed: ${JSON.stringify(res.value.err)}`, logs, sig);
       }
       return sig;
     } catch (e) {
       if (e instanceof TransactionExpiredBlockheightExceededError) continue;
-      throw e instanceof TxError ? e : toTxError(e);
+      throw e instanceof TxError ? e : toTxError(e, opts.describe);
     }
   }
   throw new TxError(`Transaction not confirmed after ${attempts} attempts`, [], lastSig);
@@ -104,10 +106,10 @@ export function describeErrorText(text: string): string | undefined {
   return undefined;
 }
 
-export function toTxError(e: unknown): TxError {
+export function toTxError(e: unknown, describe: (logs: readonly string[]) => string | undefined = describeLogs): TxError {
   if (e instanceof TxError) return e;
   const msg = e instanceof Error ? e.message : String(e);
   const logs = (e as { logs?: unknown }).logs;
   const logArr = Array.isArray(logs) ? logs.filter((l): l is string => typeof l === "string") : [];
-  return new TxError(describeLogs(logArr) ?? describeErrorText(msg) ?? msg.split("\n")[0] ?? msg, logArr);
+  return new TxError(describe(logArr) ?? (describe === describeLogs ? describeErrorText(msg) : describe([msg])) ?? msg.split("\n")[0] ?? msg, logArr);
 }

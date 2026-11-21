@@ -2,11 +2,12 @@
   "name": "@metrex/server",
   "version": "0.1.0",
   "private": true,
-  "description": "Server-only backend helpers (Workstream D): env keypairs, RPC fallback, Anchor program, mUSD, tx sending, route-handler logic (spec §7, §9, §10.5).",
+  "description": "Server-only backend helpers (Workstream D): env keypairs, RPC fallback, Anchor program, mUSD, tx sending, route-handler logic (spec \u00a77, \u00a79, \u00a710.5).",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./exchange": "./src/exchange/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.routes.json --noEmit",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@anchor-lang/core": "0.32.3",
+    "@metrex/exchange": "workspace:*",
     "@metrex/geo": "workspace:*",
     "@metrex/shared": "workspace:*",
     "@solana/spl-token": "^0.4.13",
