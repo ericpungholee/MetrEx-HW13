@@ -160,7 +160,7 @@ export function closeMarketIx(
     .instruction();
 }
 
-export function resolveMarketIx(
+export async function resolveMarketIx(
   program: MetrexProgram,
   a: { oracleAuthority: PublicKey; market: PublicKey; triggered: boolean; evidenceHash: Uint8Array },
 ): Promise<TransactionInstruction> {
