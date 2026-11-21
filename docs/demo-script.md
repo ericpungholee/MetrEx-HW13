@@ -5,6 +5,7 @@
 | Artifact | Confirmed link |
 |---|---|
 | Deployer funding | [5 Devnet SOL](https://explorer.solana.com/tx/2oacvmsGRg29T1vi68VbEBCaM7pN3LXy4Tba9x2gxcRvPCP1b7o9jYkYVSCPyBuyXgTKGqGrkFF2137eqPityJ85?cluster=devnet) |
+| Tier 2 upgrade funding | [5 Devnet SOL](https://explorer.solana.com/tx/9R4HqDU2FfRYjcMKWSqNDzzNWJVoU2QRwmkpUC6dP2yHtXLm93aDy6K7JEZfKfJx71aB2wb6Rakj3yqEWksKREi?cluster=devnet) |
 | Program | [Program account](https://explorer.solana.com/address/AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X?cluster=devnet) · [deployment](https://explorer.solana.com/tx/hMFk5fMLHeLoCs1Gnumto21MyAyoqUeQ5PCBkArNZuwdtnbNDTCdMyDwQtdrm4mVTjQjEqeigJFvdJ2V3Ak8aRC?cluster=devnet) |
 | ProgramData | [Data and upgrade authority](https://explorer.solana.com/address/7WP4fbCZFST5sipMWH88GR3tFZPwzc3N3NBXvyUBqw8h?cluster=devnet) |
 | Config | [Config PDA](https://explorer.solana.com/address/EviMmkJeJAb6qgXpc2dYkyB9PTqqinETDojsx4zWM2wU?cluster=devnet) · [initialize](https://explorer.solana.com/tx/2kGxQxP5GUexaBZeN3QE7AQL36cmsos3oUfo2EZR9j98sZ8JpLFJCpT39284FZT5iYcJyndqbixq4E2pxKouRJDf?cluster=devnet) |
@@ -41,3 +42,31 @@ Run the app with fixtures off and trading disabled. Create Home #1042 at 10,000 
 - [Fresh-wallet faucet transaction](https://explorer.solana.com/tx/31a6qKS6Rwqh3V9gnX9kcMSJWT7ViuTuGiZrRxUds9s1251rAs59ooPjyvMvWRr2ogsGTuP2g1Yzow41AJdp4QAL?cluster=devnet) sent 25,000 mUSD and 0.05 SOL.
 - YES [market](https://explorer.solana.com/address/4fntZJ6eujspKqtJ1VcCvoEocQFzJBrkH2P4Ht5CjaeD?cluster=devnet) · [create](https://explorer.solana.com/tx/2VPDeDoccUEKw38TuYeiyZrWvp4h1NVJUmdV3VurrZpqiu7VQ5avLHZfDncidxE78c5oom4Ptkq3bPXzizsgUxoz?cluster=devnet) · [batch accept](https://explorer.solana.com/tx/5WYJzW5yH4Afsi6QnPcT5sRyuZvqXsRp6g1pJEmLc1Bn8bhsUa8TeZwT8a7bZjTmkPi9Hp53oiPmNYELuc9WWEU4?cluster=devnet) · [close](https://explorer.solana.com/tx/2otH8uT3pjNUuno4pk3HTDcLNEHX3dddhhZeMygt89dNZfQaiU4mcFjvPbj2o98MKp3oi1PucMNXei5pKxt5Bqbe?cluster=devnet) · [resolve](https://explorer.solana.com/tx/5hakd9whHsnGVvYQiwBARt6p6a6JZeSrpRxXwQ7etnx68CpSbo6dBVNsYk37S63VTE2ETFe3CGAjDvYSMcNKToGN?cluster=devnet) · [single homeowner claim](https://explorer.solana.com/tx/4CHhjx2La8kLj8LuNsvt3uoV1rGSAduV9dYaLFKtdYLdpj3obWR4h8aiQWgWq6QdbPD4hdxmgrgLpDyqCrKnaAfn?cluster=devnet). Three bot offers arrived in 4.332 s. The homeowner received 10,000 mUSD. [Evidence](../data/evidence/4fntZJ6eujspKqtJ1VcCvoEocQFzJBrkH2P4Ht5CjaeD.json) matched SHA-256 `c1a0fae8b314d35572a6222989bc83d92e8be741794f2a2cd247cd496d537274`.
 - NO [market](https://explorer.solana.com/address/YAzVbzkXkG6vBFSxvPdDDQTtmhQJu1fztAGrAwNKsU2?cluster=devnet) · [create](https://explorer.solana.com/tx/4UQP19bUbvYcZ1r8AGLrwY5BY6mL5HxBgdU1SZrjSSbRbCr9Gis2XCs6NCkm3yBtpJx5vWfYh1J4JwoskiYehDH5?cluster=devnet) · [batch accept](https://explorer.solana.com/tx/2qj4AhxJwrMYre3pBHBRSx3eGjEs48wN3KpPdW7n79XtS54GZE2eoL9dZDGgbmkZwYqk6Hq4sK9ErTLkT8qPTPD7?cluster=devnet) · [close](https://explorer.solana.com/tx/4XN42S2AXWLwf4XaBKVzgRxQL3BMzHKFPboF6Sso3MAAMZMb4e491DQKvwwARaqjQNNwptBkMD5EfcU7WeDXWvXa?cluster=devnet) · [resolve](https://explorer.solana.com/tx/28tDJU6jvjCP3q4V4cz6osdT7uFVZx4q2BBvy42BRfH7Z7HkGhXENwn9hQqsY3SZxr8iz4XhPMrRd9o5tFawGmoP?cluster=devnet) · [Bot A claim](https://explorer.solana.com/tx/5LU1tEEVEEgwVSNzy8oXNfFroPLUUzT18qAFoPDDUMPApNGDTgq9YPDwyQkCvp6dbCYdyX2rH25Zreizei9joGLF?cluster=devnet) · [Bot B claim](https://explorer.solana.com/tx/4muWGPKUm5ERZdZsG2KmD6qDvQHxnvjVJSg5z6QgcNsyHfLMENUF3GAg4VYexz9AoKvzK5vC2J8ecKDW1Yv8cStg?cluster=devnet) · [Bot C claim](https://explorer.solana.com/tx/2QvsVPFxixD4NEhX9F2q6iHDYVvvm8KJ9Y7Vic7CsgPhTf14GKUTGGzxSoBPaea9obVfrZaVsdwz4iXHCSZWkF4X?cluster=devnet). Three bot offers arrived in 9.217 s. The three underwriters received 10,000 mUSD in total. [Evidence](../data/evidence/YAzVbzkXkG6vBFSxvPdDDQTtmhQJu1fztAGrAwNKsU2.json) matched SHA-256 `449524a1498b8622d02fec2dcaa2a13d9abfcfcb6c71ae29325895575833b472`.
+
+## Demo rehearsal
+
+The replay uses the January 2025 Palisades Fire perimeter and the fictional properties in `data/properties.json`. Open by acknowledging the impact of the fire. Explain that the demonstration settles coverage based on fire proximity and show the actual terms on the market page.
+
+## Before recording
+
+- Verify the deployed program ID and that the upgrade authority matches the admin. Verify Config, the classic mUSD mint and properties 1–3 on Devnet.
+- Fund the homeowner and judge wallets. Check that each bot has at least 1 SOL and 200,000 mUSD and that the faucet holds at least 5 SOL. Keep an independently verified backup Devnet RPC available.
+- Build the app with the Devnet RPC and fixtures off. Enable `NEXT_PUBLIC_ENABLE_TIER2=1` and `BOTS_TIER2=1` after the Gate 5 upgrade.
+- Seed and open the fallback market in a second tab. Keep this market available with its three accepted offers.
+- Run the YES and NO flows on Devnet on demo day. Save the resulting chain links below before recording.
+
+## Two-minute walkthrough
+
+1. Connect the homeowner wallet. Open Home #1042 with 10,000 mUSD of requested coverage. Point out the historical replay label.
+2. Show the three collateralized offers and open one placement transaction in Explorer. At the original rates, the three offers cover 4,000, 3,000 and 3,000 mUSD, with 445 mUSD in premiums and 9,555 mUSD in collateral.
+3. Select the three offers and accept them with one signature. Show the activated coverage and the positions table.
+4. On the settlement page, close the market, show the 500 m trigger on the map and resolve. Show the browser's evidence hash check.
+5. Claim all three YES positions in one transaction. Show the 10,000 mUSD balance increase and link to the claim.
+6. For the secondary market, switch to Home #2210. Show the 3.9% judge offer, the requotes and the network panel. Buy a listed Risk position with a judge wallet and show that wallet claiming after a NO resolution.
+
+## Verification and recording
+
+- Stop the bot worker for the manual wallet check. Use a separate judge wallet to place the offer and the homeowner wallet to create, accept and claim. Run `pnpm tsx scripts/prove-lifecycle.ts --manual` for the app-client check with the demo keys.
+- Start the bot worker and run `pnpm tsx scripts/prove-lifecycle.ts` for the two core outcomes. Run `pnpm tsx scripts/prove-lifecycle.ts --tier2` once the program supports trading and the Tier 2 worker is running.
+- Record the app and wallet confirmations as they happen. Use a public view for the operator panel and hide local key paths and the demo password during recording.
+- Rehearse the fallback tab. If a live bot round stalls, open the already funded fallback and continue at settlement. Keep the completed YES and NO recordings available if the RPC becomes unreliable.

@@ -71,7 +71,7 @@ _Last updated: 2026-11-21_
 
 ## Blockers (human)
 
-1. **Demo-day funding.** The project initially funded the minimum execution balances. The full §14 faucet and bot balances remain open for Gate 6.
+1. **Demo-day funding.** The owner funded the 555,992-byte Tier 2 upgrade through the Solana Foundation faucet. Devnet quoted 2.825277560 SOL in temporary buffer rent and 0.092008960 SOL for ProgramData growth, before transaction fees. The full §14 faucet and bot balances remain open for Gate 6.
 2. **RPC reliability.** A free Chainstack Solana Devnet node was verified by genesis hash and used for the Phantom claim and bot runs. The official Solana Devnet endpoint remains available as a server-side fallback and was rate-limited during earlier runs.
 
 ## Gate 1 progress
@@ -142,6 +142,14 @@ The integrated setup creates and verifies a mint without a freeze authority. Dir
 - RPC write transport hit the public per-IP rate limit. Retrying with the same explicit buffer and default TPU transport succeeded. The ProgramData is 537,880 bytes at slot 524610462. The downloaded bytes match the tested build, and the on-chain authority is the admin. The measured ProgramData and Program rent totals 2.73414236 Devnet SOL before transaction fees.
 - The admin was funded, initialized the no-freeze mUSD mint and Config, and registered properties 1–3. Minimum funding transactions topped up the bots and demo wallets. The fallback market has three accepted positions and 10,000 mUSD activated.
 - The separately reviewed Tier 2 rehearsal is on [codex/tier2-local](https://github.com/ericpungholee/MetrEx-HW13/tree/codex/tier2-local), with 71 Anchor tests and a verified local purchase and claim. The live program still rejects Tier 2 instructions.
+
+## Tier 2 local rehearsal
+
+- The full Anchor validator suite passed (71 tests), including invariants 15–17 and both price mismatch cases through the app client. Workspace tests (111), TypeScript checks, the Tier 2 production build and the frozen interface comparison also passed.
+- A 390 bps judge offer caused the three local bots to requote to 380, 400 and 450 bps. After accepting the three bot offers, the judge bought a listed Risk position and claimed it following the NO resolution. The winners received 10,000 mUSD in total, and the serialized evidence matched the on-chain hash. The local network panel reported 31 transactions and 155,000 lamports in fees.
+- Independent read-only review checked §6.3 invariants 15–17. Listing authority, state and price are checked in `list_position.rs:44–59`. Purchase binds the listing, offer, seller and both mUSD accounts in `buy_position.rs:13–63`, rejects stale holders and conflicting roles in its handler, then transfers the price and records the buyer before Anchor closes the listing. The account contexts for listing, purchase and cancellation have no vault account. Cancellation binds the seller and refunds listing rent in `cancel_listing.rs:8–20`.
+- The app funds a temporary token account with the displayed price and closes it within the purchase transaction. A higher on-chain price exceeds that balance. A lower price leaves a balance that prevents closure and rolls back payment and ownership changes. A validator regression exercised both mismatched quotes through the app client, then executed the matching quote.
+- The [demo rehearsal script](demo-script.md) lists the recordings and Explorer links to collect on Devnet.
 
 ## Resolved
 

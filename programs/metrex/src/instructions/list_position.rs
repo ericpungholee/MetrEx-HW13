@@ -3,7 +3,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::PositionListed, state::*};
 
 #[derive(Accounts)]
 #[instruction(side: u8)]
@@ -41,7 +41,31 @@ pub struct ListPosition<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_ctx: Context<ListPosition>, _side: u8, _price: u64) -> Result<()> {
-    msg!("Position trading is disabled");
-    err!(MetrexError::Unauthorized)
+pub fn handler(ctx: Context<ListPosition>, side: u8, price: u64) -> Result<()> {
+    let market = &ctx.accounts.market;
+    let offer = &ctx.accounts.offer;
+    require!(
+        matches!(market.status, MarketStatus::Open | MarketStatus::Closed),
+        MetrexError::InvalidMarketStatus
+    );
+    require!(offer.status == OfferStatus::Accepted, MetrexError::InvalidOfferStatus);
+    let holder = match side {
+        0 => offer.protection_holder,
+        1 => offer.risk_holder,
+        _ => return err!(MetrexError::InvalidSide),
+    };
+    let seller = ctx.accounts.seller.key();
+    require_keys_eq!(seller, holder, MetrexError::NotHolder);
+    require!(price > 0, MetrexError::InvalidPrice);
+
+    let listing = &mut ctx.accounts.listing;
+    listing.offer = offer.key();
+    listing.side = side;
+    listing.seller = seller;
+    listing.price = price;
+    listing.created_at = Clock::get()?.unix_timestamp;
+    listing.bump = ctx.bumps.listing;
+
+    emit!(PositionListed { offer: listing.offer, listing: listing.key(), side, seller, price });
+    Ok(())
 }

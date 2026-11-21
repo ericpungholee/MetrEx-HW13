@@ -2,7 +2,7 @@
   "compilerOptions": {
     "types": ["mocha", "chai", "node"],
     "typeRoots": ["./node_modules/@types"],
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "module": "commonjs",
     "moduleResolution": "node",
     "target": "ES2022",

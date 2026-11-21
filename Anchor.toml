@@ -33,7 +33,7 @@ shutdown_wait = 2000
 # so the local validator must deploy the program as upgradeable.
 upgradeable = true
 
-# A local-only Listing for testing disabled handlers against a valid context.
+# A local-only stale Listing used by the holder validation test.
 [[test.validator.account]]
 address = "2jekJs2FoB4UWVXmgbN1Eqwgj9Z5pce5KN3X72Yb64V5"
 filename = "tests/fixtures/deferred-listing.json"
