@@ -138,8 +138,10 @@ export function toListingView(pubkey: PublicKey, a: ListingAccount): ListingView
 
 // ---------- Fetchers ----------
 
-export async function fetchMarket(program: MetrexProgram, pk: PublicKey): Promise<MarketView | null> {
-  const a = await program.account.market.fetchNullable(pk);
+export async function fetchMarket(
+  program: MetrexProgram, pk: PublicKey, commitment?: "confirmed" | "finalized",
+): Promise<MarketView | null> {
+  const a = await program.account.market.fetchNullable(pk, commitment);
   return a ? toMarketView(pk, a as MarketAccount) : null;
 }
 

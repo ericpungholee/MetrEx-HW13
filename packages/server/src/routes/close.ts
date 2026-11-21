@@ -39,7 +39,7 @@ export async function closeMarket(market: PublicKey, deps: CloseDeps = {}): Prom
     // Sends are never auto-retried on another endpoint (could double-send).
     const c = rpc.connection;
     const ix = await closeMarketIx(getProgram(c), { demoController: controller.publicKey, market });
-    const signature = await sendTx(c, [ix], [controller]);
+    const signature = await sendTx(c, [ix], [controller], { commitment: "finalized" });
     return { market: market.toBase58(), signature, explorer: explorerTx(signature) };
   });
 }

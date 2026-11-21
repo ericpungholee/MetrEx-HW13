@@ -3,22 +3,23 @@ import { loadScenarioRegistry } from "@metrex/geo/node";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { errorCode, MUSD_UNIT, type ScenarioRegistry } from "@metrex/shared";
 import { MARKET_STATUS_INDEX, OFFER_STATUS_INDEX, OFFSETS, filters, type MarketView } from "./accounts";
 import { dataDir, expandHome, loadKeypairFile, parsePublicKey, repoRoot } from "./env";
 import { explorerAddress, explorerTx } from "./explorer";
 import { programDataAddress } from "./ix";
-import { loadIdl } from "./program";
+import { getProgram, loadIdl } from "./program";
 import { getEvidence } from "./oracle/evidence";
-import { sha256Hex, writeEvidence } from "./oracle/evidence-store";
+import { readEvidenceBytes, sha256Hex, writeEvidence } from "./oracle/evidence-store";
 import { realGeo, type GeoAdapter } from "./oracle/geo-adapter";
-import { assertResolvable, buildMarketEvidence } from "./oracle/resolve";
+import { assertResolvable, buildMarketEvidence, resolveMarket } from "./oracle/resolve";
 import { HttpError } from "./routes/errors";
 import { FAUCET_MUSD, FAUCET_SOL_LAMPORTS, FaucetLimiter, faucetInstructions } from "./routes/faucet";
 import { handleClose, handleEvidence, handleFaucet, handleResolve } from "./routes/http";
 import { checkDemoPassword } from "./routes/password";
 import { formatMusd, formatSol, formatUnits, musd, solToLamports } from "./token";
+import { RpcPool } from "./rpc";
 import { describeErrorText } from "./tx";
 
 // ---------- IDL layout ----------
@@ -317,18 +318,71 @@ describe("oracle", () => {
     expect(sha256Hex(first.canonical)).toBe(first.hashHex);
   });
 
-  it("stores canonical bytes and serves them with a matching hash", async () => {
+  it("gates JSON, raw evidence and perimeter on finalized settlement and the matching hash", async () => {
     const dir = mkdtempSync(join(tmpdir(), "metrex-ev-"));
     const m = market();
     const ev = await buildMarketEvidence(m, pid, registry, fakeGeo(), dir);
     const path = await writeEvidence(dir, m.pubkey, ev.canonical);
     expect(readFileSync(path, "utf8")).toBe(ev.canonical);
-    const served = await getEvidence(m.pubkey, { dataDir: dir, skipChain: true });
-    expect(served.hashHex).toBe(ev.hashHex);
+    const key = m.pubkey.toBase58();
+    const requests = ["", "?raw=1", "?perimeter=1"];
+    for (const status of ["open", "closed", "voided"] as const) {
+      for (const query of requests) {
+        const denied = await handleEvidence(new Request(`http://x/api${query}`), key, {
+          dataDir: dir, readMarket: async () => ({ ...m, status, evidenceHash: ev.hashBytes }),
+        });
+        expect(denied.status).toBe(404);
+        expect(await denied.text()).not.toContain("triggered");
+      }
+    }
+    const opts = { dataDir: dir, readMarket: async () => ({
+      ...m, status: "resolvedYes" as const, evidenceHash: ev.hashBytes,
+    }) };
+    const served = await getEvidence(m.pubkey, opts);
     expect(served.canonical).toBe(ev.canonical);
-    await expect(getEvidence(Keypair.generate().publicKey, { dataDir: dir, skipChain: true })).rejects.toThrow(
-      /No evidence/,
-    );
+    const raw = await handleEvidence(new Request("http://x/api?raw=1"), key, opts);
+    expect(raw.status).toBe(200);
+    expect(raw.headers.get("cache-control")).toBe("no-store");
+    expect(await raw.text()).toBe(ev.canonical);
+
+    for (const query of requests) {
+      const req = new Request(`http://x/api${query}`);
+      const mismatch = await handleEvidence(req, key, {
+        dataDir: dir, readMarket: async () => ({ ...m, status: "resolvedYes" }),
+      });
+      expect(mismatch.status).toBe(503);
+      expect(await mismatch.text()).not.toContain("triggered");
+      const unavailable = await handleEvidence(req, key, {
+        dataDir: dir, readMarket: async () => { throw new Error("RPC offline"); },
+      });
+      expect(unavailable.status).toBe(503);
+    }
+  });
+
+  it("never writes after a failed or unfinalized send, and repairs publication after a late landing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metrex-resolve-"));
+    writeFileSync(join(dir, "scenarios.json"), JSON.stringify(registry));
+    const oracle = Keypair.generate();
+    const rpc = new RpcPool(["http://127.0.0.1:8899"]);
+    const config = getProgram(rpc.connection).account.config;
+    vi.spyOn(config, "fetchNullable").mockResolvedValueOnce({
+      oracleAuthority: oracle.publicKey, admin: oracle.publicKey,
+      demoController: oracle.publicKey, mint: oracle.publicKey, bump: 0,
+    });
+    const m = market({ status: "closed" });
+    let observed = m;
+    const send = vi.fn(async () => { throw new Error("private simulation log"); });
+    const deps = { rpc, dataDir: dir, oracle, geo: fakeGeo(), send, readMarket: async () => observed };
+    await expect(resolveMarket(m.pubkey, deps)).rejects.toThrow(/not been verified/);
+    expect(await readEvidenceBytes(dir, m.pubkey)).toBeNull();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const built = await buildMarketEvidence(m, getProgram(rpc.connection).programId, registry, deps.geo, dir);
+    observed = { ...m, status: "resolvedYes", evidenceHash: built.hashBytes };
+    const repaired = await resolveMarket(m.pubkey, deps);
+    expect(repaired.signature).toBeNull();
+    expect(await readEvidenceBytes(dir, m.pubkey)).toEqual(Buffer.from(built.canonical));
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
 

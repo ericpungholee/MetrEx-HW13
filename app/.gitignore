@@ -2,5 +2,5 @@
 /out/
 next-env.d.ts
 *.tsbuildinfo
-# Copied from ../data by scripts/copy-perimeter.mjs
+# Legacy static perimeter, removed by predev and prebuild
 /public/data/

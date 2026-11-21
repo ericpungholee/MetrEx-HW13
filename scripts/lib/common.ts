@@ -48,9 +48,6 @@ export interface PropertyRow {
   lon_e6: number;
   scenario_id: number;
   trigger_distance_m: number;
-  expected?: string | boolean;
-  distance_m?: number;
-  inside?: boolean;
 }
 
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);

@@ -6,7 +6,7 @@ import { verifyEvidenceText } from "@metrex/geo";
 import { marketStatusOf } from "@metrex/shared";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NetworkPanel } from "@/components/NetworkPanel";
 import { PerimeterMap } from "@/components/PerimeterMap";
 import { Empty, ErrorLine, Panel, ReplayLabel, scenarioName, Stat, StatusPill, TriggerWording, TxLink } from "@/components/ui";
@@ -22,8 +22,6 @@ import {
 import { summarizeMarket } from "@/lib/derive";
 import { formatE6, formatMusd, isZeroBytes, toHex } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
-
-const PASSWORD_KEY = "metrex-demo-password";
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -49,22 +47,6 @@ export default function DemoPage() {
   const [busy, setBusy] = useState<"close" | "resolve" | null>(null);
   const [result, setResult] = useState<{ action: string; res?: ApiResult; error?: string } | null>(null);
 
-  useEffect(() => {
-    try {
-      setPassword(sessionStorage.getItem(PASSWORD_KEY) ?? "");
-    } catch {
-      /* sessionStorage unavailable */
-    }
-  }, []);
-  function savePassword(v: string) {
-    setPassword(v);
-    try {
-      sessionStorage.setItem(PASSWORD_KEY, v);
-    } catch {
-      /* ignore */
-    }
-  }
-
   const summaries = useMemo(
     () => (ex.data ? ex.data.markets.map((m) => summarizeMarket(m, ex.data!.offers, ex.data!.properties)) : []),
     [ex.data],
@@ -76,14 +58,16 @@ export default function DemoPage() {
 
   const evidence = usePoll(
     async () => {
-      if (!selKey || !sel || isZeroBytes(sel.market.account.evidenceHash)) return null;
+      if (!resolved || !selKey || !sel || isZeroBytes(sel.market.account.evidenceHash)) return null;
       const text = await fetchEvidenceText(selKey);
-      if (text === null) return { text: null, fileHash: null, canonicalHash: null };
-      return { text, fileHash: await sha256Hex(text), canonicalHash: await recomputeCanonicalHash(text) };
+      if (text === null) return { market: selKey.toBase58(), text: null, fileHash: null, canonicalHash: null };
+      return { market: selKey.toBase58(), text, fileHash: await sha256Hex(text), canonicalHash: await recomputeCanonicalHash(text) };
     },
-    [selKey?.toBase58(), sel ? toHex(sel.market.account.evidenceHash) : ""],
+    [resolved, selKey?.toBase58(), sel ? toHex(sel.market.account.evidenceHash) : ""],
     10_000,
   );
+
+  const currentEvidence = evidence.data?.market === selKey?.toBase58() ? evidence.data : undefined;
 
   async function act(kind: "close" | "resolve", market: PublicKey) {
     setBusy(kind);
@@ -119,7 +103,7 @@ export default function DemoPage() {
         </div>
         <div className="w-72">
           <label className="text-[11px] text-dim">Demo password (kept in this tab&apos;s session only)</label>
-          <input className="input mt-1" type="password" value={password} onChange={(e) => savePassword(e.target.value)} />
+          <input className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
       </div>
       <ErrorLine error={ex.error} />
@@ -187,10 +171,10 @@ export default function DemoPage() {
                 </button>
                 <button
                   className="btn btn-primary"
-                  disabled={busy !== null || status !== "closed" || !password || USE_FIXTURES}
+                  disabled={busy !== null || (status !== "closed" && !resolved) || !password || USE_FIXTURES}
                   onClick={() => act("resolve", selKey)}
                 >
-                  {busy === "resolve" ? "Resolving…" : "2 · Run oracle"}
+                  {busy === "resolve" ? "Resolving…" : resolved ? "Recover evidence" : "2 · Run oracle"}
                 </button>
                 {!password && <span className="text-[11px] text-faint">Enter the demo password to enable.</span>}
                 {USE_FIXTURES && <span className="text-[11px] text-fixture">Fixture mode: transactions disabled</span>}
@@ -203,9 +187,10 @@ export default function DemoPage() {
               )}
             </Panel>
 
-            <Panel title="Perimeter vs trigger circle">
+            <Panel title={resolved ? "Settlement map" : "Trigger area"}>
               <PerimeterMap
                 height={420}
+                settledMarket={resolved && currentEvidence?.text && !USE_FIXTURES ? selKey.toBase58() : undefined}
                 points={[
                   {
                     key: selKey.toBase58(),
@@ -228,20 +213,20 @@ export default function DemoPage() {
                     <span className="num break-all">{onChainHash ?? "—"}</span>
                     <span className="text-dim">SHA-256 of served file</span>
                     <span className="num break-all">
-                      {evidence.data?.fileHash ?? (evidence.loading ? "…" : "evidence file unavailable")}
-                      {evidence.data?.fileHash && onChainHash && (
-                        <span className={`ml-2 font-bold ${evidence.data.fileHash === onChainHash ? "text-up" : "text-down"}`}>
-                          {evidence.data.fileHash === onChainHash ? "✓ matches on-chain" : "✗ does not match"}
+                      {currentEvidence?.fileHash ?? (evidence.loading ? "…" : "evidence file unavailable")}
+                      {currentEvidence?.fileHash && onChainHash && (
+                        <span className={`ml-2 font-bold ${currentEvidence.fileHash === onChainHash ? "text-up" : "text-down"}`}>
+                          {currentEvidence.fileHash === onChainHash ? "✓ matches on-chain" : "✗ does not match"}
                         </span>
                       )}
                     </span>
                     <span className="text-dim">Canonical re-check</span>
                     <span className="num break-all">
-                      {evidence.data?.canonicalHash ? (
+                      {currentEvidence?.canonicalHash ? (
                         <>
-                          {evidence.data.canonicalHash}
-                          <span className={`ml-2 font-bold ${evidence.data.canonicalHash === onChainHash ? "text-up" : "text-down"}`}>
-                            {evidence.data.canonicalHash === onChainHash ? "✓" : "✗"}
+                          {currentEvidence.canonicalHash}
+                          <span className={`ml-2 font-bold ${currentEvidence.canonicalHash === onChainHash ? "text-up" : "text-down"}`}>
+                            {currentEvidence.canonicalHash === onChainHash ? "✓" : "✗"}
                           </span>
                         </>
                       ) : (
@@ -249,9 +234,9 @@ export default function DemoPage() {
                       )}
                     </span>
                   </div>
-                  {evidence.data?.text && (
+                  {currentEvidence?.text && (
                     <pre className="num max-h-72 overflow-auto rounded border border-line bg-bg p-3 text-[11px] whitespace-pre-wrap">
-                      {prettyEvidence(evidence.data.text)}
+                      {prettyEvidence(currentEvidence.text)}
                     </pre>
                   )}
                   {USE_FIXTURES && <p className="text-[11px] text-fixture">FIXTURE evidence record (not produced by the oracle).</p>}
