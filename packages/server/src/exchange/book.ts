@@ -77,6 +77,8 @@ export interface ExchangeState {
   rounds: RoundView[];
   /** One snapshot per market of the selected rounds, by round then property. */
   snapshots: MarketBookSnapshot[];
+  /** Markets whose new order addresses have not all been read into this snapshot. */
+  orderDiscoveryPending: ReadonlySet<string>;
   now: bigint;
   /** Accounts asked for through `extraKeys` (null when missing), keyed by base58. */
   extra: Map<string, AccountInfo<Buffer> | null>;
@@ -188,6 +190,7 @@ export class ExchangeStateLoader {
     const roundOf = new Map(rounds.map((r) => [r.address.toBase58(), r]));
     const requested = new Set(cachedOrders.map((k) => k.toBase58()));
     const byMarket = new Map<string, OrderAccount[]>();
+    const orderDiscoveryPending = new Set<string>();
     for (const m of markets) {
       const mk = m.address.toBase58();
       let cached = this.ordersOfMarket.get(mk);
@@ -197,15 +200,20 @@ export class ExchangeStateLoader {
       }
       if (!cached) {
         const orders = await this.scanOrders(p, m, roundOf.get(m.round.toBase58()), now);
+        if (this.ordersOfMarket.get(mk)?.seq !== m.nextOrderSeq) orderDiscoveryPending.add(mk);
         byMarket.set(mk, orders);
         continue;
       }
-      if (cached.seq !== m.nextOrderSeq) void this.scanInBackground(p, m, roundOf.get(m.round.toBase58()), now);
+      if (cached.seq !== m.nextOrderSeq) {
+        orderDiscoveryPending.add(mk);
+        void this.scanInBackground(p, m, roundOf.get(m.round.toBase58()), now);
+      }
       const live: OrderAccount[] = [];
       const kept: PublicKey[] = [];
       for (const k of cached.keys) {
         const ks = k.toBase58();
         if (!requested.has(ks)) {
+          orderDiscoveryPending.add(mk);
           kept.push(k); // added after this load's read (own placement or a scan): read next load
           continue;
         }
@@ -241,7 +249,7 @@ export class ExchangeStateLoader {
     );
     const extra = new Map<string, AccountInfo<Buffer> | null>();
     for (const k of extraKeys) extra.set(k.toBase58(), infos.get(k.toBase58()) ?? null);
-    return { config, rounds, snapshots, now, extra };
+    return { config, rounds, snapshots, orderDiscoveryPending, now, extra };
   }
 
   /** Order addresses the caller knows exist (its own confirmed placements): read from the next load on. */

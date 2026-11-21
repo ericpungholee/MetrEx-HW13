@@ -18,6 +18,7 @@ import {
   fetchTrades,
   fetchWalletOrders,
   sha256HexOf,
+  USE_FIXTURES,
   type Headline,
   type MarketInfo,
   type RoundWithMarkets,
@@ -45,19 +46,27 @@ function HeadlinePrice({ label, h }: { label: string; h: Headline }) {
 
 function Settlement({ info }: { info: MarketInfo }) {
   const m = info.market;
-  const [check, setCheck] = useState<{ hash: string; matches: boolean } | "pending" | null>(null);
+  const [check, setCheck] = useState<{ hash: string; matches: boolean } | "pending" | "failed" | null>(null);
   useEffect(() => {
-    if (m.outcome !== "yes" && m.outcome !== "no") return;
-    let alive = true;
-    void (async () => {
-      const text = await fetchEvidenceRaw(m.address).catch(() => null);
-      if (!alive) return;
-      if (!text) return setCheck("pending");
-      const hash = await sha256HexOf(text);
-      if (alive) setCheck({ hash, matches: hash === m.evidenceHash });
-    })();
+    if (USE_FIXTURES || (m.outcome !== "yes" && m.outcome !== "no")) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    async function checkEvidence() {
+      const evidence = await fetchEvidenceRaw(m.address, signal).catch(() => null);
+      if (signal.aborted) return;
+      if (!evidence) {
+        setCheck("pending");
+        retry = setTimeout(checkEvidence, 3_000);
+        return;
+      }
+      const hash = await sha256HexOf(evidence).catch(() => null);
+      if (!signal.aborted) setCheck(hash ? { hash, matches: hash === m.evidenceHash } : "failed");
+    }
+    void checkEvidence();
     return () => {
-      alive = false;
+      controller.abort();
+      clearTimeout(retry);
     };
   }, [m.address, m.outcome, m.evidenceHash]);
 
@@ -72,12 +81,15 @@ function Settlement({ info }: { info: MarketInfo }) {
       </div>
       <div className="num text-xs break-all text-dim">On-chain evidence hash {m.evidenceHash}</div>
       {check === "pending" && <div className="text-xs text-warn">Evidence is published after finalized settlement. Checking again shortly.</div>}
-      {check && check !== "pending" && (
+      {check === "failed" && <div className="text-xs text-warn">This browser could not verify the evidence hash.</div>}
+      {check && typeof check === "object" && (
         <div className={`text-xs ${check.matches ? "text-up" : "text-down"}`}>
           {check.matches ? "Evidence hash recomputed in this browser: matches the chain." : `Evidence hash mismatch (${check.hash}). Do not rely on this file.`}{" "}
-          <a className="underline" href={`/api/evidence/${m.address}?raw=1`} target="_blank" rel="noreferrer">
-            Evidence
-          </a>
+          {check.matches && (
+            <a className="underline" href={`/api/evidence/${m.address}?raw=1`} target="_blank" rel="noreferrer">
+              Evidence
+            </a>
+          )}
         </div>
       )}
     </div>
@@ -214,7 +226,7 @@ export function MarketView({ market, round, children }: { market: string; round?
             )}
           </Panel>
           <Panel title="Settlement">
-            <Settlement info={info.data} />
+            <Settlement key={`${m.address}:${m.evidenceHash}`} info={info.data} />
           </Panel>
         </div>
 

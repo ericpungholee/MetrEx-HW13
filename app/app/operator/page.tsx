@@ -22,13 +22,16 @@ type Body = Record<string, unknown>;
 function describe(action: OperatorAction, ok: boolean, body: Body): LogLine {
   if (!ok) return { action, ok, text: String(body.error ?? "Step failed"), links: [] };
   if (action === "reject") {
-    const rejected = body.rejected === true;
-    return {
-      action,
-      ok: rejected,
-      text: rejected ? `Trade rejected on property ${String(body.propertyId)}: ${String(body.error)}` : body.rejected === null ? String(body.error) : "A trade still simulated successfully. Do not settle yet.",
-      links: [],
-    };
+    if (body.rejected === null) {
+      return { action, ok: true, text: "Round closure is finalized. Skipped the trade simulation because all resting orders are gone.", links: [] };
+    }
+    if (body.rejected === true && body.roundNotOpen === true) {
+      return { action, ok: true, text: `RoundNotOpen verified on property ${String(body.propertyId)}.`, links: [] };
+    }
+    const text = body.rejected === false
+      ? "A trade still simulated successfully. Do not settle yet."
+      : `Closure proof failed. ${String(body.error ?? "Retry the trade simulation.")}`;
+    return { action, ok: false, text, links: [] };
   }
   if (action === "status") {
     return {

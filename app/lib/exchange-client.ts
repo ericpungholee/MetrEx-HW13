@@ -455,9 +455,9 @@ export async function fetchWalletOrders(owner: PublicKey): Promise<WalletOrder[]
 }
 
 /** Evidence text exactly as published (only after finalized settlement with a matching hash). */
-export async function fetchEvidenceRaw(market: string): Promise<string | null> {
+export async function fetchEvidenceRaw(market: string, signal?: AbortSignal): Promise<string | null> {
   if (USE_FIXTURES) return null;
-  const res = await fetch(`/api/evidence/${market}?raw=1`, { cache: "no-store" });
+  const res = await fetch(`/api/evidence/${market}?raw=1`, { cache: "no-store", signal });
   return res.ok ? res.text() : null;
 }
 
@@ -500,9 +500,9 @@ export async function collateralMint(): Promise<PublicKey> {
   return collateralCache;
 }
 
-const tokenAmount = (data: Buffer | Uint8Array | undefined | null): bigint => {
+const tokenAmount = (data: Uint8Array | undefined | null): bigint => {
   if (!data || data.length < 72) return 0n;
-  return Buffer.from(data).readBigUInt64LE(64);
+  return new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(64, true);
 };
 
 /** mUSD, SOL and YES/NO holdings for the given markets, in one or two batched reads. */

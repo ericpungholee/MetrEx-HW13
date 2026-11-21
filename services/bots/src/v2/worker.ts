@@ -138,6 +138,8 @@ export class ExchangeBotWorker {
     const planned: Planned[] = [];
     for (const snap of state.snapshots) {
       const m = snap.market;
+      // The post-only clamp needs opposing orders that are still being discovered by the loader.
+      if (snap.tradingOpen && state.orderDiscoveryPending.has(m.address.toBase58())) continue;
       const featured = m.propertyId === this.o.featuredPropertyId && m.round.equals(config.latestRound);
       planned.push(...this.planMarket(snap, featured, botKeys, balances));
     }

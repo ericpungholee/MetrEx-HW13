@@ -6,6 +6,7 @@ import { useContext } from "react";
 import { OrderSide, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import type { BookSide, LevelInfo } from "@/lib/exchange-client";
 import { formatPrice, formatShares, outcomeName } from "@/lib/exchange-format";
+import { explorerAddress, shortKey } from "@/lib/format";
 import { MakersContext } from "./Labels";
 
 function makersOf(l: LevelInfo, makers: Map<string, string>, me: string | null): string {
@@ -17,18 +18,35 @@ function Row({ l, side, maxQty, onPick, me }: { l: LevelInfo; side: OrderSideCod
   const makers = useContext(MakersContext);
   const pct = maxQty === 0n ? 0 : Number((l.quantity * 100n) / maxQty);
   const mine = me !== null && l.orders.some((o) => o.maker === me);
+  const price = formatPrice(l.priceBps);
+  const makerNames = makersOf(l, makers, me);
   return (
-    <button
-      type="button"
-      onClick={() => onPick?.(l.priceBps, side)}
-      className="relative grid w-full grid-cols-[1fr_1fr_1.2fr] items-center px-3 py-1.5 text-left text-sm hover:bg-bg-soft"
-      title={`${l.orders.length} order${l.orders.length === 1 ? "" : "s"} at ${formatPrice(l.priceBps)}`}
-    >
-      <span className={`absolute inset-y-0.5 right-0 ${side === OrderSide.Buy ? "bg-up-soft" : "bg-down-soft"}`} style={{ width: `${pct}%` }} aria-hidden />
-      <span className={`num relative font-medium ${side === OrderSide.Buy ? "text-up" : "text-down"}`}>{formatPrice(l.priceBps)}</span>
-      <span className="num relative text-right text-ink">{formatShares(l.quantity)}</span>
-      <span className={`relative truncate text-right text-xs ${mine ? "font-medium text-ink" : "text-faint"}`}>{makersOf(l, makers, me)}</span>
-    </button>
+    <div className="relative grid grid-cols-[1fr_1fr_1.2fr] items-start px-3 text-sm hover:bg-bg-soft">
+      <span className={`pointer-events-none absolute inset-y-0.5 right-0 ${side === OrderSide.Buy ? "bg-up-soft" : "bg-down-soft"}`} style={{ width: `${pct}%` }} aria-hidden />
+      <button
+        type="button"
+        onClick={() => onPick?.(l.priceBps, side)}
+        className="relative col-span-2 grid grid-cols-2 py-1.5 text-left"
+        title={`Use ${price} as limit price`}
+      >
+        <span className={`num font-medium ${side === OrderSide.Buy ? "text-up" : "text-down"}`}>{price}</span>
+        <span className="num text-right text-ink">{formatShares(l.quantity)}</span>
+      </button>
+      <details className="relative py-1.5 text-right text-xs leading-5">
+        <summary className={`cursor-pointer ${mine ? "font-medium text-ink" : "text-dim"}`} aria-label={`Orders at ${price}, makers ${makerNames}`}>
+          {makerNames}
+        </summary>
+        <ul className="space-y-1 pt-1">
+          {l.orders.map((order) => (
+            <li key={order.address}>
+              <a href={explorerAddress(order.address)} target="_blank" rel="noreferrer" className="text-info hover:underline" title={order.address}>
+                Order {shortKey(order.address)} on Explorer
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }
 
