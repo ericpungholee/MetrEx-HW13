@@ -172,6 +172,14 @@ export function resolveMarketIx(
 }
 
 /** Tier 2 (§5.6). */
+export function cancelListingIx(
+  program: MetrexProgram,
+  a: { seller: PublicKey; listing: PublicKey },
+): Promise<TransactionInstruction> {
+  return program.methods.cancelListing().accountsPartial({ seller: a.seller, listing: a.listing }).instruction();
+}
+
+/** Tier 2 (§5.6). */
 export function listPositionIx(
   program: MetrexProgram,
   a: { seller: PublicKey; market: PublicKey; offer: PublicKey; side: Side; price: bigint },
