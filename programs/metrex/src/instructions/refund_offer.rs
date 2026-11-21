@@ -75,12 +75,13 @@ pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
     require!(vault.owner == offer.key(), MetrexError::WrongTokenOwner);
 
     let premium = offer.premium;
-    // Normally exactly K. Anything sent to the vault from outside also goes back to the
-    // underwriter (who funded the vault), so the vault always empties and can close.
-    let collateral = vault
+    let collateral = offer.collateral;
+    require!(vault.amount >= offer.coverage, MetrexError::VaultBalanceMismatch);
+    // The original underwriter receives booked collateral plus any surplus.
+    let underwriter_amount = vault
         .amount
         .checked_sub(premium)
-        .ok_or(MetrexError::MathOverflow)?;
+        .ok_or(MetrexError::VaultBalanceMismatch)?;
     let homeowner_key = market.homeowner;
 
     let market_key = offer.market;
@@ -117,7 +118,7 @@ pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
             },
             signer_seeds,
         ),
-        collateral,
+        underwriter_amount,
     )?;
     token::close_account(CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),

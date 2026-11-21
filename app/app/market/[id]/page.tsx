@@ -76,6 +76,8 @@ function parseKey(s: string | undefined): PublicKey | null {
   }
 }
 
+const TRADING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_TIER2 === "1";
+
 export default function MarketPage() {
   const params = useParams<{ id: string }>();
   const marketKey = useMemo(() => parseKey(params?.id), [params?.id]);
@@ -123,7 +125,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
   const m = market.account;
   const status = marketStatusOf(m.status);
   const isOpen = status === "open";
-  const tradable = status === "open" || status === "closed";
+  const tradable = TRADING_ENABLED && (status === "open" || status === "closed");
   const isHomeowner = !!viewer && m.homeowner.equals(viewer);
 
   const selectedOffers = summary.openOffers.filter((o) => selected.has(o.publicKey.toBase58()));
@@ -516,7 +518,7 @@ function PositionsTable({
           )}
         </div>
         <div className="mt-1 flex items-center gap-1">
-          {listing && viewer && listing.account.seller.equals(viewer) && (
+          {TRADING_ENABLED && listing && viewer && listing.account.seller.equals(viewer) && (
             <button className="btn px-2 py-0.5 text-[11px]" onClick={() => doCancelListing(listing)}>
               Cancel listing
             </button>

@@ -67,7 +67,13 @@ describe("batched transactions (§10.3)", () => {
     const groups = await Promise.all(
       [0, 1, 2].map(async (i) => {
         const { offer, underwriter } = offerFor(100 + i);
-        return [await buildClaimPayoutIx(program, homeowner, market, offer, underwriter, mint)];
+        const surplusToken = getAssociatedTokenAddressSync(mint, underwriter, true);
+        const claim = await buildClaimPayoutIx(program, homeowner, market, offer, underwriter, mint, surplusToken);
+        expect(claim.keys.at(-1)).toEqual({ pubkey: surplusToken, isSigner: false, isWritable: true });
+        return [
+          createAssociatedTokenAccountIdempotentInstruction(homeowner, surplusToken, underwriter, mint),
+          claim,
+        ];
       }),
     );
     const batches = packInstructionGroups(groups, { feePayer: homeowner, recentBlockhash: blockhash, prefix: ataPrefix });

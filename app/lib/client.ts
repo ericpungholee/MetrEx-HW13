@@ -4,9 +4,12 @@
 // In fixture mode reads come from lib/fixtures.ts and every write throws FixtureModeError.
 import { BN, BorshCoder, EventParser, Program, type Idl } from "@anchor-lang/core";
 import {
+  ACCOUNT_SIZE,
   createAssociatedTokenAccountIdempotentInstruction,
+  createInitializeAccount3Instruction,
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
+  unpackAccount,
 } from "@solana/spl-token";
 import {
   Connection,
@@ -583,6 +586,7 @@ export async function buildClaimPayoutIx(
   offer: PublicKey,
   underwriter: PublicKey,
   mint: PublicKey,
+  surplusToken?: PublicKey,
 ): Promise<TransactionInstruction> {
   const programId = prog.programId;
   return prog.methods
@@ -597,6 +601,7 @@ export async function buildClaimPayoutIx(
       underwriter,
       tokenProgram: TOKEN_PROGRAM_ID,
     })
+    .remainingAccounts(surplusToken ? [{ pubkey: surplusToken, isSigner: false, isWritable: true }] : [])
     .instruction();
 }
 
@@ -647,6 +652,47 @@ export function claimablePositions(
   return out;
 }
 
+/** A claimant can provision a surplus account even if the usual ATA has changed authority. */
+async function prepareClaimSurplus(payer: PublicKey, owner: PublicKey, mint: PublicKey) {
+  const conn = getConnection();
+  const address = getAssociatedTokenAddressSync(mint, owner, true);
+  const info = await conn.getAccountInfo(address);
+  if (!info) {
+    return {
+      address,
+      setup: [createAssociatedTokenAccountIdempotentInstruction(payer, address, owner, mint)],
+    };
+  }
+  try {
+    const account = unpackAccount(address, info);
+    if (account.owner.equals(owner) && account.mint.equals(mint) && !account.isFrozen) {
+      return {
+        address,
+        setup: [createAssociatedTokenAccountIdempotentInstruction(payer, address, owner, mint)],
+      };
+    }
+  } catch {
+    // The funded address may contain another account type. Use a fresh token account instead.
+  }
+  const seed = `metrex-${randomNonce().toString(16)}`;
+  const auxiliary = await PublicKey.createWithSeed(payer, seed, TOKEN_PROGRAM_ID);
+  return {
+    address: auxiliary,
+    setup: [
+      SystemProgram.createAccountWithSeed({
+        fromPubkey: payer,
+        basePubkey: payer,
+        newAccountPubkey: auxiliary,
+        seed,
+        lamports: await conn.getMinimumBalanceForRentExemption(ACCOUNT_SIZE),
+        space: ACCOUNT_SIZE,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeAccount3Instruction(auxiliary, mint, owner),
+    ],
+  };
+}
+
 /** "Claim all" (spec §10.3): every claimable `claim_payout`, batched like acceptOffers. */
 export async function claimAll(
   wallet: WalletSigner,
@@ -659,11 +705,15 @@ export async function claimAll(
   const mint = await getMint();
   const prog = getProgram();
   const prefix = await ataIfMissing(wallet.publicKey, wallet.publicKey, mint);
-  const groups = await Promise.all(
-    positions.map(async (p) => [
-      await buildClaimPayoutIx(prog, wallet.publicKey, p.market.publicKey, p.offer.publicKey, p.offer.account.underwriter, mint),
-    ]),
-  );
+  const groups = await Promise.all(positions.map(async ({ market, offer }) => {
+    const underwriter = offer.account.underwriter;
+    const owner = wallet.publicKey.equals(underwriter) ? market.account.homeowner : underwriter;
+    const surplus = await prepareClaimSurplus(wallet.publicKey, owner, mint);
+    const claim = await buildClaimPayoutIx(
+      prog, wallet.publicKey, market.publicKey, offer.publicKey, underwriter, mint, surplus.address,
+    );
+    return [...surplus.setup, claim];
+  }));
   return sendGroups(wallet, groups, prefix, opts);
 }
 

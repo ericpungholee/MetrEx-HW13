@@ -65,8 +65,10 @@ pub fn handler(ctx: Context<CancelOffer>) -> Result<()> {
         &nonce_bytes,
         &bump,
     ]];
-    // Normally exactly K; the whole balance leaves so the vault can close.
-    let refunded = vault.amount;
+    let refunded = offer.collateral;
+    require!(vault.amount >= refunded, MetrexError::VaultBalanceMismatch);
+    // Surplus goes to the original underwriter with the booked collateral.
+    let transfer_amount = vault.amount;
 
     token::transfer(
         CpiContext::new_with_signer(
@@ -78,7 +80,7 @@ pub fn handler(ctx: Context<CancelOffer>) -> Result<()> {
             },
             signer_seeds,
         ),
-        refunded,
+        transfer_amount,
     )?;
     token::close_account(CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),

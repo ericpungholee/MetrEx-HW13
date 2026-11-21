@@ -155,7 +155,7 @@ Validity:
 - `MIN_COVERAGE ≤ C ≤ market.coverage_target`
 - `P ≥ 1` (rejects offers whose premium rounds to zero)
 
-Because `K + P = C` by definition, every accepted vault holds exactly C. The program never rejects an offer for rounding; floor rounding is the rule and it slightly favours the homeowner.
+Because `K + P = C` by definition, every accepted vault backs exactly C in booked coverage. The program never rejects an offer for rounding; floor rounding is the rule and it slightly favours the homeowner.
 
 ### 4.3 Worked example
 
@@ -173,9 +173,15 @@ Homeowner requests 10,000 mUSD.
 
 ### 4.4 Conservation invariant
 
-For every offer, at every point:
-`vault.amount ∈ {0, K, C}` for status `{Cancelled|Claimed|Refunded, Open, Accepted}` respectively.
-Each settlement transfers out exactly `vault.amount`. No instruction mints or burns mUSD.
+The booked vault obligation is collateral (K) for an Open offer, coverage (C) for an Accepted offer, and zero after cancellation, claim or refund. A live vault's raw SPL balance must cover that obligation. Any excess is unsolicited surplus. Surplus never changes booked amounts, holder rights or market coverage. Acceptance transfers exactly P and can proceed when the resulting vault balance is at least C.
+
+- **Cancellation.** Return K and any surplus to the original underwriter.
+- **Payout.** Transfer exactly C to the winning holder. Send any surplus to the original underwriter, or to the original homeowner when the original underwriter is the claimant. The surplus recipient is always a different wallet from the claimant.
+- **Void refund.** Return P to the original homeowner and K plus any surplus to the original underwriter.
+
+For a surplus-bearing payout, the caller supplies the recipient's writable classic SPL token account as the first remaining account. The program validates its token program, mint and wallet owner. The caller can create it without the recipient's signature. The frozen IDL, instruction arguments and named account contexts remain unchanged. Claims with zero surplus may omit this account. Clients should supply it on every claim so deposits after a balance read cannot invalidate a correctly prepared claim.
+
+Each terminal instruction drains and closes the vault atomically, with rent returning to the original underwriter. Lifecycle events report booked contractual amounts. MetrEx neither mints nor burns mUSD.
 
 ### 4.5 Constants
 
@@ -287,15 +293,17 @@ Every instruction that touches tokens checks: `token_account.mint == config.mint
 | `create_market(nonce, property_id, coverage_target)` | homeowner | Property exists; `MIN_COVERAGE ≤ target ≤ MAX_COVERAGE_TARGET` | Create Market (`Open`), copy property data |
 | `place_offer(nonce, coverage, bps)` | underwriter | Market `Open`; `underwriter ≠ homeowner`; bps and coverage valid (4.2); P ≥ 1; balance ≥ K | Create Offer (`Open`) + vault; transfer K underwriter → vault |
 | `cancel_offer()` | `offer.underwriter` | Offer `Open` (any market status) | Transfer vault → underwriter; close vault; Offer → `Cancelled` |
-| `accept_offer()` | `market.homeowner` | Market `Open`; Offer `Open`; `offer.market == market`; `activated + C ≤ target` | Transfer P homeowner → vault; assert `vault.amount == C`; Offer → `Accepted`; set `protection_holder = homeowner`, `risk_holder = underwriter`; `activated += C`; `accepted_count += 1` |
+| `accept_offer()` | `market.homeowner` | Market `Open`; Offer `Open`; `offer.market == market`; `activated + C ≤ target` | Transfer P homeowner → vault; assert `vault.amount ≥ C`; Offer → `Accepted`; set `protection_holder = homeowner`, `risk_holder = underwriter`; `activated += C`; `accepted_count += 1` |
 | `close_market()` | `config.demo_controller` | Market `Open` | Market → `Closed`; set `closed_at` |
 | `resolve_market(triggered: bool, evidence_hash)` | `config.oracle_authority` | Market `Closed` | Market → `ResolvedYes` / `ResolvedNo`; store hash; set `resolved_at` |
-| `claim_payout()` | winner | Market resolved; Offer `Accepted`; YES ⇒ signer == `protection_holder`, NO ⇒ signer == `risk_holder`; destination owned by signer | Transfer full vault → signer; close vault (rent → underwriter); Offer → `Claimed` |
+| `claim_payout()` | winner | Market resolved; Offer `Accepted`; YES ⇒ signer == `protection_holder`, NO ⇒ signer == `risk_holder`; destination owned by signer | Transfer C → signer and route any surplus (§4.4); close vault (rent → underwriter); Offer → `Claimed` |
 | `list_position(side, price)` *(Tier 2)* | current holder of `side` | Market `Open` or `Closed`; Offer `Accepted`; `price ≥ 1`; no listing for this side exists | Create Listing |
 | `buy_position()` *(Tier 2)* | buyer | Market `Open` or `Closed`; Offer `Accepted`; `listing.seller ==` current holder of that side; buyer ≠ seller; buyer ≠ holder of the opposite side | Transfer `price` buyer → seller; set that side's holder = buyer; close Listing. All in one instruction |
 | `cancel_listing()` *(Tier 2)* | `listing.seller` | Listing exists | Close Listing |
 | `void_market()` | `config.admin` | Market `Open` or `Closed` | Market → `Voided` |
-| `refund_offer()` | anyone | Market `Voided`; Offer `Accepted` | Transfer P → homeowner, K → underwriter; close vault; Offer → `Refunded` |
+| `refund_offer()` | anyone | Market `Voided`; Offer `Accepted` | Transfer P → homeowner and K plus surplus → underwriter; close vault; Offer → `Refunded` |
+
+Before Gate 5, all three Tier 2 instructions reject calls and their account and token changes roll back.
 
 `void_market` / `refund_offer` are a safety valve, built after the core lifecycle passes its tests (P0.5). Open offers on a voided market use `cancel_offer` as usual.
 
@@ -321,7 +329,7 @@ Every instruction that touches tokens checks: `token_account.mint == config.mint
 
 Trading positions is allowed while `Closed` because that is the coverage period: no new coverage is written, but existing claims can change hands until the oracle reports. Once resolved, trading stops.
 
-`refund_offer` on a voided market pays P to the original homeowner and K to the original underwriter regardless of current holders. Document this; a holder who bought a side can lose their purchase price on a void. (Void is an emergency path only.)
+`refund_offer` on a voided market pays P to the original homeowner and K plus any surplus to the original underwriter regardless of current holders. Document this; a holder who bought a side can lose their purchase price on a void. (Void is an emergency path only.)
 
 ### 6.2 Offer state machine
 

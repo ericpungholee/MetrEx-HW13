@@ -7,8 +7,8 @@ _Last updated: 2026-11-21_
 | Gate | Status | Notes |
 |---|---|---|
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
-| 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 62/62. Independent review found protocol decisions required before deployment |
-| 2 — Devnet live | Blocked | Devnet faucet rate limits and two protocol decisions from review |
+| 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 68/68 after approved review fixes |
+| 2 — Devnet live | Blocked | Awaiting the first Devnet SOL top-up. The review fixes passed locally |
 | 3 — Human lifecycle | Not started | |
 | 4 — Definition of Done | Not started | |
 | 5 — Solana track (T2) | Not started | |
@@ -71,10 +71,9 @@ _Last updated: 2026-11-21_
 
 ## Blockers (human)
 
-1. **Devnet SOL.** On November 21, the public Devnet RPC rate-limited both CLI airdrop requests. The deployer and admin both reported 0 SOL, and the program account was absent. Request about **14 Devnet SOL** for `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP` and **1 Devnet SOL** for `sQuXrM2LYdxq5sc8dAcsfgFSoa9V6jfNk5txzea87sD` using the [Solana Foundation faucet](https://faucet.solana.com/) with GitHub sign-in. The deployer target includes approximately 2.71 SOL in ProgramData rent, up to 10.4 SOL in `fund-bots.ts` wallet top-ups, the script's 0.1 SOL reserve and room for transaction fees.
-
-2. **Escrow accounting (§4.4, §6).** Classic SPL vaults can hold unbooked mUSD. The exact raw-balance assertion in `accept_offer` can reject a valid acceptance, and settlement and refund can exceed the recorded terms. Owner approval is needed to specify booked escrow, contractual transfer amounts, and where to route surplus while closing the vault.
-3. **Deferred Tier 2 entry points (§6).** The empty listing handlers can still apply Anchor account creation or closure. Owner approval is needed to make the frozen instructions reject calls until Gate 5, with their layouts, arguments and handler stubs intact.
+1. **Devnet SOL.** On November 21, all thirteen project wallets were checked at 0 SOL. The program account was absent and no upgrade buffers were found for either the deployer or admin. The Devnet CLI rate-limited requests. SolFaucet returned RPC error 410 (faucet closed). Pine Stake exposed no amount for an unauthenticated request. QuickNode requires an existing mainnet balance and verification. The Ellipsis Labs proof-of-work CLI was built with compatible dependencies in a temporary directory. The documented 0.02 SOL pool was empty, the CLI's fee bootstrap was rate-limited, and the only discoverable balance large enough for its own reward paid 100 lamports per claim, below the transaction fee.
+2. **Funding request.** The deployer address is `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`. [DevnetFaucet.org](https://www.devnetfaucet.org/) advertises 20 free Devnet SOL and requires GitHub authorization. The [Solana Foundation faucet](https://faucet.solana.com/) is an alternative for an initial 3.2 Devnet SOL deposit. The 537,880-byte compiled core costs 2.73330924 SOL for ProgramData plus 0.00083312 SOL for Program rent at the measured Devnet rate, before fees. The initial target includes a small admin top-up and the `fund-bots.ts --minimum` profile. Full demo-day balances use the default profile and can be topped up later.
+3. **Human lifecycle.** The real-wallet Gate 3 run follows Devnet provisioning. The scripted equivalent and both oracle outcomes have passed locally.
 
 ## Gate 1 progress
 
@@ -83,9 +82,16 @@ _Last updated: 2026-11-21_
 - **C (frontend): merged** in `6a253d0`. Fixtures and browser evidence verification use the registered demo property data.
 - **D (backend): merged** in `ac24a36`. `/api/stats` returns the fields read by the app. The oracle uses the packaged geometry loader and rejects unknown scenarios. The setup script verifies upgrade authority before creating the mint and can recover the mint address from an initialized Config. Workspace tests passed (111), TypeScript checks passed and Next.js built with all five API routes. Local validation ran setup, funding and seeding twice, funded a fresh wallet through `/api/faucet`, and exercised both outcomes with the app client, the bots and the close, oracle and evidence routes. Bot offers arrived in about 1.2 s on both local runs. Three offers fit in one acceptance transaction, the YES claims fit in one transaction and each settlement paid exactly 10,000 mUSD. Both evidence files matched their on-chain hashes. The local stats route reported 27 program transactions and 135,000 lamports in fees for this run.
 
+## Approved deployment fixes and local rehearsal
+
+- The owner approved §4.4 surplus accounting and disabled Tier 2 entry points on November 21. Booked obligations use the recorded Offer terms. Cancellation sends collateral and surplus to the original underwriter. A void refund sends premium to the original homeowner and collateral and surplus to the original underwriter. A claim sends exactly coverage to the current winner and routes surplus to the original underwriter, or to the original homeowner if the underwriter is the claimant. The writable surplus token destination uses Anchor remaining accounts and is validated as a classic SPL account for the approved owner and mint. The app can create the destination permissionlessly and falls back to a fresh token account if the usual ATA cannot receive it. The frozen IDL, types, and shared package still match Gate 0.
+- All three disabled Tier 2 calls reject with the existing `Unauthorized` error. The local test fixture exercises purchase and cancellation against a valid Listing and checks its data, holders and balances remain intact. A separate test checks listing creation rolls back. The app keeps trading controls off until `NEXT_PUBLIC_ENABLE_TIER2=1`.
+- Local validator setup registered all three properties and the minimum funding profile supported a seeded fallback market. `scripts/prove-lifecycle.ts --manual --local` completed the app-client judge lifecycle. `--local` then funded a fresh wallet through the faucet, received three bot offers on each market within 10 seconds, accepted all three in one transaction, verified each evidence hash against its resolved account and paid exactly 10,000 mUSD on both outcomes. The YES claims fit in one transaction. The local stats route reported 33 transactions and 165,000 lamports in fees. These proofs used a local validator.
+- Devnet deployment uses the backed-up program keypair for the same address and the admin as upgrade authority, with the deployer as fee payer. Verify the deployed authority before running `setup-devnet.ts`. No live market or deployment signatures are recorded yet.
+
 ## Independent core review (Workstream R)
 
-A fresh reviewer audited `00dba89` on November 21. The two deployment blockers are recorded above. The review inspected the code and test assertions. The recorded 62-test validator run was performed separately.
+A fresh reviewer audited `00dba89` on November 21. The findings below describe the audited commit. The approved fixes are recorded above. The review inspected the code and test assertions. The recorded 62-test validator run was performed separately.
 
 ### §6 instruction checks
 

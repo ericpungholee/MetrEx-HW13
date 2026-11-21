@@ -42,6 +42,6 @@ pub struct ListPosition<'info> {
 }
 
 pub fn handler(_ctx: Context<ListPosition>, _side: u8, _price: u64) -> Result<()> {
-    // Workstream A (Tier 2 branch).
-    Ok(())
+    msg!("Position trading is disabled");
+    err!(MetrexError::Unauthorized)
 }

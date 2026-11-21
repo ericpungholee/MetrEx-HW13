@@ -89,7 +89,7 @@ pub mod metrex {
         instructions::resolve_market::handler(ctx, triggered, evidence_hash)
     }
 
-    pub fn claim_payout(ctx: Context<ClaimPayout>) -> Result<()> {
+    pub fn claim_payout<'info>(ctx: Context<'_, '_, '_, 'info, ClaimPayout<'info>>) -> Result<()> {
         instructions::claim_payout::handler(ctx)
     }
 

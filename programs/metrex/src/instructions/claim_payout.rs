@@ -1,5 +1,5 @@
 //! `claim_payout()` (spec §6). YES ⇒ claimant == protection_holder; NO ⇒ claimant == risk_holder.
-//! Full vault → claimant; vault closed (rent → original underwriter); Offer → Claimed.
+//! Booked coverage → claimant; any surplus goes to the non-claiming original party (spec §4.4).
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Token, TokenAccount, Transfer};
@@ -54,7 +54,7 @@ pub struct ClaimPayout<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<ClaimPayout>) -> Result<()> {
+pub fn handler<'info>(ctx: Context<'_, '_, '_, 'info, ClaimPayout<'info>>) -> Result<()> {
     let market = &ctx.accounts.market;
     let offer = &ctx.accounts.offer;
     let claimant = ctx.accounts.claimant.key();
@@ -84,8 +84,43 @@ pub fn handler(ctx: Context<ClaimPayout>) -> Result<()> {
         &nonce_bytes,
         &bump,
     ]];
-    // §4.4: an Accepted vault holds exactly C; the full balance goes to the winner.
-    let amount = vault.amount;
+    let amount = offer.coverage;
+    let surplus = vault
+        .amount
+        .checked_sub(amount)
+        .ok_or(MetrexError::VaultBalanceMismatch)?;
+
+    // Only a surplus-bearing claim uses a remaining account. The recipient can be
+    // provisioned by the fee payer without the other party's signature.
+    if surplus > 0 {
+        let owner = if claimant == underwriter_key {
+            market.homeowner
+        } else {
+            underwriter_key
+        };
+        let destination = ctx
+            .remaining_accounts
+            .first()
+            .ok_or(MetrexError::VaultBalanceMismatch)?;
+        require!(destination.is_writable, MetrexError::WrongTokenOwner);
+        require_keys_eq!(*destination.owner, ctx.accounts.token_program.key(), MetrexError::WrongTokenOwner);
+        let token = TokenAccount::try_deserialize(&mut &destination.try_borrow_data()?[..])?;
+        require_keys_eq!(token.mint, ctx.accounts.config.mint, MetrexError::WrongMint);
+        require_keys_eq!(token.owner, owner, MetrexError::WrongTokenOwner);
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: vault.to_account_info(),
+                    to: destination.clone(),
+                    authority: offer.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            surplus,
+        )?;
+    }
 
     token::transfer(
         CpiContext::new_with_signer(

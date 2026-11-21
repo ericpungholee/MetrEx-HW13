@@ -1,7 +1,7 @@
 // fund-bots.ts (spec §9.4, §14): top up SOL and mUSD for bots, the faucet wallet, the demo
 // homeowner, judges, and the oracle/controller fee payers. Idempotent: only the shortfall
 // to each target is sent; balances are checked first.
-//   pnpm tsx scripts/fund-bots.ts [--dry-run] [--from deployer|admin]
+//   pnpm tsx scripts/fund-bots.ts [--dry-run] [--minimum] [--from deployer|admin]
 
 import { createMintToInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { SystemProgram, type PublicKey, type TransactionInstruction } from "@solana/web3.js";
@@ -19,7 +19,7 @@ import {
   solToLamports,
   type KeypairName,
 } from "@metrex/server";
-import { banner, DRY_RUN, exitWith, flagValue, log, sol } from "./lib/common";
+import { args, banner, DRY_RUN, exitWith, flagValue, log, sol } from "./lib/common";
 
 interface Target {
   name: KeypairName;
@@ -41,6 +41,13 @@ export const TARGETS: readonly Target[] = [
   { name: "judge3", sol: solToLamports("0.1"), musd: musd(25_000n) },
 ];
 
+/** Enough SOL to start the first live runs. Re-run without --minimum for demo-day balances. */
+const MINIMUM_SOL: Partial<Record<KeypairName, string>> = {
+  botA: "0.03", botB: "0.03", botC: "0.03",
+  homeownerDemo: "0.04", oracle: "0.02", controller: "0.02",
+  faucet: "0.06", judge1: "0.02", judge2: "0.02", judge3: "0.02",
+};
+
 /** Keep this much in the funder for fees and ATA rent. */
 const FUNDER_RESERVE = solToLamports("0.1");
 
@@ -58,7 +65,15 @@ async function main(): Promise<void> {
   console.log(`  funder  ${fromName} ${funder.publicKey.toBase58()} (${sol(funderSol)})`);
   console.log(`  mint    ${mint.toBase58()}`);
 
-  const wallets = TARGETS.map((t) => ({ ...t, pk: loadKeypair(t.name).publicKey }));
+  const minimum = args.includes("--minimum");
+  const wallets = TARGETS.map((target) => {
+    const lowerTarget = minimum ? MINIMUM_SOL[target.name] : undefined;
+    return {
+      ...target,
+      sol: lowerTarget ? solToLamports(lowerTarget) : target.sol,
+      pk: loadKeypair(target.name).publicKey,
+    };
+  });
 
   // ---------- SOL ----------
   log.step("SOL top-ups");

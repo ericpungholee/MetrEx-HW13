@@ -64,7 +64,7 @@ Run the relevant tests before every commit. Never commit with failing tests.
 - All amounts are `u64` base units of `mUSD` (6 decimals). Intermediate products in `u128`.
 - Rates are `u16` basis points. **No floating point in the program.**
 - `premium = floor(coverage × bps / 10_000)`, `collateral = coverage − premium`, computed **on-chain**. Callers pass only `coverage` and `bps`.
-- Every arithmetic op is checked. Every vault holds exactly `0`, `collateral`, or `coverage` (§4.4).
+- Every arithmetic op is checked. Every vault backs its booked obligation of `0`, `collateral`, or `coverage`. Section 4.4 defines how to route unsolicited surplus.
 
 ### Authority
 - Oracle, demo controller, admin and mint come **only** from the `Config` PDA. No instruction accepts them as caller-supplied values.

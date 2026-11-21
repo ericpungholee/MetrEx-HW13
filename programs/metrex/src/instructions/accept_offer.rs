@@ -1,4 +1,4 @@
-//! `accept_offer()` (spec §6). Premium P moves homeowner → vault; vault must then hold C.
+//! `accept_offer()` (spec §6). Premium P moves homeowner → vault; the vault must cover C.
 //! Sets `protection_holder = homeowner`, `risk_holder = underwriter`.
 
 use anchor_lang::prelude::*;
@@ -93,10 +93,10 @@ pub fn handler(ctx: Context<AcceptOffer>) -> Result<()> {
         premium,
     )?;
 
-    // §4.4: an Accepted offer's vault holds exactly C.
+    // §4.4: booked coverage must be backed even if the vault holds surplus.
     ctx.accounts.vault.reload()?;
     require!(
-        ctx.accounts.vault.amount == coverage,
+        ctx.accounts.vault.amount >= coverage,
         MetrexError::VaultBalanceMismatch
     );
 

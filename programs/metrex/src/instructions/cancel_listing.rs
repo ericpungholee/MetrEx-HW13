@@ -21,6 +21,6 @@ pub struct CancelListing<'info> {
 }
 
 pub fn handler(_ctx: Context<CancelListing>) -> Result<()> {
-    // Workstream A (Tier 2 branch).
-    Ok(())
+    msg!("Position trading is disabled");
+    err!(MetrexError::Unauthorized)
 }
