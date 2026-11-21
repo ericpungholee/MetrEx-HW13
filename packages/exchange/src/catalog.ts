@@ -76,10 +76,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NIFC WFIGS Interagency Perimeters (final mapped perimeter)",
     roundLabel: "Wildfire · Jan 2025 replay",
     photo: {
-      src: "/markets/wildfire.svg",
-      alt: "Illustration of a hillside home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/wildfire.webp",
+      alt: "Aerial view of the Pacific Palisades coastline and hills",
+      credit: "Alfred Twu · CC0 1.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Pacific-Palisades-getty-villa-Aerial-from-west-August-2014.jpg",
     },
     // YES bids 74 / 80 / 82, asks 86 / 100 / 118 (0.74¢ … 1.18¢).
     ladder: ladder([80, 6], [90, 10], [100, 18]),
@@ -100,10 +100,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NOAA National Hurricane Center best-track GIS wind swaths",
     roundLabel: "Hurricane · Sep 2017 replay",
     photo: {
-      src: "/markets/hurricane.svg",
-      alt: "Illustration of a home behind palm trees (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/hurricane.webp",
+      alt: "Sunrise over Biscayne Bay from Matheson Hammock Park in Coral Gables",
+      credit: "Anish Patel · CC BY-SA 4.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Matheson_Hammock_Clouds.jpg",
     },
     // YES bids 111 / 120 / 123, asks 129 / 150 / 177.
     ladder: ladder([120, 9], [135, 15], [150, 27]),
@@ -124,10 +124,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "USGS ShakeMap (event nc72282711)",
     roundLabel: "Earthquake · Aug 2014 replay",
     photo: {
-      src: "/markets/earthquake.svg",
-      alt: "Illustration of a family home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/earthquake.webp",
+      alt: "Vineyards and hills in Napa Valley",
+      credit: "Brocken Inaglory · CC BY-SA 3.0",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:Vineyards_in_Napa_Valley.jpg",
     },
     // YES bids 9 / 8 / 7, asks 11 / 12 / 15 (0.09¢ … 0.15¢).
     ladder: ladder([10, 1], [10, 2], [11, 4]),
@@ -148,10 +148,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     source: "NOAA NWS Damage Assessment Toolkit surveyed tracks",
     roundLabel: "Tornado · May 2024 replay",
     photo: {
-      src: "/markets/tornado.svg",
-      alt: "Illustration of a suburban home (not the property)",
-      credit: "MetrEx illustration",
-      creditUrl: "",
+      src: "/markets/tornado.webp",
+      alt: "Aerial view of Saylorville Lake and Dam near Johnston, Iowa",
+      credit: "U.S. Army Corps of Engineers · Public domain",
+      creditUrl: "https://commons.wikimedia.org/wiki/File:USACE_Saylorville_Lake_and_Dam.jpg",
     },
     // YES bids 28 / 30 / 31, asks 32 / 38 / 45.
     ladder: ladder([30, 2], [34, 4], [38, 7]),

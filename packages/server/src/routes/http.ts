@@ -3,7 +3,7 @@
 
 import type { PublicKey } from "@solana/web3.js";
 import { exchangeProgramId } from "../exchange/program";
-import { getExchangeEvidence, getExchangeSettledPerimeter } from "../oracle/exchange";
+import { getExchangeEvidence, getExchangeSettledOverlay, getExchangeSettledPerimeter } from "../oracle/exchange";
 import { getRpc } from "../rpc";
 import { parsePublicKey } from "../env";
 import { getEvidence, getSettledPerimeter, type EvidenceDeps } from "../oracle/evidence";
@@ -11,7 +11,7 @@ import { resolveMarket } from "../oracle/resolve";
 import { getStats } from "../stats";
 import { TxError } from "../tx";
 import { closeMarket } from "./close";
-import { badRequest, forbidden, HttpError, tooMany, unavailable } from "./errors";
+import { badRequest, forbidden, HttpError, notFound, tooMany, unavailable } from "./errors";
 import { faucet } from "./faucet";
 import { DEMO_PASSWORD_HEADER, OperatorPasswordBudget } from "./password";
 
@@ -105,12 +105,17 @@ export function handleFaucet(req: Request): Promise<Response> {
 /**
  * GET /api/evidence/:market → { market, canonical, hashHex, record, onChain }.
  * `?raw=1` returns the canonical file bytes exactly as hashed.
+ * `?overlay=1` returns the verified historical map layer for an exchange market.
  */
 export function handleEvidence(req: Request, market: string | undefined, deps?: EvidenceDeps): Promise<Response> {
   return run(async () => {
     const pk = marketParam(market);
     const params = new URL(req.url).searchParams;
     const v2 = deps?.readMarket ? false : await isExchangeMarket(pk);
+    if (params.get("overlay") === "1") {
+      if (!v2) throw notFound("No exchange overlay for this market");
+      return json(await getExchangeSettledOverlay(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }));
+    }
     if (params.get("perimeter") === "1") {
       return json(v2 ? await getExchangeSettledPerimeter(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }) : await getSettledPerimeter(pk, deps));
     }

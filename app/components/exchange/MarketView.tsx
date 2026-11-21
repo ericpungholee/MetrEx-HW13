@@ -26,10 +26,11 @@ import {
 import { formatPrice, formatShares, marketState, marketTitle, outcomeName, payoutRule, question } from "@/lib/exchange-format";
 import { explorerAddress, formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
-import { PerimeterMap } from "@/components/PerimeterMap";
 import { Panel, TxLink } from "@/components/ui";
 import { LiquidityDisclosure, MakerLabel, MakersContext, ReplayDisclosure, StateLabel, TriggerSentence, Unavailable } from "./Labels";
 import { OrderBook } from "./OrderBook";
+import { MarketPhoto, MarketPhotoCredit } from "./MarketPhoto";
+import { MarketRiskMap } from "./MarketRiskMap";
 import { PriceChart } from "./PriceChart";
 import { TradePanel, type TradePick } from "./TradePanel";
 import { WalletPanel } from "./WalletPanel";
@@ -127,7 +128,7 @@ export function MarketView({ market, round, children }: { market: string; round?
   const me = publicKey?.toBase58() ?? null;
   const [outcome, setOutcome] = useState<OutcomeCode>(Outcome.Yes);
   const [pick, setPick] = useState<TradePick | null>(null);
-  const [tab, setTab] = useState<"book" | "trades" | "map">("book");
+  const [tab, setTab] = useState<"book" | "trades">("book");
 
   const info = usePoll(() => fetchMarketInfo(market), [market], 3_000);
   const book = usePoll(() => fetchBook(market), [market], 2_000);
@@ -182,14 +183,17 @@ export function MarketView({ market, round, children }: { market: string; round?
                 <span className="text-warn">{info.data.confirmingFills} confirming</span>
               </>
             )}
-            <a className="ml-auto hover:text-ink" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">
+            <a className="ml-auto hover:text-ink" href="#risk-map">Risk map</a>
+            <a className="hover:text-ink" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">
               Explorer
             </a>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             {c && (
-              // eslint-disable-next-line @next/next/no-img-element -- static local illustration
-              <img src={c.photo.src} alt={c.photo.alt} className="h-24 w-full shrink-0 rounded-xl object-cover sm:w-36" />
+              <figure className="order-1 w-full shrink-0 sm:order-none sm:w-40">
+                <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 160px, 100vw" className="h-32 rounded-md sm:h-24" />
+                <figcaption className="mt-1 leading-4"><MarketPhotoCredit photo={c.photo} /></figcaption>
+              </figure>
             )}
             <div className="min-w-0 space-y-2">
               {c && (
@@ -221,7 +225,6 @@ export function MarketView({ market, round, children }: { market: string; round?
                   [
                     ["book", "Order book"],
                     ["trades", "Trades"],
-                    ["map", "Map"],
                   ] as const
                 ).map(([id, label]) => (
                   <button
@@ -281,13 +284,6 @@ export function MarketView({ market, round, children }: { market: string; round?
                   </table>
                 ))}
 
-              {tab === "map" && (
-                <PerimeterMap
-                  points={[{ key: m.address, lat: m.latE6 / 1e6, lon: m.lonE6 / 1e6, label: marketTitle(m), radiusM: m.triggerDistanceM > 0 ? m.triggerDistanceM : undefined, selected: true }]}
-                  settledMarket={m.outcome === "yes" || m.outcome === "no" ? m.address : undefined}
-                  height={280}
-                />
-              )}
             </div>
           </div>
 
@@ -298,6 +294,19 @@ export function MarketView({ market, round, children }: { market: string; round?
             </div>
           </aside>
         </div>
+
+        <MarketRiskMap
+          key={`${m.address}:${m.evidenceHash}`}
+          address={m.address}
+          evidenceHash={m.evidenceHash}
+          latE6={m.latE6}
+          lonE6={m.lonE6}
+          triggerDistanceM={m.triggerDistanceM}
+          outcome={m.outcome}
+          label={marketTitle(m)}
+          pointTrigger={c?.trigger}
+          zoom={c?.hazard === "hurricane" ? 10 : c?.hazard === "earthquake" ? 13 : 14}
+        />
 
         <Panel title="Position">
           <WalletPanel market={m} have={wallet.data ?? null} orders={wallet.data?.orders} trades={trades.data} onDone={refresh} />

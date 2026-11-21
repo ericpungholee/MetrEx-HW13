@@ -9,6 +9,7 @@ import { fetchFeatured, type FeaturedMarket } from "@/lib/exchange-client";
 import { formatPrice, marketState } from "@/lib/exchange-format";
 import { usePoll } from "@/lib/usePoll";
 import { LiquidityDisclosure, ReplayDisclosure, StateLabel, Unavailable } from "@/components/exchange/Labels";
+import { MarketPhoto, MarketPhotoCredit } from "@/components/exchange/MarketPhoto";
 
 function PriceLine({ f, loading }: { f: FeaturedMarket | undefined; loading: boolean }) {
   if (loading) return <div className="h-7 w-48 animate-pulse rounded bg-bg-soft" aria-label="Loading price" />;
@@ -25,26 +26,30 @@ function PriceLine({ f, loading }: { f: FeaturedMarket | undefined; loading: boo
 
 function MarketCard({ c, f, loading }: { c: CatalogMarket; f: FeaturedMarket | undefined; loading: boolean }) {
   const body = (
-    <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:gap-6">
-      {/* eslint-disable-next-line @next/next/no-img-element -- static local illustration */}
-      <img src={c.photo.src} alt={c.photo.alt} className="h-36 w-full shrink-0 rounded-2xl object-cover sm:h-32 sm:w-44" />
-      <div className="min-w-0 space-y-1.5">
+    <>
+      <MarketPhoto photo={c.photo} sizes="(min-width: 72rem) 540px, (min-width: 40rem) 50vw, 100vw" className="aspect-[2/1] w-full sm:aspect-[5/2]" />
+      <div className="flex flex-1 flex-col gap-2 p-4 sm:px-5">
         <div className="text-sm text-dim">
-          {c.place} · {HAZARD_LABEL[c.hazard]}
+          {HAZARD_LABEL[c.hazard]} · {c.place}
         </div>
         <h2 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">{c.question}</h2>
-        <div className="text-[15px] text-ink-secondary">Trigger: {c.trigger}</div>
+        <div className="text-sm text-dim">{c.month} · Historical replay</div>
+        <div className="flex-1" />
         <PriceLine f={f} loading={loading} />
-        <div className="text-sm text-dim">{c.month} contract · historical replay</div>
       </div>
-    </div>
+    </>
   );
-  return f?.market ? (
-    <Link href={`/market/${f.market.address}`} className="block border-b border-line px-1 transition-colors last:border-b-0 hover:bg-bg-soft">
-      {body}
-    </Link>
-  ) : (
-    <div className="border-b border-line px-1 opacity-70 last:border-b-0">{body}</div>
+  return (
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line">
+      {f?.market ? (
+        <Link href={`/market/${f.market.address}`} className="flex flex-1 flex-col transition-colors hover:bg-bg-soft focus-visible:outline-offset-[-2px]">
+          {body}
+        </Link>
+      ) : (
+        <div className="flex flex-1 flex-col">{body}</div>
+      )}
+      <div className="border-t border-line px-4 py-2 sm:px-5"><MarketPhotoCredit photo={c.photo} /></div>
+    </article>
   );
 }
 
@@ -56,16 +61,11 @@ export default function Home() {
     <div className="space-y-8">
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Property markets</h1>
-        <p className="max-w-2xl text-[15px] leading-relaxed text-ink-secondary">
-          One exchange, four perils. Each market asks one yes-or-no question about one property and one calendar month. YES pays 1 mUSD per share if
-          the trigger is met, so buying YES is parametric protection that pays on the event, not on damage. NO holders put up the collateral and earn the
-          premium. Every YES and NO pair is backed by exactly 1 mUSD in that market&apos;s own vault.
-        </p>
         <ReplayDisclosure />
       </div>
 
       {featured.error && !featured.data && <Unavailable>Exchange data unavailable: {featured.error}</Unavailable>}
-      <div className="rounded-3xl border border-line px-4 sm:px-6">
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
         {CATALOG.map((c) => (
           <MarketCard key={c.propertyId} c={c} f={byProperty.get(c.propertyId)} loading={!featured.data && !featured.error} />
         ))}
@@ -74,8 +74,7 @@ export default function Home() {
       <div className="space-y-1.5 text-sm text-dim">
         <p>
           Addresses are real residential address points from OpenStreetMap (© OpenStreetMap contributors, ODbL), used only as locations. Every
-          market pays on hazard proximity or measured intensity and says nothing about damage to any home or its residents. Illustrations are
-          not the property.
+          market pays on hazard proximity or measured intensity and says nothing about damage to any home or its residents. Photos show the surrounding regions.
         </p>
         <p>
           Prices are the current best offers from the on-chain order book, not premiums set by MetrEx and not forecasts. The market can move them at any
