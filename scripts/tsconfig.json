@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["setup-devnet.ts", "fund-bots.ts", "fund-wallet.ts", "seed-demo.ts", "lib/**/*.ts"]
+}

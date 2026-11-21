@@ -3,11 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "description": "setup-devnet, fund-bots, fund-wallet, seed-demo (D); find-properties (B). Run with pnpm tsx scripts/<name>.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
   "dependencies": {
-    "@metrex/shared": "workspace:*"
+    "@metrex/server": "workspace:*",
+    "@metrex/shared": "workspace:*",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }
