@@ -15,7 +15,7 @@ Work is ordered by gates. Move on as soon as a gate passes.
 3. **The spec wins.** If it looks wrong, stop and record it in `docs/STATUS.md`.
 4. **`programs/metrex` (v1.1) is never modified or upgraded.** v2 is a new program at a new ID.
 5. **The v1 app stays the default until V5 passes.** Tag the current main as `v1.1-demo` before C replaces any page.
-6. Fresh-eyes security review (R) after V2, and again before V6.
+6. No separate audit. Hackathon scope with valueless Devnet mUSD: the per-test invariants, the §13.1 attack tests and the V2 exit checklist (§4 R) replace a fresh-agent review.
 
 ## 2. New and changed paths
 
@@ -69,9 +69,18 @@ scripts/                        D   setup-devnet-v2.ts, prepare-demo-v2.ts; fund
 
 **Acceptance:** every page renders against fixtures. The market buy and limit order build one transaction each. A simulated `RoundNotOpen` is shown in plain words.
 
-### R — Security review (fresh agent, after V2 and before V6)
+### R — V2 exit checklist (the implementer, about 30 minutes, no separate agent)
 
-> Audit `programs/metrex-exchange` against spec-v2 §4–§6. For every invariant I1–I12 and every §6.6 row, cite the enforcing line or report that nothing enforces it. Look for: token accounts not bound to the market or order, raw-balance payouts, authority arguments, seq or ABA gaps, fills writing hot accounts, sweeps routing rent or escrow away from the maker, resolve and invalidate overlap, and missing round checks in any trading instruction. Write failing tests for findings. Don't fix them.
+Hackathon scope: mUSD is valueless and Devnet-only, so the goal is that a judge with Phantom can't break the live demo, not a full audit. Before V2 passes, the implementer checks the order code for these and adds a test for any gap:
+
+- [ ] Every token account is bound to this market's mints, vault, or this order's escrow (I10)
+- [ ] Payouts and refunds use booked amounts (`remaining_qty`, `pairs_outstanding`), never the raw balance
+- [ ] Every trading instruction checks the round is Open, before `trading_ends_at`, and the market is Unresolved
+- [ ] `take_order` checks `expected_seq` and the taker's limit price. Fills never exceed `remaining_qty`
+- [ ] Cancel and sweep always return the full escrow and rent to the maker
+- [ ] Fills and matches take Market and Round read-only
+
+Record the result in `docs/STATUS.md`. There is no re-audit before V6. The Phantom rehearsal is the final check.
 
 ## 5. Gates
 
@@ -79,17 +88,17 @@ scripts/                        D   setup-devnet-v2.ts, prepare-demo-v2.ts; fund
 |---|---|---|---|
 | **V0 — Freeze** | D1–D7 approved, keypairs | G0 | IDL and `@metrex/exchange` committed and checked |
 | **V1 — Binary tokens** | V0 | A (V1); E, D strategy and C fixtures in parallel | V1 acceptance |
-| **V2 — Trading protocol** | V1 | A (V2); E | V2 acceptance; R audit with findings triaged |
+| **V2 — Trading protocol** | V1 | A (V2); E | V2 acceptance; R checklist ticked |
 | **V3 — Engine and liquidity (local)** | V2 | E, D | E and D acceptance on a local validator |
 | **V4 — Devnet** | V3, Devnet SOL | D scripts, C live | §13.3 complete with a separate NO validation, recorded in `docs/v2-devnet-verification.md` |
 | **V5 — App replaces v1** | V4 | C | v1 tagged `v1.1-demo`. `/` is the exchange. The production build passes |
-| **V6 — Phantom rehearsal** | V5 | C polish, P | The full §11 flow in a browser, twice, from `prepare-demo-v2.ts`. R re-audit clean |
+| **V6 — Phantom rehearsal** | V5 | C polish, P | The full §11 flow in a browser, twice, from `prepare-demo-v2.ts` |
 
 **Hard rule:** nothing reaches main that breaks the v1 tests or the v1 fallback demo before V5.
 
 ## 6. Human-only tasks
 
-Approve D1–D7 · hold keys and fund the deployer · deploy and run setup scripts · map-check nothing new (same properties) · click through every flow in Phantom · triage R findings · rehearse.
+Approve D1–D7 · hold keys and fund the deployer · deploy and run setup scripts · map-check nothing new (same properties) · click through every flow in Phantom · rehearse.
 
 ## 7. Integration risks
 

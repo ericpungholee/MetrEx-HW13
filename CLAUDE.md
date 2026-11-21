@@ -134,7 +134,7 @@ Mainnet, real money, other risk types or fire scenarios, damage-based triggers, 
 ## Gates
 
 - v1 (`docs/build-plan.md`): 0–6 all passed on 2026-11-21.
-- v2 (`docs/build-plan-v2.md` §5): V0 Freeze → V1 Binary tokens → V2 Trading protocol (+ security review) → V3 Engine and liquidity (local) → V4 Devnet (YES and NO) → V5 App replaces v1 → V6 Phantom rehearsal.
+- v2 (`docs/build-plan-v2.md` §5): V0 Freeze → V1 Binary tokens → V2 Trading protocol (+ R exit checklist) → V3 Engine and liquidity (local) → V4 Devnet (YES and NO) → V5 App replaces v1 → V6 Phantom rehearsal.
 
 Nothing reaches main that breaks v1 tests or the v1 fallback demo before V5.
 

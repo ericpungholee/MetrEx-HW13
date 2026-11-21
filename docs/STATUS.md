@@ -10,7 +10,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 |---|---|---|
 | V0 — Freeze | **Passed** 2026-11-21 | `programs/metrex-exchange` compiles with every §6.6 context. IDL `target/idl/metrex_exchange.json` committed: 16 instructions, 5 accounts, 10 events, 38 errors. `@metrex/exchange` (constants, PDAs, math, ladder, book) has 20 tests, including the IDL sync |
 | V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
-| V2 — Trading protocol | Not started | Security review (R) runs after this gate |
+| V2 — Trading protocol | Not started | Exit includes the R checklist (build-plan-v2 §4). No separate audit |
 | V3 — Engine and liquidity (local) | Not started | |
 | V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
@@ -40,7 +40,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 
 ### Next: Gate V2 (trading protocol)
 
-Implement the bodies of `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` against the frozen contexts (§5). Add I3, I4 and I10–I12, every §13.1 Orders, Fills and Recovery case, and the 4-level take and 3-level limit size test. Then a fresh-agent security review (R).
+Implement the bodies of `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` against the frozen contexts (§5). Add I3, I4 and I10–I12, every §13.1 Orders, Fills and Recovery case, and the 4-level take and 3-level limit size test. Then tick the short R checklist in build-plan-v2 §4. The full fresh-agent audit was dropped on 2026-11-21 as overkill for a hackathon with valueless Devnet mUSD.
 
 ### Effect on v1 open items
 
