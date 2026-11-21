@@ -419,8 +419,8 @@ describe("metrex", () => {
       const bh = await conn.getLatestBlockhash();
       await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
     }
-    mint = await createMint(conn, payer, payer.publicKey, null, 6);
-    badMint = await createMint(conn, payer, payer.publicKey, null, 6);
+    mint = await createMint(conn, payer, payer.publicKey, null, 6, undefined, CONFIRMED);
+    badMint = await createMint(conn, payer, payer.publicKey, null, 6, undefined, CONFIRMED);
   });
 
   // =====================================================================
@@ -441,7 +441,7 @@ describe("metrex", () => {
     });
 
     it("rejects initialize_config with a mint that does not have 6 decimals", async () => {
-      const mint9 = await createMint(conn, payer, payer.publicKey, null, 9);
+      const mint9 = await createMint(conn, payer, payer.publicKey, null, 9, undefined, CONFIRMED);
       await expectError(
         initConfig(admin, oracle.publicKey, controller.publicKey, mint9),
         "WrongMint",
