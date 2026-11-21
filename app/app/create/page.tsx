@@ -1,6 +1,6 @@
 "use client";
 
-// Create (spec §3.1 item 2): choose a registered property, enter coverage. That's the whole form.
+// Create (spec §3.1 item 2): choose a registered property, enter coverage.
 import { decodeLabel, MAX_COVERAGE_TARGET, MIN_COVERAGE } from "@metrex/shared";
 import { useWalletSigner } from "@/lib/useWalletSigner";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { PerimeterMap } from "@/components/PerimeterMap";
 import { useTx } from "@/components/TxProvider";
-import { Empty, ErrorLine, Panel, ReplayLabel, scenarioName, TriggerWording } from "@/components/ui";
+import { Empty, ErrorLine, PageHeader, ReplayLabel, scenarioName, TriggerWording } from "@/components/ui";
 import { createMarket, fetchProperties, requireSigner, USE_FIXTURES } from "@/lib/client";
 import { formatE6, formatMusd, parseMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
@@ -66,75 +66,79 @@ export default function CreatePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div>
-        <h1 className="text-lg font-bold">Create a market</h1>
-        <p className="text-xs text-dim">List your property&apos;s wildfire risk. Underwriters compete to cover it.</p>
-      </div>
+    <div className="animate-in mx-auto max-w-3xl space-y-10">
+      <PageHeader
+        title="Create a market"
+        description="List a property’s wildfire risk. Underwriters compete to cover it with fully collateralized offers."
+      />
+
       <ErrorLine error={props.error} />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.1fr]">
-        <Panel title="1 · Registered property">
-          {props.loading && <Empty>Loading registered properties…</Empty>}
-          {props.data && list.length === 0 && <Empty>No properties are registered on this cluster yet.</Empty>}
-          <div className="space-y-1">
-            {list.map((p) => {
-              const active = sel?.account.propertyId === p.account.propertyId;
-              return (
-                <label
-                  key={p.publicKey.toBase58()}
-                  className={`flex cursor-pointer items-center gap-3 rounded border px-3 py-2 ${active ? "border-info bg-info/10" : "border-line hover:border-dim"}`}
-                >
-                  <input
-                    type="radio"
-                    name="property"
-                    checked={active}
-                    onChange={() => setSelected(p.account.propertyId)}
-                    className="accent-[#4ea1ff]"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold">{decodeLabel(p.account.label)}</div>
-                    <div className="num text-[11px] text-dim">
-                      #{p.account.propertyId} · {scenarioName(p.account.scenarioId)} · trigger {p.account.triggerDistanceM} m ·{" "}
-                      {formatE6(p.account.latE6)}, {formatE6(p.account.lonE6)} (approx.)
-                    </div>
+
+      <section>
+        <h2 className="mb-4 text-xs font-medium tracking-wide text-faint uppercase">Property</h2>
+        {props.loading && <Empty>Loading properties…</Empty>}
+        {props.data && list.length === 0 && <Empty>No properties registered on this network yet.</Empty>}
+        <div className="space-y-1">
+          {list.map((p) => {
+            const active = sel?.account.propertyId === p.account.propertyId;
+            return (
+              <label
+                key={p.publicKey.toBase58()}
+                className={`flex cursor-pointer items-start gap-4 border-b border-line px-1 py-4 transition-colors last:border-b-0 ${active ? "bg-bg-soft" : "hover:bg-bg-soft/50"}`}
+              >
+                <input
+                  type="radio"
+                  name="property"
+                  checked={active}
+                  onChange={() => setSelected(p.account.propertyId)}
+                  className="mt-1.5 accent-ink"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-lg font-semibold tracking-tight">{decodeLabel(p.account.label)}</div>
+                  <div className="mt-1 text-sm text-dim">
+                    {scenarioName(p.account.scenarioId)} · {p.account.triggerDistanceM} m trigger ·{" "}
+                    <span className="num">
+                      {formatE6(p.account.latE6)}, {formatE6(p.account.lonE6)}
+                    </span>
                   </div>
-                </label>
-              );
-            })}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        {list.length > 0 && (
+          <div className="mt-6">
+            <PerimeterMap points={points} height={280} onSelect={(k) => setSelected(Number(k))} />
           </div>
-          <div className="mt-3">
-            <PerimeterMap points={points} height={260} onSelect={(k) => setSelected(Number(k))} />
-          </div>
-        </Panel>
-        <Panel title="2 · Coverage">
-          <label className="block text-xs text-dim">Coverage requested (mUSD)</label>
+        )}
+      </section>
+
+      <section className="space-y-5 border-t border-line pt-10">
+        <h2 className="text-xs font-medium tracking-wide text-faint uppercase">Coverage</h2>
+        <div>
+          <label className="text-sm text-dim">Amount requested (mUSD)</label>
           <input
-            className="input mt-1 text-lg"
+            className="input mt-2 text-2xl font-medium tracking-tight"
             inputMode="decimal"
             value={coverageText}
             onChange={(e) => setCoverageText(e.target.value)}
           />
-          <div className="mt-1 h-4 text-[11px] text-down">{coverageError}</div>
-          {coverage !== null && !coverageError && (
-            <div className="num mt-1 text-xs text-dim">= {coverage.toString()} base units</div>
-          )}
-          <div className="mt-4 space-y-2 rounded border border-line bg-bg p-3">
-            <ReplayLabel />
-            <TriggerWording />
-            <p className="text-[11px] text-faint">
-              Coordinates are copied on-chain from the registered property; the oracle evaluates exactly those.
-            </p>
-          </div>
-          <button
-            className="btn btn-primary mt-4 w-full justify-center py-2 text-sm"
-            disabled={busy || !sel || !!coverageError}
-            onClick={submit}
-          >
-            {busy ? "Creating…" : wallet || USE_FIXTURES ? "Create market (1 signature)" : "Connect wallet"}
-          </button>
-          {USE_FIXTURES && <p className="mt-2 text-center text-[11px] text-fixture">Fixture mode: transactions disabled</p>}
-        </Panel>
-      </div>
+          <div className="mt-2 h-5 text-sm text-down">{coverageError}</div>
+        </div>
+
+        <div className="space-y-3 bg-bg-soft px-5 py-5">
+          <ReplayLabel />
+          <TriggerWording />
+        </div>
+
+        <button
+          className="btn btn-primary w-full py-3.5 text-base"
+          disabled={busy || !sel || !!coverageError}
+          onClick={submit}
+        >
+          {busy ? "Creating…" : wallet || USE_FIXTURES ? "Create market" : "Connect wallet"}
+        </button>
+      </section>
     </div>
   );
 }

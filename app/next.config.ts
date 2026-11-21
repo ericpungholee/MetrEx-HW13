@@ -19,6 +19,7 @@ export default function config(phase: string): NextConfig {
   }
   return {
     reactStrictMode: true,
+    allowedDevOrigins: ["127.0.0.1", "localhost"],
     // Don't let `next dev` write an AGENTS.md into app/ (the repo's CLAUDE.md is authoritative).
     agentRules: false,
     // Workspace packages ship TypeScript source.

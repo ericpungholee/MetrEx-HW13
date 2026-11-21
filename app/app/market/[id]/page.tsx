@@ -1,7 +1,7 @@
 "use client";
 
-// Market page (spec §3.1 item 3, §10): header, risk info, funding, order book, offer form,
-// homeowner "Accept selected", positions with holders and listings (Tier 2), claim all, activity.
+// Market page (spec §3.1 item 3, §10): header, risk, funding, order book, offer form,
+// accept, positions, claim, activity.
 import {
   computeOfferTerms,
   marketStatusOf,
@@ -23,6 +23,7 @@ import { PerimeterMap } from "@/components/PerimeterMap";
 import { useTx } from "@/components/TxProvider";
 import {
   AddressLink,
+  Callout,
   Empty,
   ErrorLine,
   FundingBar,
@@ -47,7 +48,6 @@ import {
   listPosition,
   placeOffer,
   requireSigner,
-  USE_FIXTURES,
   viewerFor,
   type Keyed,
 } from "@/lib/client";
@@ -81,7 +81,7 @@ const TRADING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_TIER2 === "1";
 export default function MarketPage() {
   const params = useParams<{ id: string }>();
   const marketKey = useMemo(() => parseKey(params?.id), [params?.id]);
-  if (!marketKey) return <ErrorLine error="That isn't a valid market address." />;
+  if (!marketKey) return <ErrorLine error="That isn’t a valid market address." />;
   return <MarketView marketKey={marketKey} />;
 }
 
@@ -102,7 +102,6 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
     [market, data],
   );
 
-  // Drop selections for offers that are no longer open.
   useEffect(() => {
     if (!summary) return;
     const open = new Set(summary.openOffers.map((o) => o.publicKey.toBase58()));
@@ -112,12 +111,12 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
     });
   }, [summary]);
 
-  if (snap.loading) return <Empty>Loading market from chain…</Empty>;
+  if (snap.loading) return <Empty>Loading market…</Empty>;
   if (!market || !summary || !data) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <ErrorLine error={snap.error} />
-        <Empty>Market not found on this cluster.</Empty>
+        <Empty>Market not found.</Empty>
       </div>
     );
   }
@@ -168,150 +167,168 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="text-xs text-dim">
+    <div className="animate-in space-y-12">
+      <div className="text-sm text-dim">
         <Link href="/" className="hover:text-ink">
-          Exchange
-        </Link>{" "}
-        / <span className="num">{marketKey.toBase58()}</span>
+          Markets
+        </Link>
+        <span className="mx-2 text-faint">/</span>
+        <span className="text-ink">{summary.label}</span>
       </div>
 
-      {/* Header */}
-      <section className="rounded border border-line bg-panel p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold">{summary.label}</h1>
+      {/* Hero */}
+      <header className="space-y-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{summary.label}</h1>
               <StatusPill state={summary.display} />
             </div>
-            <div className="mt-1 text-xs text-dim">
-              Wildfire within {m.triggerDistanceM} m · {scenarioName(m.scenarioId)} · Property #{m.propertyId} ·{" "}
-              <a className="text-info hover:underline" href={explorerAddress(marketKey)} target="_blank" rel="noreferrer">
-                market account ↗
-              </a>
-            </div>
-            <div className="mt-2">
+            <p className="mt-2 text-[15px] text-dim">
+              Within {m.triggerDistanceM} m · {scenarioName(m.scenarioId)}
+            </p>
+            <div className="mt-3">
               <ReplayLabel />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-4">
-            <Stat label="Requested">{formatMusd(summary.target)}</Stat>
-            <Stat label="Activated">{formatMusd(summary.activated)}</Stat>
-            <Stat label="Premium paid">{formatMusd(summary.premiumTotal)}</Stat>
-            <Stat label="Collateral locked">{formatMusd(summary.collateralTotal)}</Stat>
+          <a
+            className="text-sm text-dim underline-offset-2 hover:text-ink hover:underline"
+            href={explorerAddress(marketKey)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View on Explorer
+          </a>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 border-y border-line py-6 sm:grid-cols-4">
+          <Stat large label="Requested">
+            {formatMusd(summary.target)}
+          </Stat>
+          <Stat large label="Activated">
+            {formatMusd(summary.activated)}
+          </Stat>
+          <Stat large label="Premium paid">
+            {formatMusd(summary.premiumTotal)}
+          </Stat>
+          <Stat large label="Collateral">
+            {formatMusd(summary.collateralTotal)}
+          </Stat>
+        </div>
+
+        <div className="space-y-3">
+          <TriggerWording />
+          <div className="flex items-center gap-4">
+            <FundingBar activated={summary.activated} target={summary.target} pending={isHomeowner ? selectedCoverage : 0n} />
+            <span className="num shrink-0 text-sm text-dim">
+              {formatMusd(summary.activated, 0)} / {formatMusd(summary.target, 0)} · {formatRatio(summary.activated, summary.target)}
+            </span>
           </div>
         </div>
-        <div className="mt-3 rounded border border-line bg-bg p-3">
-          <TriggerWording />
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <FundingBar activated={summary.activated} target={summary.target} pending={isHomeowner ? selectedCoverage : 0n} />
-          <span className="num w-56 shrink-0 text-right text-xs text-dim">
-            {formatMusd(summary.activated, 0)} / {formatMusd(summary.target, 0)} ({formatRatio(summary.activated, summary.target)})
-          </span>
-        </div>
-        <div className="mt-1 text-[11px] text-faint">
-          Escrow on accepted positions: <span className="num">{formatMusd(summary.premiumTotal + summary.collateralTotal)} mUSD</span>{" "}
-          (premium + collateral = coverage, per position)
-        </div>
-      </section>
+      </header>
 
       {claimable.length > 0 && (
-        <div className="flex items-center justify-between rounded border border-up/50 bg-up/10 px-4 py-3">
-          <div>
-            <div className="font-semibold text-up">You can claim {claimable.length} position(s)</div>
-            <div className="num text-xs">{formatMusd(claimableTotal)} mUSD from escrow</div>
+        <Callout tone="up">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-medium text-up">Claim ready</div>
+              <div className="num mt-0.5 text-sm text-ink-secondary">{formatMusd(claimableTotal)} mUSD across {claimable.length} position{claimable.length === 1 ? "" : "s"}</div>
+            </div>
+            <button className="btn btn-primary" disabled={busy} onClick={doClaim}>
+              Claim all
+            </button>
           </div>
-          <button className="btn btn-up" disabled={busy} onClick={doClaim}>
-            Claim all · 1 signature
-          </button>
-        </div>
+        </Callout>
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_1fr]">
-        {/* Order book */}
+      <div className="grid grid-cols-1 gap-12 xl:grid-cols-[1.5fr_1fr]">
         <Panel
-          title={`Order book · ${summary.openOffers.length} open offer(s)`}
-          right={<span className="text-[10px] text-faint">sorted by premium rate, ascending</span>}
+          title={`Offers · ${summary.openOffers.length}`}
+          right={summary.openOffers.length > 0 ? "Lowest rate first" : undefined}
         >
           {summary.openOffers.length === 0 ? (
             <Empty>No open offers.</Empty>
           ) : (
-            <table className="dense">
-              <thead>
-                <tr>
-                  {isHomeowner && isOpen && <th />}
-                  <th className="r">Rate</th>
-                  <th className="r">Coverage</th>
-                  <th className="r">Premium</th>
-                  <th className="r">Collateral</th>
-                  <th>Underwriter</th>
-                  <th>Placed</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {summary.openOffers.map((o) => {
-                  const key = o.publicKey.toBase58();
-                  const checked = selected.has(key);
-                  const fits = selectedCoverage + toBig(o.account.coverage) <= summary.remaining;
-                  const mine = !!viewer && o.account.underwriter.equals(viewer);
-                  return (
-                    <tr key={key} className={checked ? "bg-info/10" : ""}>
-                      {isHomeowner && isOpen && (
-                        <td>
-                          <input
-                            type="checkbox"
-                            className="accent-[#4ea1ff]"
-                            checked={checked}
-                            disabled={!checked && !fits}
-                            title={!checked && !fits ? "Would exceed the requested coverage" : undefined}
-                            onChange={() => toggle(o)}
-                          />
-                        </td>
-                      )}
-                      <td className="r num font-semibold text-up">{formatBps(o.account.premiumBps)}</td>
-                      <td className="r num">{formatMusd(o.account.coverage)}</td>
-                      <td className="r num">{formatMusd(o.account.premium)}</td>
-                      <td className="r num text-dim">{formatMusd(o.account.collateral)}</td>
-                      <td>
-                        <AddressLink address={o.account.underwriter} you={viewer} />
-                      </td>
-                      <td className="num text-dim">{timeAgo(o.account.createdAt.toNumber())}</td>
-                      <td className="r">
-                        <a className="text-info hover:underline" href={explorerAddress(o.publicKey)} target="_blank" rel="noreferrer">
-                          offer ↗
-                        </a>
-                        {mine && (
-                          <button className="btn btn-down ml-2 px-2 py-0.5" onClick={() => doCancel(o)}>
-                            Cancel
-                          </button>
+            <div className="overflow-x-auto">
+              <table className="dense">
+                <thead>
+                  <tr>
+                    {isHomeowner && isOpen && <th />}
+                    <th className="r">Rate</th>
+                    <th className="r">Coverage</th>
+                    <th className="r">Premium</th>
+                    <th className="r">Collateral</th>
+                    <th>Underwriter</th>
+                    <th>Age</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.openOffers.map((o) => {
+                    const key = o.publicKey.toBase58();
+                    const checked = selected.has(key);
+                    const fits = selectedCoverage + toBig(o.account.coverage) <= summary.remaining;
+                    const mine = !!viewer && o.account.underwriter.equals(viewer);
+                    return (
+                      <tr key={key} className={checked ? "bg-bg-soft" : ""}>
+                        {isHomeowner && isOpen && (
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="accent-ink"
+                              checked={checked}
+                              disabled={!checked && !fits}
+                              title={!checked && !fits ? "Would exceed requested coverage" : undefined}
+                              onChange={() => toggle(o)}
+                            />
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="r num text-base font-semibold">{formatBps(o.account.premiumBps)}</td>
+                        <td className="r num">{formatMusd(o.account.coverage)}</td>
+                        <td className="r num">{formatMusd(o.account.premium)}</td>
+                        <td className="r num text-dim">{formatMusd(o.account.collateral)}</td>
+                        <td>
+                          <AddressLink address={o.account.underwriter} you={viewer} />
+                        </td>
+                        <td className="num text-dim">{timeAgo(o.account.createdAt.toNumber())}</td>
+                        <td className="r">
+                          {mine && (
+                            <button className="btn btn-down btn-sm" onClick={() => doCancel(o)}>
+                              Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
           {isHomeowner && isOpen && summary.openOffers.length > 0 && (
-            <div className="mt-3 flex items-center justify-between rounded border border-line bg-bg px-3 py-2">
-              <div className="num text-xs">
-                Selected {selectedOffers.length} · coverage {formatMusd(selectedCoverage)} · premium you pay{" "}
-                <span className="text-warn">{formatMusd(selectedPremium)}</span> mUSD · remaining after{" "}
-                {formatMusd(summary.remaining - selectedCoverage)}
-                {balance.data != null && balance.data < selectedPremium && (
-                  <span className="ml-2 text-down">insufficient mUSD balance</span>
+            <div className="mt-6 flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-dim">
+                {selectedOffers.length === 0 ? (
+                  "Select offers to accept"
+                ) : (
+                  <>
+                    <span className="num text-ink">{selectedOffers.length}</span> selected · coverage{" "}
+                    <span className="num text-ink">{formatMusd(selectedCoverage)}</span> · you pay{" "}
+                    <span className="num font-medium text-ink">{formatMusd(selectedPremium)}</span> mUSD
+                    {balance.data != null && balance.data < selectedPremium && (
+                      <span className="ml-2 text-down">Insufficient balance</span>
+                    )}
+                  </>
                 )}
               </div>
               <button className="btn btn-primary" disabled={busy || selectedOffers.length === 0} onClick={doAccept}>
-                Accept selected · 1 signature
+                Accept selected
               </button>
             </div>
           )}
         </Panel>
 
-        <div className="space-y-4">
+        <div className="space-y-10">
           {isOpen && !isHomeowner && (
             <OfferForm
               marketKey={marketKey}
@@ -324,24 +341,26 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
             />
           )}
           {isOpen && isHomeowner && (
-            <Panel title="Homeowner">
-              <p className="text-xs text-dim">
-                You own this market. Tick offers in the order book and accept them in one transaction. The checkboxes stop you
-                from exceeding the requested coverage. You pay each offer&apos;s premium; its collateral is already escrowed.
+            <Panel title="Your market">
+              <p className="text-[15px] leading-relaxed text-dim">
+                Select offers and accept them in one transaction. You pay each offer’s premium; collateral is already escrowed.
               </p>
             </Panel>
           )}
           {!isOpen && (
             <Panel title="Offers">
-              <p className="text-xs text-dim">This market is no longer accepting offers ({summary.display}).</p>
+              <p className="text-[15px] text-dim">This market is no longer accepting offers.</p>
             </Panel>
           )}
-          <Panel title="Risk">
-            <div className="grid grid-cols-2 gap-3">
+
+          <Panel title="Event">
+            <div className="grid grid-cols-2 gap-5">
               <Stat label="Scenario">{scenarioName(m.scenarioId)}</Stat>
-              <Stat label="Trigger distance">{m.triggerDistanceM} m</Stat>
-              <Stat label="Point (approx.)">
-                {formatE6(m.latE6)}, {formatE6(m.lonE6)}
+              <Stat label="Trigger">{m.triggerDistanceM} m</Stat>
+              <Stat label="Location">
+                <span className="num text-sm">
+                  {formatE6(m.latE6)}, {formatE6(m.lonE6)}
+                </span>
               </Stat>
               <Stat label="Homeowner">
                 <AddressLink address={m.homeowner} you={viewer} />
@@ -349,13 +368,13 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
               <Stat label="Created">{formatUnix(m.createdAt)}</Stat>
               <Stat label="Closed">{formatUnix(m.closedAt)}</Stat>
               <Stat label="Resolved">{formatUnix(m.resolvedAt)}</Stat>
-              <Stat label="Evidence hash">
-                {isZeroBytes(m.evidenceHash) ? "—" : <span title={toHex(m.evidenceHash)}>{toHex(m.evidenceHash).slice(0, 16)}…</span>}
+              <Stat label="Evidence">
+                {isZeroBytes(m.evidenceHash) ? "—" : <span className="num text-sm" title={toHex(m.evidenceHash)}>{toHex(m.evidenceHash).slice(0, 12)}…</span>}
               </Stat>
             </div>
-            <div className="mt-3">
+            <div className="mt-5">
               <PerimeterMap
-                height={200}
+                height={220}
                 points={[
                   {
                     key: "m",
@@ -384,7 +403,6 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
       />
 
       <ActivityFeed address={marketKey} />
-      {USE_FIXTURES && <p className="text-center text-[11px] text-fixture">Fixture mode: transactions disabled</p>}
     </div>
   );
 }
@@ -411,10 +429,10 @@ function OfferForm({
   let error: string | null = null;
   let terms: ReturnType<typeof computeOfferTerms> | null = null;
   if (coverage === null) error = "Enter coverage in mUSD";
-  else if (bps === null) error = "Enter a rate like 4.25 (whole basis points)";
+  else if (bps === null) error = "Enter a rate like 4.25";
   else if (bps < MIN_BPS || bps > MAX_BPS) error = "Rate must be between 0.01% and 99.99%";
   else if (coverage < MIN_COVERAGE) error = `Minimum coverage is ${formatMusd(MIN_COVERAGE, 0)} mUSD`;
-  else if (coverage > target) error = "Coverage is larger than the amount this market requests";
+  else if (coverage > target) error = "Coverage exceeds this market’s request";
   else {
     terms = computeOfferTerms(coverage, bps);
     if (terms.premium < 1n) error = "Premium rounds to zero. Increase coverage or rate.";
@@ -434,28 +452,27 @@ function OfferForm({
 
   return (
     <Panel title="Underwrite">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-[11px] text-dim">Coverage (mUSD)</label>
-          <input className="input mt-1" inputMode="decimal" value={coverageText} onChange={(e) => setCoverageText(e.target.value)} />
+          <label className="text-sm text-dim">Coverage (mUSD)</label>
+          <input className="input mt-1.5" inputMode="decimal" value={coverageText} onChange={(e) => setCoverageText(e.target.value)} />
         </div>
         <div>
-          <label className="text-[11px] text-dim">Premium rate (%)</label>
-          <input className="input mt-1" inputMode="decimal" value={rateText} onChange={(e) => setRateText(e.target.value)} />
+          <label className="text-sm text-dim">Premium rate (%)</label>
+          <input className="input mt-1.5" inputMode="decimal" value={rateText} onChange={(e) => setRateText(e.target.value)} />
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded border border-line bg-bg p-2">
-        <Stat label="You earn (premium)">{terms ? formatMusd(terms.premium) : "—"}</Stat>
-        <Stat label="You lock (collateral)">{terms ? formatMusd(terms.collateral) : "—"}</Stat>
-        <Stat label="Escrow if accepted">{terms ? formatMusd(terms.coverage) : "—"}</Stat>
+      <div className="mt-5 grid grid-cols-3 gap-4 border-y border-line py-4">
+        <Stat label="You earn">{terms ? formatMusd(terms.premium) : "—"}</Stat>
+        <Stat label="You lock">{terms ? formatMusd(terms.collateral) : "—"}</Stat>
+        <Stat label="Escrow">{terms ? formatMusd(terms.coverage) : "—"}</Stat>
       </div>
-      <p className="mt-2 text-[11px] text-faint">
-        premium = floor(coverage × bps / 10,000), collateral = coverage − premium; computed on-chain. If the trigger fires you lose
-        the collateral; if not you get coverage back (collateral + premium).
+      <p className="mt-3 text-sm leading-relaxed text-faint">
+        If the fire reaches the property, Protection claims the escrow. If not, Risk receives it.
       </p>
-      <div className="mt-1 h-4 text-[11px] text-down">{error ?? (short ? "Not enough mUSD for the collateral" : "")}</div>
-      <button className="btn btn-primary mt-1 w-full justify-center" disabled={busy || !!error || !terms} onClick={submit}>
-        {busy ? "Placing…" : "Place offer (locks collateral)"}
+      <div className="mt-2 h-5 text-sm text-down">{error ?? (short ? "Not enough mUSD for collateral" : "")}</div>
+      <button className="btn btn-primary mt-2 w-full py-3" disabled={busy || !!error || !terms} onClick={submit}>
+        {busy ? "Placing…" : "Place offer"}
       </button>
     </Panel>
   );
@@ -481,7 +498,7 @@ function PositionsTable({
   async function doList(o: Keyed<OfferAccount>, side: Side, priceText: string) {
     const price = parseMusd(priceText);
     if (price === null || price < 1n) return;
-    const r = await run(`List ${side === Side.Protection ? "Protection" : "Risk"} side`, (opts) =>
+    const r = await run(`List ${side === Side.Protection ? "Protection" : "Risk"}`, (opts) =>
       listPosition(requireSigner(wallet), o, side, price, opts),
     );
     if (r) setDraft(null);
@@ -489,7 +506,7 @@ function PositionsTable({
   }
 
   async function doBuy(l: Keyed<ListingAccount>, o: Keyed<OfferAccount>) {
-    await run(`Buy ${l.account.side === Side.Protection ? "Protection" : "Risk"} side`, (opts) =>
+    await run(`Buy ${l.account.side === Side.Protection ? "Protection" : "Risk"}`, (opts) =>
       buyPosition(requireSigner(wallet), l, o, opts),
     );
     onChange();
@@ -509,50 +526,47 @@ function PositionsTable({
     const isDraft = draft && draft.offer === o.publicKey.toBase58() && draft.side === side;
     return (
       <td>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isDefaultKey(holder) ? <span className="text-faint">—</span> : <AddressLink address={holder} you={viewer} />}
           {listing && (
-            <span className="num rounded-sm bg-warn/15 px-1.5 text-[11px] text-warn" title={`Listed by ${listing.account.seller.toBase58()}`}>
-              for sale {formatMusd(listing.account.price)}
+            <span className="num text-sm text-warn" title={`Listed by ${listing.account.seller.toBase58()}`}>
+              {formatMusd(listing.account.price)} for sale
             </span>
           )}
         </div>
-        <div className="mt-1 flex items-center gap-1">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {TRADING_ENABLED && listing && viewer && listing.account.seller.equals(viewer) && (
-            <button className="btn px-2 py-0.5 text-[11px]" onClick={() => doCancelListing(listing)}>
+            <button className="btn btn-sm" onClick={() => doCancelListing(listing)}>
               Cancel listing
             </button>
           )}
           {listing && tradable && accepted && (!viewer || (!listing.account.seller.equals(viewer) && !opposite.equals(viewer))) && (
-            <button className="btn btn-up px-2 py-0.5 text-[11px]" onClick={() => doBuy(listing, o)}>
+            <button className="btn btn-primary btn-sm" onClick={() => doBuy(listing, o)}>
               Buy · {formatMusd(listing.account.price)}
             </button>
           )}
           {!listing && isHolder && tradable && accepted && !isDraft && (
-            <button
-              className="btn px-2 py-0.5 text-[11px]"
-              onClick={() => setDraft({ offer: o.publicKey.toBase58(), side, price: "" })}
-            >
-              List…
+            <button className="btn btn-sm" onClick={() => setDraft({ offer: o.publicKey.toBase58(), side, price: "" })}>
+              List
             </button>
           )}
           {isDraft && (
             <>
               <input
-                className="input w-24 px-1 py-0.5 text-[11px]"
-                placeholder="price mUSD"
+                className="input w-28 px-2 py-1 text-sm"
+                placeholder="Price"
                 value={draft.price}
                 onChange={(e) => setDraft({ ...draft, price: e.target.value })}
               />
               <button
-                className="btn btn-primary px-2 py-0.5 text-[11px]"
+                className="btn btn-primary btn-sm"
                 disabled={(parseMusd(draft.price) ?? 0n) < 1n}
                 onClick={() => doList(o, side, draft.price)}
               >
-                List
+                Confirm
               </button>
-              <button className="btn px-2 py-0.5 text-[11px]" onClick={() => setDraft(null)}>
-                ×
+              <button className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>
+                Cancel
               </button>
             </>
           )}
@@ -562,49 +576,42 @@ function PositionsTable({
   }
 
   return (
-    <Panel
-      title={`Positions · ${offers.length}`}
-      right={<span className="text-[10px] text-faint">Protection receives escrow on YES · Risk receives escrow on NO</span>}
-    >
+    <Panel title={`Positions · ${offers.length}`} right="Protection wins on YES · Risk wins on NO">
       {offers.length === 0 ? (
         <Empty>No accepted positions yet.</Empty>
       ) : (
-        <table className="dense">
-          <thead>
-            <tr>
-              <th className="r">Coverage (escrow)</th>
-              <th className="r">Rate</th>
-              <th className="r">Premium</th>
-              <th className="r">Collateral</th>
-              <th>Protection holder</th>
-              <th>Risk holder</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {offers.map((o) => (
-              <tr key={o.publicKey.toBase58()} className="align-top">
-                <td className="r num font-semibold">
-                  <Musd value={o.account.coverage} />
-                </td>
-                <td className="r num">{formatBps(o.account.premiumBps)}</td>
-                <td className="r num">{formatMusd(o.account.premium)}</td>
-                <td className="r num text-dim">{formatMusd(o.account.collateral)}</td>
-                {sideCell(o, Side.Protection)}
-                {sideCell(o, Side.Risk)}
-                <td>
-                  <Pill tone={offerStatusOf(o.account.status) === "accepted" ? "info" : "dim"}>{offerStatusOf(o.account.status)}</Pill>
-                </td>
-                <td className="r">
-                  <a className="text-info hover:underline" href={explorerAddress(o.publicKey)} target="_blank" rel="noreferrer">
-                    offer ↗
-                  </a>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="dense">
+            <thead>
+              <tr>
+                <th className="r">Coverage</th>
+                <th className="r">Rate</th>
+                <th className="r">Premium</th>
+                <th className="r">Collateral</th>
+                <th>Protection</th>
+                <th>Risk</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {offers.map((o) => (
+                <tr key={o.publicKey.toBase58()} className="align-top">
+                  <td className="r num font-semibold">
+                    <Musd value={o.account.coverage} />
+                  </td>
+                  <td className="r num">{formatBps(o.account.premiumBps)}</td>
+                  <td className="r num">{formatMusd(o.account.premium)}</td>
+                  <td className="r num text-dim">{formatMusd(o.account.collateral)}</td>
+                  {sideCell(o, Side.Protection)}
+                  {sideCell(o, Side.Risk)}
+                  <td>
+                    <Pill tone={offerStatusOf(o.account.status) === "accepted" ? "info" : "dim"}>{offerStatusOf(o.account.status)}</Pill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   );

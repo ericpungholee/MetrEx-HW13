@@ -2,6 +2,10 @@
 
 _Last updated: 2026-11-21_
 
+## UI overhaul
+
+Frontend redesigned to a white/black typography-first brokerage look (Geist, open layouts, status as text instead of pills, fewer nested cards). Functionality, wallet flows, settlement, network panel (§10.5), trigger wording, and historical-replay labels unchanged.
+
 ## Gates
 
 | Gate | Status | Notes |
