@@ -3,11 +3,9 @@
 //   point     = (lon_e6 / 1e6, lat_e6 / 1e6)
 //   inside    = point lies in some polygon's outer ring AND in none of that polygon's holes
 //   distance  = min geodesic distance (m) from point to ANY ring (outer or inner) of any polygon
-//   triggered = inside OR distance_m <= trigger_distance_m
+//   triggered = inside OR distance <= trigger_distance_m
 //
-// `distance_m` is floored to an integer metre, and `triggered` is decided on that
-// floored integer so the evidence record is self-consistent (a reader re-checking
-// `distance_m <= trigger_distance_m` from the record always gets `triggered`).
+// Floor the reported distance for canonical evidence. Compare the full distance for settlement.
 
 import { booleanPointInPolygon } from "@turf/boolean-point-in-polygon";
 import { lineString, point, polygon } from "@turf/helpers";
@@ -32,7 +30,7 @@ export interface EvaluateResult {
   inside: boolean;
   /** Minimum geodesic distance to any ring, metres, floored to an integer. */
   distance_m: number;
-  /** inside || distance_m <= trigger_distance_m */
+  /** Inside or within the trigger radius at full precision. */
   triggered: boolean;
 }
 
@@ -76,5 +74,5 @@ export function evaluate(geometry: FootprintGeometry, input: EvaluateInput): Eva
   }
 
   const distance_m = Math.floor(minDistance);
-  return { inside, distance_m, triggered: inside || distance_m <= input.trigger_distance_m };
+  return { inside, distance_m, triggered: inside || minDistance <= input.trigger_distance_m };
 }

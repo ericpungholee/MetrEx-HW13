@@ -93,11 +93,10 @@ describe("evaluate §8.2", () => {
     expect(near2.triggered).toBe(true);
   });
 
-  it("threshold is inclusive: distance_m == trigger triggers, trigger - 1 does not", () => {
-    const base = at(5_500, 0);
-    const d = evaluate(SOLID, base).distance_m;
-    expect(evaluate(SOLID, { ...base, trigger_distance_m: d }).triggered).toBe(true);
-    expect(evaluate(SOLID, { ...base, trigger_distance_m: d - 1 }).triggered).toBe(false);
+  it("does not trigger when a fractional distance above the threshold rounds down to it", () => {
+    const base = at(5_501, 0);
+    expect(evaluate(SOLID, base)).toEqual({ inside: false, distance_m: 500, triggered: false });
+    expect(evaluate(SOLID, { ...base, trigger_distance_m: 501 }).triggered).toBe(true);
   });
 
   it("rejects non-integer or out-of-range inputs", () => {
