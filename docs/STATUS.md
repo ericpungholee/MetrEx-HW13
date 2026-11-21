@@ -8,11 +8,11 @@ _Last updated: 2026-11-21_
 |---|---|---|
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
 | 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 68/68 after approved review fixes |
-| 2 — Devnet live | Blocked | Awaiting the first Devnet SOL top-up. The review fixes passed locally |
-| 3 — Human lifecycle | In progress | Scripted app-client lifecycle passed on Devnet. Awaiting the real-wallet homeowner signatures |
-| 4 — Definition of Done | Not started | |
-| 5 — Solana track (T2) | Not started | |
-| 6 — Demo-ready | Not started | |
+| 2 — Devnet live | **Passed 2026-11-21** | Deployed and verified the core program, admin authority, Config, mint, properties and fallback market |
+| 3 — Human lifecycle | In progress | Phantom create and accept finalized. The judge offer, operator close and YES resolution finalized. The wallet payout remains pending |
+| 4 — Definition of Done | In progress | Local bot and oracle runs passed for YES and NO. The first live run hit a public Devnet RPC rate limit before setup completed |
+| 5 — Solana track (T2) | In progress | Trading and reassigned-holder payout passed on a local validator on `codex/tier2-local`. Live rollout follows Gate 4 |
+| 6 — Demo-ready | In progress | Funded fallback and packaged dataset verified. Live demonstrations, full demo balances and backup RPC remain open |
 
 ## Gate 0 checklist
 
@@ -71,7 +71,7 @@ _Last updated: 2026-11-21_
 
 ## Blockers (human)
 
-1. **Human lifecycle.** The owner must sign the create, accept and claim transactions in a Wallet Standard wallet on Devnet. The agent can place the judge offer and handle operator settlement separately.
+1. **Human lifecycle.** Phantom signed the homeowner create and accept transactions. The final claim needs normal Phantom approval. Devnet successfully simulated the prepared claim, and the wallet had 0.048478560 SOL before it. Phantom still reported a simulation and SOL-balance warning in the earlier prompt. The app now uses the connection-aware Wallet Standard submission path.
 2. **Demo-day funding and backup RPC.** The project initially funded the minimum execution balances. The full §14 faucet and bot balances, and a verified backup Devnet endpoint, remain open for Gate 6.
 
 ## Gate 1 progress
