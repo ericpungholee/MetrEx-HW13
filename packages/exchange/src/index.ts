@@ -4,3 +4,8 @@ export * from "./pda";
 export * from "./math";
 export * from "./book";
 export * from "./ladder";
+export * from "./projection";
+export * from "./events";
+export * from "./chart";
+export * from "./keeper";
+export * from "./errors";
