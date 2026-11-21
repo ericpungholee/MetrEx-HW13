@@ -54,8 +54,12 @@ export function describeEvent(e: ActivityItem): string {
   }
 }
 
-export function ActivityFeed({ address }: { address: PublicKey }) {
-  const feed = usePoll(() => fetchActivity(address, 25), [address.toBase58()], 6_000);
+export function ActivityFeed({ address, offerKeys }: { address: PublicKey; offerKeys: PublicKey[] }) {
+  const feed = usePoll(
+    () => fetchActivity(address, 25, new Set(offerKeys.map((offer) => offer.toBase58()))),
+    [address.toBase58()],
+    6_000,
+  );
   return (
     <Panel title="Activity">
       {feed.error && <div className="text-sm text-dim">Activity unavailable</div>}

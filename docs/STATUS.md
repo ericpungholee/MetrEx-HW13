@@ -179,4 +179,4 @@ The integrated setup creates and verifies a mint without a freeze authority. Dir
 
 ## Market integrity revision
 
-The integrity branch is documented in [the market integrity audit](v1.1-integrity-audit.md). The upgrade preserves the existing account layouts and program ID. Devnet inspection was read-only and found the prior deployment. The revised oracle controls require the updated program for the on-chain trading cutoff.
+PR #3 merged and the existing Devnet program was upgraded in place at slot 524644844. The release preserved the program ID, upgrade authority, and all 35 pre-existing account data hashes. Both live settlement outcomes paid 10,000 mUSD, and the Phantom browser rehearsal confirmed a 120 mUSD claim across two markets. [Deployment and verification record](v1.1-devnet-verification.md) · [Market integrity audit](v1.1-integrity-audit.md)

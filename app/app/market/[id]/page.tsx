@@ -405,7 +405,7 @@ function MarketView({ marketKey }: { marketKey: PublicKey }) {
         }}
       />
 
-      <ActivityFeed address={marketKey} />
+      <ActivityFeed address={marketKey} offerKeys={data.offers.map(({ publicKey }) => publicKey)} />
     </div>
   );
 }

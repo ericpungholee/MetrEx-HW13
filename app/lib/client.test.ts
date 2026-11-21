@@ -55,6 +55,42 @@ it("keeps Explorer links tied to their events when the RPC batch comes back in r
   ]);
 });
 
+it("shows only the current market's events in a transaction shared by two markets", async () => {
+  const conn = getConnection();
+  const firstMarket = Keypair.generate().publicKey;
+  const secondMarket = Keypair.generate().publicKey;
+  const firstOffer = Keypair.generate().publicKey;
+  const secondOffer = Keypair.generate().publicKey;
+  const signer = Keypair.generate().publicKey;
+  const listing = Keypair.generate().publicKey;
+  function event(name: string, ...fields: Buffer[]) {
+    const discriminator = idl.events.find((item) => item.name === name)!.discriminator;
+    return `Program data: ${Buffer.concat([Buffer.from(discriminator), ...fields]).toString("base64")}`;
+  }
+  const logs = [
+    `Program ${IDL.address} invoke [1]`,
+    event("PayoutClaimed", firstMarket.toBuffer(), firstOffer.toBuffer(), signer.toBuffer(), Buffer.alloc(8)),
+    event("PayoutClaimed", secondMarket.toBuffer(), secondOffer.toBuffer(), signer.toBuffer(), Buffer.alloc(8)),
+    event("PositionListed", firstOffer.toBuffer(), listing.toBuffer(), Buffer.from([1]), signer.toBuffer(), Buffer.alloc(8)),
+    `Program ${IDL.address} success`,
+  ];
+  const signature = "mixed-market-activity";
+  vi.spyOn(conn, "getSignaturesForAddress").mockResolvedValue([{ signature, slot: 3, err: null, memo: null }]);
+  const getTransactions = vi.spyOn(conn, "getTransactions").mockResolvedValue([
+    { transaction: { signatures: [signature] }, meta: { logMessages: logs }, slot: 3 } as VersionedTransactionResponse,
+  ]);
+
+  const first = await fetchActivity(firstMarket, 25, new Set([firstOffer.toBase58()]));
+  const second = await fetchActivity(secondMarket, 25, new Set([secondOffer.toBase58()]));
+  const wallet = await fetchActivity(signer);
+
+  expect(first.map(({ name }) => name)).toEqual(["PayoutClaimed", "PositionListed"]);
+  expect(second.map(({ name }) => name)).toEqual(["PayoutClaimed"]);
+  expect(second[0]?.data.offer).toEqual(secondOffer);
+  expect(wallet).toHaveLength(3);
+  expect(getTransactions).toHaveBeenCalledTimes(1);
+});
+
 it("requests the exact evidence bytes for the browser hash check", async () => {
   const market = Keypair.generate().publicKey;
   const canonicalEvidence = '{"triggered":true}';
