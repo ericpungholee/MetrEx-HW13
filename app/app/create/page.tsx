@@ -69,7 +69,7 @@ export default function CreatePage() {
     <div className="mx-auto max-w-5xl space-y-4">
       <div>
         <h1 className="text-lg font-bold">Create a market</h1>
-        <p className="text-xs text-dim">List your property&apos;s wildfire risk. Underwriters compete to cover it.</p>
+        <p className="text-xs text-dim">Create a wildfire replay market at a registered point. Any wallet can participate, and property ownership is unverified.</p>
       </div>
       <ErrorLine error={props.error} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.1fr]">

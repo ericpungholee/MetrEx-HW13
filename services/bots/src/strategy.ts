@@ -54,33 +54,48 @@ const minBig = (...xs: bigint[]): bigint => xs.reduce((a, b) => (b < a ? b : a))
  * §7: min(size% of target, per-market cap, remaining exposure cap), rounded down to whole
  * mUSD, ≥ MIN_COVERAGE (and ≤ target). Null when nothing valid can be offered.
  */
-export function offerCoverage(p: BotParams, coverageTarget: bigint, exposure: bigint): bigint | null {
+export function offerCoverage(
+  p: BotParams, coverageTarget: bigint, exposure: bigint, available = coverageTarget,
+): bigint | null {
   const size = (coverageTarget * p.sizePct) / 100n;
   const remaining = p.totalExposureCap > exposure ? p.totalExposureCap - exposure : 0n;
-  let c = minBig(size, p.perMarketCap, remaining, coverageTarget);
-  c -= c % MUSD_UNIT;
+  let c = minBig(size, p.perMarketCap, remaining, available);
+  if (c !== available) c -= c % MUSD_UNIT;
   return c >= MIN_COVERAGE ? c : null;
 }
 
-/** Sum of coverage of this bot's Open + Accepted offers on unresolved (Open/Closed) markets. */
-export function botExposure(botOffers: readonly OfferLite[], markets: ReadonlyMap<string, MarketLite>): bigint {
-  let total = 0n;
-  for (const o of botOffers) {
-    if (o.status !== "open" && o.status !== "accepted") continue;
-    const m = markets.get(o.market);
-    if (m && isUnresolved(m.status)) total += o.coverage;
+/** Coverage-equivalent cap usage and actual mUSD locked in unaccepted offers. */
+export function botExposure(
+  bot: string, offers: readonly OfferLite[], markets: ReadonlyMap<string, MarketLite>,
+): { offeredCoverage: bigint; committedCollateral: bigint; heldRiskCoverage: bigint } {
+  let offeredCoverage = 0n;
+  let committedCollateral = 0n;
+  let heldRiskCoverage = 0n;
+  for (const o of offers) {
+    const market = markets.get(o.market);
+    if (o.status === "open" && o.underwriter === bot) {
+      committedCollateral += o.collateral;
+      // Take a conservative view when an RPC read omitted the market.
+      if (!market || market.status === "open") offeredCoverage += o.coverage;
+    }
+    if (o.status === "accepted" && o.riskHolder === bot && (!market || isUnresolved(market.status))) {
+      heldRiskCoverage += o.coverage;
+    }
   }
-  return total;
+  return { offeredCoverage, committedCollateral, heldRiskCoverage };
 }
 
-/** §7 cleanup: cancel unaccepted offers once their market has left Open. */
+/** Recover collateral from offers that are no longer eligible for acceptance. */
 export function planCleanup(botOffers: readonly OfferLite[], markets: ReadonlyMap<string, MarketLite>): Action[] {
   const out: Action[] = [];
   for (const o of botOffers) {
     if (o.status !== "open") continue;
     const m = markets.get(o.market);
-    if (m && m.status !== "open") {
+    if (!m) continue;
+    if (m.status !== "open") {
       out.push({ kind: "cancel", offer: o.key, market: o.market, reason: `market ${m.status}` });
+    } else if (o.coverage > m.coverageTarget - m.coverageActivated) {
+      out.push({ kind: "cancel", offer: o.key, market: o.market, reason: "offer exceeds remaining coverage" });
     }
   }
   return out;
@@ -139,7 +154,8 @@ export function planRequotes(i: RequoteInput): Action[] {
   const out: Action[] = [];
   for (const m of i.openMarkets) {
     if (m.status !== "open" || isFunded(m)) continue;
-    const here = i.openOffers.filter((o) => o.market === m.key && o.status === "open");
+    const available = m.coverageTarget - m.coverageActivated;
+    const here = i.openOffers.filter((o) => o.market === m.key && o.status === "open" && o.coverage <= available);
     const mine = here.filter((o) => o.underwriter === i.bot);
     if (mine.length === 0) continue;
     const best = mine.reduce((a, b) => (b.premiumBps < a.premiumBps ? b : a));
@@ -182,7 +198,7 @@ export interface NewOfferInput {
 /** §7: one offer per market the bot hasn't offered on, with balance/SOL checks. */
 export function planNewOffers(i: NewOfferInput): Action[] {
   const out: Action[] = [];
-  const offered = new Set(i.botOffers.map((o) => o.market));
+  const offered = new Set(i.botOffers.filter((o) => o.underwriter === i.bot).map((o) => o.market));
   let exposure = i.exposure;
   let musd = i.wallet.musd;
   const markets = [...i.openMarkets].sort((a, b) =>
@@ -192,7 +208,7 @@ export function planNewOffers(i: NewOfferInput): Action[] {
     if (m.status !== "open" || offered.has(m.key) || i.inFlight.has(m.key)) continue;
     if (m.homeowner === i.bot) continue; // SelfUnderwriting
     if (isFunded(m)) continue;
-    const coverage = offerCoverage(i.params, m.coverageTarget, exposure);
+    const coverage = offerCoverage(i.params, m.coverageTarget, exposure, m.coverageTarget - m.coverageActivated);
     if (coverage === null) {
       out.push({ kind: "skip", market: m.key, reason: "exposure cap reached or size below minimum" });
       continue;
@@ -234,7 +250,7 @@ export interface ListingInput {
 
 /**
  * §7.1: list the Risk side of each accepted position the bot still holds while trading is
- * allowed (Open/Closed); cancel its listings once the market is final (recovers rent).
+ * allowed (Open), and cancel its listings once trading closes (recovers rent).
  */
 export function planListings(i: ListingInput): Action[] {
   const out: Action[] = [];
@@ -242,7 +258,7 @@ export function planListings(i: ListingInput): Action[] {
   for (const o of i.botOffers) {
     if (o.status !== "accepted" || o.riskHolder !== i.bot) continue;
     const m = i.markets.get(o.market);
-    if (!m || !isUnresolved(m.status)) continue;
+    if (!m || m.status !== "open") continue;
     if (i.riskListings.has(o.key) || i.inFlight.has(o.key)) continue;
     const price = riskListingPrice(o, i.premiumPct);
     if (price < 1n) continue;
@@ -251,7 +267,7 @@ export function planListings(i: ListingInput): Action[] {
   for (const [offerKey, listingKey] of i.riskListings) {
     const o = byKey.get(offerKey);
     const m = o ? i.markets.get(o.market) : undefined;
-    if (o && m && !isUnresolved(m.status) && !i.inFlight.has(offerKey)) {
+    if (o && m && m.status !== "open" && !i.inFlight.has(offerKey)) {
       out.push({ kind: "cancelListing", listing: listingKey, offer: offerKey, market: o.market });
     }
   }
@@ -283,6 +299,7 @@ export interface TickInput {
  */
 export function planTick(i: TickInput): Action[] {
   const actions: Action[] = planCleanup(i.botOffers, i.markets);
+  const exposure = botExposure(i.bot, i.botOffers, i.markets);
   let wallet = i.wallet;
   if (i.tier2) {
     const rq = planRequotes({
@@ -333,7 +350,7 @@ export function planTick(i: TickInput): Action[] {
       bot: i.bot,
       openMarkets: i.openMarkets,
       botOffers: i.botOffers,
-      exposure: botExposure(i.botOffers, i.markets),
+      exposure: exposure.offeredCoverage + exposure.heldRiskCoverage,
       wallet,
       inFlight: i.inFlight,
     }),
