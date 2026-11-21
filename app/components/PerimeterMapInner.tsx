@@ -44,15 +44,27 @@ export default function PerimeterMapInner({
   useEffect(() => {
     if (!settledMarket) return;
     const abort = new AbortController();
-    fetch(`/api/evidence/${settledMarket}?perimeter=1`, { cache: "no-store", signal: abort.signal })
-      .then(async (response) => response.ok ? await response.json() as GeoJsonObject : null)
-      .then((data) => {
-        if (!abort.signal.aborted) setOverlay({ market: settledMarket, data });
-      })
-      .catch(() => {
-        if (!abort.signal.aborted) setOverlay({ market: settledMarket, data: null });
-      });
-    return () => abort.abort();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    async function load() {
+      try {
+        const response = await fetch(`/api/evidence/${settledMarket}?perimeter=1`, {
+          cache: "no-store", signal: abort.signal,
+        });
+        if (response.ok) {
+          const data = await response.json() as GeoJsonObject;
+          if (settledMarket && !abort.signal.aborted) setOverlay({ market: settledMarket, data });
+          return;
+        }
+      } catch {
+        // Settlement or publication can still be pending.
+      }
+      if (!abort.signal.aborted) retry = setTimeout(load, 10_000);
+    }
+    void load();
+    return () => {
+      abort.abort();
+      clearTimeout(retry);
+    };
   }, [settledMarket]);
 
   const center = points[0] ? ([points[0].lat, points[0].lon] as [number, number]) : ([34.05, -118.53] as [number, number]);

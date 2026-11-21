@@ -105,6 +105,16 @@ export function dataDir(): string {
   return join(repoRoot(), "data");
 }
 
+/** Production oracle files are mounted separately from the trading checkout. */
+export function oracleDataDir(): string {
+  const configured = envOrUndefined("METREX_ORACLE_DATA_DIR");
+  if (configured) return resolve(expandHome(configured));
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("METREX_ORACLE_DATA_DIR is required for production settlement");
+  }
+  return dataDir();
+}
+
 export function resolveFromRoot(p: string): string {
   const e = expandHome(p);
   return isAbsolute(e) ? e : join(/* turbopackIgnore: true */ repoRoot(), e);

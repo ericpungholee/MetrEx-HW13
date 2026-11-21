@@ -8,9 +8,9 @@ import { resolveMarket } from "../oracle/resolve";
 import { getStats } from "../stats";
 import { TxError } from "../tx";
 import { closeMarket } from "./close";
-import { badRequest, forbidden, HttpError, unavailable } from "./errors";
+import { badRequest, forbidden, HttpError, tooMany, unavailable } from "./errors";
 import { faucet } from "./faucet";
-import { checkDemoPassword, DEMO_PASSWORD_HEADER } from "./password";
+import { DEMO_PASSWORD_HEADER, OperatorPasswordBudget } from "./password";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -38,9 +38,14 @@ function marketParam(value: string | undefined): PublicKey {
   }
 }
 
+const operatorBudget = new OperatorPasswordBudget();
+
 function requirePassword(req: Request): void {
-  if (!process.env.DEMO_PASSWORD) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
-  if (!checkDemoPassword(req.headers.get(DEMO_PASSWORD_HEADER))) throw forbidden("Wrong or missing demo password");
+  const password = process.env.DEMO_PASSWORD;
+  if (!password) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
+  const result = operatorBudget.check(req.headers.get(DEMO_PASSWORD_HEADER), password);
+  if (result === "limited") throw tooMany("Too many operator authentication attempts. Retry in a minute.");
+  if (result === "wrong") throw forbidden("Wrong or missing demo password");
 }
 
 async function run(fn: () => Promise<Response>): Promise<Response> {

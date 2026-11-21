@@ -1,12 +1,12 @@
 "use client";
 
-// Settlement (spec §3.1 item 5, §11.2 step 5): operator view. Close a market, show the fire
-// perimeter against the property's 500 m circle, run the oracle, show and verify the evidence.
+// Settlement (spec §3.1 item 5, §11.2 step 5): operator view. Close a market, run the oracle,
+// then show the perimeter against the trigger circle and verify the evidence.
 import { verifyEvidenceText } from "@metrex/geo";
 import { marketStatusOf } from "@metrex/shared";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NetworkPanel } from "@/components/NetworkPanel";
 import { PerimeterMap } from "@/components/PerimeterMap";
 import { Empty, ErrorLine, Panel, ReplayLabel, scenarioName, Stat, StatusPill, TriggerWording, TxLink } from "@/components/ui";
@@ -46,6 +46,14 @@ export default function DemoPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<"close" | "resolve" | null>(null);
   const [result, setResult] = useState<{ action: string; res?: ApiResult; error?: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("metrex-demo-password");
+    } catch {
+      // Storage may be disabled.
+    }
+  }, []);
 
   const summaries = useMemo(
     () => (ex.data ? ex.data.markets.map((m) => summarizeMarket(m, ex.data!.offers, ex.data!.properties)) : []),
@@ -102,7 +110,7 @@ export default function DemoPage() {
           <p className="text-xs text-dim">Close a market, replay the oracle against the packaged perimeter, verify the evidence.</p>
         </div>
         <div className="w-72">
-          <label className="text-[11px] text-dim">Demo password (kept in this tab&apos;s session only)</label>
+          <label className="text-[11px] text-dim">Demo password</label>
           <input className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
       </div>

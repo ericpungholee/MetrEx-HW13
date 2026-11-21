@@ -1,9 +1,9 @@
-import type { BuiltEvidence } from "@metrex/geo";
+import { canonicalize, type BuiltEvidence } from "@metrex/geo";
 import { loadScenarioRegistry } from "@metrex/geo/node";
 import type { Keypair, PublicKey } from "@solana/web3.js";
-import { getScenario, type EvidenceRecord, type ScenarioRegistry } from "@metrex/shared";
+import { getScenario, type ScenarioRegistry } from "@metrex/shared";
 import { fetchMarket, type MarketView } from "../accounts";
-import { dataDir as defaultDataDir, loadKeypair } from "../env";
+import { oracleDataDir, loadKeypair } from "../env";
 import { explorerTx } from "../explorer";
 import { configPda, resolveMarketIx } from "../ix";
 import { getProgram } from "../program";
@@ -85,7 +85,7 @@ export async function buildMarketEvidence(
     [r.scenario_id === m.scenarioId, "record.scenario_id"],
     [r.trigger_distance_m === m.triggerDistanceM, "record.trigger_distance_m"],
     [typeof r.triggered === "boolean", "record.triggered"],
-    [(JSON.parse(built.canonical) as EvidenceRecord).triggered === r.triggered, "canonical.triggered"],
+    [canonicalize(r) === built.canonical, "canonical record"],
   ];
   const failed = checks.filter(([ok]) => !ok).map(([, what]) => what);
   if (failed.length) throw new Error(`Evidence does not match on-chain market: ${failed.join(", ")}`);
@@ -101,9 +101,10 @@ export async function resolveMarket(market: PublicKey, deps: ResolveDeps = {}): 
     const m = await readMarket();
     if (!m) throw notFound("Market not found");
     const pending = m.status === "closed";
-    if (!pending && m.status !== "resolvedYes" && m.status !== "resolvedNo") assertResolvable(m);
+    const alreadyResolved = m.status === "resolvedYes" || m.status === "resolvedNo";
+    if (!alreadyResolved) assertResolvable(m);
 
-    const dir = deps.dataDir ?? defaultDataDir();
+    const dir = deps.dataDir ?? oracleDataDir();
     const program = getProgram(rpc.connection);
     const registry = loadScenarioRegistry(dir);
     const built = await buildMarketEvidence(m, program.programId, registry, deps.geo ?? realGeo, dir);

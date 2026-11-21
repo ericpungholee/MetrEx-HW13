@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { verifyEvidenceText } from "@metrex/geo";
 import { KeypairWallet, explorerAddress, explorerTx, loadKeypair, requireEnv } from "@metrex/server";
 import { MUSD_UNIT, Side, marketStatusOf, offerStatusOf } from "@metrex/shared";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, type PublicKey } from "@solana/web3.js";
 import {
   acceptOffers, buyPosition, cancelOffer, claimAll, claimablePositions, createMarket, fetchListingsForOffers, fetchMarket, fetchMusdBalance,
   fetchOffersByMarket, getConnection, placeOffer,
@@ -59,13 +59,12 @@ async function main(): Promise<void> {
     tx("Fresh wallet funded by faucet", payout.signature);
   }
 
+  const coverage = 10_000n * MUSD_UNIT;
+  const closed: { market: PublicKey; propertyId: number; acceptedKeys: Set<string>; tradedOffer: string }[] = [];
   for (const propertyId of manual ? [1] : trading ? [2] : [1, 2]) {
-    const triggered = propertyId === 1;
-    const label = triggered ? "YES" : "NO";
-    const coverage = 10_000n * MUSD_UNIT;
     const created = await createMarket(homeowner, propertyId, coverage);
     const market = created.market;
-    console.log(`${label} market ${local ? market.toBase58() : explorerAddress(market)}`);
+    console.log(`Replay market ${local ? market.toBase58() : explorerAddress(market)}`);
     tx("Market created", created.results[0]!.signature);
 
     const openedAt = Date.now();
@@ -134,11 +133,21 @@ async function main(): Promise<void> {
       }
     }
 
-    for (const route of ["demo/close", "oracle/resolve"]) {
-      const response = await post(`/api/${route}/${market}`, headers);
-      tx(route, (await response.json() as { signature: string }).signature);
-    }
+    const evidenceUrl = new URL(`/api/evidence/${market}?raw=1`, app);
+    assert.equal((await fetch(evidenceUrl)).status, 404, "Open market returned evidence");
+    const close = await post(`/api/demo/close/${market}`, headers);
+    tx("Market closed", (await close.json() as { signature: string }).signature);
+    assert.equal((await fetch(evidenceUrl)).status, 404, "Closed market returned evidence");
+    closed.push({ market, propertyId, acceptedKeys, tradedOffer });
+  }
 
+  for (const { market, propertyId, acceptedKeys, tradedOffer } of closed) {
+    const resolution = await post(`/api/oracle/resolve/${market}`, headers);
+    const { signature } = await resolution.json() as { signature: string | null };
+    if (signature) tx("Market resolved", signature);
+
+    const triggered = propertyId === 1;
+    const label = triggered ? "YES" : "NO";
     const response = await fetch(new URL(`/api/evidence/${market}?raw=1`, app));
     assert(response.ok, "Evidence endpoint should serve the canonical record");
     const evidence = await response.text();
@@ -151,7 +160,7 @@ async function main(): Promise<void> {
     assert.equal(marketStatusOf(resolved.account.status), triggered ? "resolvedYes" : "resolvedNo");
     assert.equal(resolved.account.coverageActivated.toString(), coverage.toString());
     assert.equal(Buffer.from(resolved.account.evidenceHash).toString("hex"), hashHex);
-    offers = await fetchOffersByMarket(market);
+    const offers = await fetchOffersByMarket(market);
     let paid = 0n;
     for (const winner of triggered ? [homeowner] : trading ? [...bots, judge] : bots) {
       const positions = claimablePositions(winner.publicKey, [resolved], offers);

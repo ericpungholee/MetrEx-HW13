@@ -56,11 +56,12 @@ Run the app with fixtures off and trading disabled. Create Home #1042 at 10,000 
 
 ### Start the demo on the configured Mac
 
-Run the bridge, app and bot worker from the repository root in three terminals. The local env files already set the deployed program and mint. Use the existing operator password from the private app configuration.
+Run the bridge, app and bot worker from the repository root in three terminals. Configure the operator password separately and mount the normalized geometry and scenario registry in a writable private oracle data directory. Set `METREX_ORACLE_DATA_DIR` for the production app. Enable the operator controls on Devnet once the integrity program build is deployed.
 
 ```sh
 node ~/.config/metrex/devnet-bridge.cjs
-pnpm --filter app build && pnpm --filter app start --hostname 127.0.0.1 --port 3014
+pnpm --filter app build
+METREX_ORACLE_DATA_DIR="$HOME/.config/metrex/oracle-data" pnpm --filter app start --hostname 127.0.0.1 --port 3014
 node --env-file=.env --import tsx services/bots/src/index.ts
 ```
 
@@ -79,9 +80,9 @@ The replay uses the January 2025 Palisades Fire perimeter and the fictional prop
 1. Connect the homeowner wallet. Open Home #1042 with 10,000 mUSD of requested coverage. Point out the historical replay label.
 2. Show the three collateralized offers and open one placement transaction in Explorer. At the original rates, the three offers cover 4,000, 3,000 and 3,000 mUSD, with 445 mUSD in premiums and 9,555 mUSD in collateral.
 3. Select the three offers and accept them with one signature. Show the activated coverage and the positions table.
-4. On the settlement page, close the market, show the 500 m trigger on the map and resolve. Show the browser's evidence hash check.
+4. On the settlement page, show the 500 m trigger circle and close the market. Wait for finalized closure, run the oracle, then show the final perimeter and the browser's evidence hash check.
 5. Claim all three YES positions in one transaction. Show the 10,000 mUSD balance increase and link to the claim.
-6. For the secondary market, switch to Home #2210. Show the 3.9% judge offer, the requotes and the network panel. Buy a listed Risk position with a judge wallet and show that wallet claiming after a NO resolution.
+6. For the secondary market, switch to Home #2210. Show the 3.9% judge offer, the requotes and the network panel. Buy a listed Risk position with a judge wallet while trading is open. Close and resolve the market, then show the new holder claiming.
 
 ## Verification and recording
 

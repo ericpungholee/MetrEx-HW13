@@ -9,7 +9,7 @@ import { explorerTx } from "../explorer";
 import { getRpc, type RpcPool } from "../rpc";
 import { createAtaIdempotentIx, getSolLamports, musd, musdAta, musdMint, solToLamports } from "../token";
 import { sendTx } from "../tx";
-import { HttpError, tooMany, unavailable } from "./errors";
+import { tooMany, unavailable } from "./errors";
 
 export const FAUCET_SOL_LAMPORTS = solToLamports("0.05");
 export const FAUCET_MUSD = musd(25_000n);
@@ -21,12 +21,14 @@ export const FAUCET_RESERVE_LAMPORTS = solToLamports("0.01");
 /** Pure rate-limit state (unit-tested). */
 export class FaucetLimiter {
   private readonly last = new Map<string, number>();
+  private recentGrants: number[] = [];
   constructor(
     readonly windowMs = FAUCET_WINDOW_MS,
     readonly maxWallets = FAUCET_MAX_WALLETS,
+    readonly grantsPerMinute = 12,
   ) {}
 
-  /** Reserves a slot or throws 429. Call `release` if the transfer then fails. */
+  /** Reserves a wallet slot and consumes one of the shared minute-budget slots. */
   reserve(wallet: string, now: number): void {
     const prev = this.last.get(wallet);
     if (prev !== undefined && now - prev < this.windowMs) {
@@ -36,6 +38,11 @@ export class FaucetLimiter {
     if (prev === undefined && this.last.size >= this.maxWallets) {
       throw tooMany("Faucet limit reached for this demo");
     }
+    this.recentGrants = this.recentGrants.filter((t) => t > now - 60_000);
+    if (this.recentGrants.length >= this.grantsPerMinute) {
+      throw tooMany("Faucet request limit reached. Retry in a minute.");
+    }
+    this.recentGrants.push(now);
     this.last.set(wallet, now);
   }
 
@@ -100,6 +107,7 @@ export async function faucet(wallet: PublicKey, deps: FaucetDeps = {}): Promise<
   const key = wallet.toBase58();
   const previous = limiter.lastRequest(key);
   limiter.reserve(key, now);
+  let submissionStarted = false;
   try {
     const rpc = deps.rpc ?? getRpc();
     const faucetKp = deps.faucet ?? loadKeypair("faucet");
@@ -115,7 +123,8 @@ export async function faucet(wallet: PublicKey, deps: FaucetDeps = {}): Promise<
       solLamports: FAUCET_SOL_LAMPORTS,
       musdAmount: FAUCET_MUSD,
     });
-    const signature = await sendTx(rpc.connection, ixs, [faucetKp, mintAuthority]);
+    submissionStarted = true;
+    const signature = await sendTx(rpc.connection, ixs, [faucetKp, mintAuthority], { attempts: 1 });
     return {
       wallet: key,
       signature,
@@ -124,8 +133,8 @@ export async function faucet(wallet: PublicKey, deps: FaucetDeps = {}): Promise<
       musdBaseUnits: FAUCET_MUSD.toString(),
     };
   } catch (e) {
-    // Failed before/while sending: let the wallet retry. (A landed tx returns above.)
-    if (!(e instanceof HttpError && e.status === 429)) limiter.release(key, previous);
+    // Once a submission starts, a transport failure can hide a landed grant.
+    if (!submissionStarted) limiter.release(key, previous);
     throw e;
   }
 }

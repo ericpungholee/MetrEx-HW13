@@ -79,13 +79,13 @@ Account layouts, PDA seeds, instruction names and arguments, error codes and `pa
 - Never invent coordinates, fire geometry or dataset hashes. Properties are chosen with `scripts/find-properties.ts` from the real perimeter, with the §8.3 margins.
 - A point inside a perimeter **hole** is not inside the footprint (§8.2).
 - Evidence JSON is canonical (sorted keys, no whitespace, integers only) and hashed with SHA-256 (§8.4).
-- No live government API calls at runtime. Data is packaged in `data/`.
+- No live government API calls at runtime. Development uses archived data in `data/`. Production settlement uses a private `METREX_ORACLE_DATA_DIR` mount.
 
 ### Frontend
 - Never fake a successful transaction. Every displayed trade corresponds to on-chain state.
 - Fixtures exist only behind `NEXT_PUBLIC_USE_FIXTURES=1`; production builds must fail with it on.
 - Every market page shows: *"Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage."*
-- Every market is labelled "Historical replay — outcome already known".
+- Every market discloses historical simulation and public prior knowledge. Evidence and the perimeter require finalized settlement and a matching on-chain evidence hash.
 - Explorer links use `?cluster=devnet`.
 
 ### Secrets
