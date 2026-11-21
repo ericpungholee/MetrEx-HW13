@@ -14,9 +14,13 @@ export function NetworkPanel() {
   return (
     <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded border border-line bg-panel px-4 py-2">
       <div className="text-[10px] font-bold tracking-widest text-faint uppercase">Network · Solana Devnet</div>
-      <Metric label="Program txs (total)" value={s?.txTotal?.toLocaleString("en-US")} unavailable={unavailable} />
+      <Metric label={s?.truncated ? "Program txs (indexed)" : "Program txs (total)"} value={s?.txTotal?.toLocaleString("en-US")} unavailable={unavailable} />
       <Metric label="Program txs (last 10 min)" value={s?.txLast10Min?.toLocaleString("en-US")} unavailable={unavailable} />
-      <Metric label="Total network fees" value={s?.feesSol != null ? `${s.feesSol} SOL` : undefined} unavailable={unavailable} />
+      <Metric
+        label={s?.feesPending || s?.truncated ? "Indexed network fees" : "Total network fees"}
+        value={s?.feesSol != null ? `${s.feesSol} SOL` : undefined}
+        unavailable={unavailable}
+      />
       <Metric
         label="Median latency, your txs"
         value={latency.data?.median != null ? `${(latency.data.median / 1000).toFixed(2)} s (n=${latency.data.n})` : "no txs yet"}
@@ -24,6 +28,7 @@ export function NetworkPanel() {
       {unavailable && (
         <span className="text-[11px] text-faint">{USE_FIXTURES ? "stats unavailable in fixture mode" : "stats unavailable"}</span>
       )}
+      {s?.stale && <span className="text-[11px] text-faint">Showing cached network stats</span>}
     </div>
   );
 }

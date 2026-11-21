@@ -1,7 +1,7 @@
 import { Keypair, type VersionedTransactionResponse } from "@solana/web3.js";
 import { afterEach, expect, it, vi } from "vitest";
 import idl from "../../target/idl/metrex.json";
-import { createMarket, fetchActivity, getConnection, IDL, type WalletSigner } from "./client";
+import { createMarket, fetchActivity, fetchEvidenceText, fetchNetworkStats, getConnection, IDL, type WalletSigner } from "./client";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -52,4 +52,33 @@ it("keeps Explorer links tied to their events when the RPC batch comes back in r
     { name: "MarketClosed", signature: "close-b", slot: 2 },
     { name: "MarketClosed", signature: "close-a", slot: 1 },
   ]);
+});
+
+it("requests the exact evidence bytes for the browser hash check", async () => {
+  const market = Keypair.generate().publicKey;
+  const canonicalEvidence = '{"triggered":true}';
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(canonicalEvidence));
+
+  expect(await fetchEvidenceText(market)).toBe(canonicalEvidence);
+  expect(fetch).toHaveBeenCalledWith(`/api/evidence/${market.toBase58()}?raw=1`, { cache: "no-store" });
+});
+
+it("reports pending fee lookups and cached status to the network panel", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
+    txTotal: 65,
+    txLast10Min: 25,
+    totalFeesLamports: "285000",
+    feesPending: 25,
+    stale: true,
+    truncated: false,
+  }));
+
+  expect(await fetchNetworkStats()).toEqual({
+    txTotal: 65,
+    txLast10Min: 25,
+    feesSol: "0.000285",
+    feesPending: 25,
+    stale: true,
+    truncated: false,
+  });
 });

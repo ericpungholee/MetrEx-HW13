@@ -395,7 +395,7 @@ async function fixtureActivity(address: PublicKey): Promise<ActivityItem[]> {
 /** Evidence record served by Workstream D (GET /api/evidence/[market]); raw bytes as text. */
 export async function fetchEvidenceText(market: PublicKey): Promise<string | null> {
   if (USE_FIXTURES) return (await getFixtureState(PROGRAM_ID)).evidence.get(market.toBase58()) ?? null;
-  const res = await fetch(`/api/evidence/${market.toBase58()}`, { cache: "no-store" });
+  const res = await fetch(`/api/evidence/${market.toBase58()}?raw=1`, { cache: "no-store" });
   if (!res.ok) return null;
   return await res.text();
 }
@@ -862,6 +862,9 @@ export interface NetworkStats {
   txTotal: number | null;
   txLast10Min: number | null;
   feesSol: string | null;
+  feesPending: number;
+  truncated: boolean;
+  stale: boolean;
 }
 
 function pickNumber(obj: Record<string, unknown>, keys: string[]): number | null {
@@ -905,6 +908,9 @@ export async function fetchNetworkStats(): Promise<NetworkStats | null> {
       txTotal: pickNumber(j, ["txTotal", "total", "programTxTotal", "tx_total"]),
       txLast10Min: pickNumber(j, ["txLast10Min", "last10Min", "programTxLast10Min", "tx_last_10_min"]),
       feesSol,
+      feesPending: pickNumber(j, ["feesPending"]) ?? 0,
+      truncated: j.truncated === true,
+      stale: j.stale === true,
     };
   } catch {
     return null;
