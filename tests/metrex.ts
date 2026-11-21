@@ -42,6 +42,9 @@ const BPF_UPGRADEABLE_LOADER = new PublicKey("BPFLoaderUpgradeab1e11111111111111
 const m = (whole: number | bigint): bigint => BigInt(whole) * MUSD_UNIT;
 const bn = (v: bigint | number): BN => new BN(v.toString());
 
+/** Setup transactions wait for `confirmed`, so the next transaction's preflight sees them. */
+const CONFIRMED = { commitment: "confirmed" as const };
+
 /** Expect `p` to fail with the named Anchor error (custom or framework). */
 async function expectError(p: Promise<unknown>, code: string): Promise<void> {
   let caught: unknown;
@@ -89,7 +92,12 @@ async function expectFailureContaining(p: Promise<unknown>, needle: string): Pro
 }
 
 describe("metrex", () => {
-  const provider = anchor.AnchorProvider.env();
+  const envProvider = anchor.AnchorProvider.env();
+  // Confirm and simulate at `confirmed` so every step sees the previous step's state.
+  const provider = new anchor.AnchorProvider(envProvider.connection, envProvider.wallet, {
+    commitment: "confirmed",
+    preflightCommitment: "confirmed",
+  });
   anchor.setProvider(provider);
   const program = anchor.workspace.Metrex as Program<Metrex>;
   const conn = provider.connection;
@@ -127,13 +135,15 @@ describe("metrex", () => {
           lamports: sol * LAMPORTS_PER_SOL,
         }),
       ),
+      [],
+      CONFIRMED,
     );
     return kp;
   }
 
   async function tokenAccount(owner: PublicKey, amount = 0n, mintPk = mint): Promise<PublicKey> {
-    const acct = await createAccount(conn, payer, mintPk, owner, Keypair.generate());
-    if (amount > 0n) await mintTo(conn, payer, mintPk, acct, payer, amount);
+    const acct = await createAccount(conn, payer, mintPk, owner, Keypair.generate(), CONFIRMED);
+    if (amount > 0n) await mintTo(conn, payer, mintPk, acct, payer, amount, [], CONFIRMED);
     return acct;
   }
 
@@ -601,7 +611,7 @@ describe("metrex", () => {
         "InsufficientFunds",
       );
       // Exactly K is enough.
-      await mintTo(conn, payer, mint, poorToken, payer, 1n);
+      await mintTo(conn, payer, mint, poorToken, payer, 1n, [], CONFIRMED);
       const o = await placeOffer(market, poor, poorToken, m(1_000), 400);
       expect(await balance(o.vault)).to.equal(collateral);
       expect(await balance(poorToken)).to.equal(0n);
@@ -1326,7 +1336,7 @@ describe("metrex", () => {
         [m(10_000), 9_999],
       ];
       // The cases together lock more than simpleMarket's 10,000 mUSD of collateral.
-      await mintTo(conn, payer, mint, uwToken, payer, m(50_000));
+      await mintTo(conn, payer, mint, uwToken, payer, m(50_000), [], CONFIRMED);
       for (const [c, b] of cases) {
         const o = await placeOffer(market, uw, uwToken, c, b);
         const off = await program.account.offer.fetch(o.offer);
