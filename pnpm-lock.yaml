@@ -61,6 +61,37 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.5)(tsx@4.23.15)
 
+  packages/server:
+    dependencies:
+      '@anchor-lang/core':
+        specifier: 0.32.3
+        version: 0.32.3(bufferutil@4.2.0)(typescript@5.9.3)(utf-8-validate@6.1.0)
+      '@metrex/geo':
+        specifier: workspace:*
+        version: link:../geo
+      '@metrex/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@solana/spl-token':
+        specifier: ^0.4.13
+        version: 0.4.15(@solana/web3.js@1.99.0(bufferutil@4.2.0)(typescript@5.9.3)(utf-8-validate@6.1.0))(bufferutil@4.2.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.1.0)
+      '@solana/web3.js':
+        specifier: ^1.98.0
+        version: 1.99.0(bufferutil@4.2.0)(typescript@5.9.3)(utf-8-validate@6.1.0)
+    devDependencies:
+      '@types/bn.js':
+        specifier: ^5.1.6
+        version: 5.2.0
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.5)(tsx@4.23.15)
+
   packages/shared:
     devDependencies:
       '@anchor-lang/core':
