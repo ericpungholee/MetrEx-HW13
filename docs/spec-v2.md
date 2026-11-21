@@ -1,7 +1,7 @@
 # MetrEx Exchange v2 — Specification
 
 **Hackathon:** Hack Western 13 · **Track:** MLH Best Use of Solana · **Network:** Solana Devnet
-**Status:** Proposed. Gate V0 (freeze) has not started. Owner decisions are listed in §15.
+**Status:** **Frozen at Gate V0 (2026-11-21).** The owner decisions are recorded in §15, and the freeze review in §0.1. The interfaces in §3 and §6 match the committed IDL `target/idl/metrex_exchange.json`. Changing either needs an explicit human instruction.
 **Supersedes:** the v1.1 product ([spec.md](spec.md)) as the user-facing experience. The v1.1 program stays deployed, frozen and unchanged as the fallback demo.
 **Demo constraint:** one presenter, one Phantom wallet, four minutes.
 
@@ -19,8 +19,8 @@ The draft's core model works: fungible outcome tokens, split, merge and redeem, 
 |---|---|---|---|---|
 | 1 | C | Invariants are written as raw equalities (`vault_balance = YES_supply × 1 mUSD`) | Anyone can transfer 1 base unit into a vault or escrow. Any holder can burn their own SPL shares without a mint authority. An on-chain equality check would then block every redemption. Tests and the bots would also flag a valid market as broken | Book obligations in program state (`pairs_outstanding`). Require `balance ≥ obligation`, never `=`. Payouts use booked amounts and never the raw balance (§4.6) |
 | 2 | C | Two Open rounds can share one historical fire | Round A closes and reveals the Palisades perimeter while Round B, on the same fire, still trades. This is the v1.2 cross-market leak, moved up to the round level | At most one Open round at a time. `create_round` requires the previous round to be Closed (§6.3) |
-| 3 | C | Settlement depends on the operator staying alive | If the controller never closes or the oracle never resolves, single-side holders are never paid. Recovery depends on the operator | `trading_ends_at` deadline. Anyone can close after it. After `closed_at + resolution_timeout_s` the oracle can no longer resolve, and anyone can invalidate for 0.5 / 0.5 (§6.6, §9.5) |
-| 4 | C | Invalidation is a discretionary admin power with no window | After closing, the admin knows the public outcome. It could invalidate a market where the house bots are losing and recover half | Invalidation only after the round is Closed. The admin path stays as a disclosed trusted escape hatch. Resolution and invalidation windows don't overlap, so the timeout path is deterministic (§4.5, §16) |
+| 3 | C | Settlement depends on the operator staying alive | If the controller never closes or the oracle never resolves, single-side holders are never paid. Recovery depends on the operator | `trading_ends_at` deadline. Anyone can close after it. After `closed_at + resolution_timeout_s` the oracle can no longer resolve, and anyone can `expire_market` for 0.5 / 0.5 (§4.5, §9.5) |
+| 4 | C | Invalidation is a discretionary admin power with no window | After closing, the admin knows the public outcome. It could invalidate a market where the house bots are losing and recover half | Emergency `invalidate_market` needs the admin **and** the oracle to sign, and only after the round is Closed. The oracle could already decide YES or NO, so co-signing adds no new trust, but one insider can no longer trigger it. The timeout path is a separate permissionless instruction (§4.5, §16) |
 | 5 | C | Order PDAs keyed by the market's order sequence | Two bots place orders in the same slot, derive the same address, and one fails. This is the v1.0 offer-counter bug again | PDA seeds use a client nonce. The program stores the sequence in the order and never uses it in a seed (§6.5) |
 | 6 | C | A taker's quote can be replayed against a replaced order | A maker cancels and re-places at the same PDA (same nonce) at a worse price. The taker's transaction, built from the old book, fills at the new price | `take_order` carries the taker's `limit_price_bps` and `expected_seq`. The fill fails if the order instance or the price differs (§5.7) |
 | 7 | C | Token accounts are not bound to the market | A taker passes YES tokens from market A to fill a SELL order on market B | Every token account is constrained to that market's mints, vault or the order's escrow. `order.market == market` (§5.4, invariant I10) |
@@ -45,6 +45,19 @@ The draft's core model works: fungible outcome tokens, split, merge and redeem, 
 | 26 | L | "Current price" is undefined | Mid, last trade and best ask give three different headline numbers | Headline = book midpoint when both sides exist and the spread is ≤ 10¢. Otherwise the last fill, otherwise "—". The label says which (§10.3) |
 | 27 | L | `split` after close, `merge` after resolution and delegate redemption are not specified | They create extra accounting paths that need tests | `split` requires the round Open. `merge` requires the market Unresolved. Redemption is owner-signed only (§4) |
 | 28 | L | Maximum loss for a sale is undefined | For a sale, "maximum loss" has no meaning without a cost basis | Defined per action in §10.4. There is no P&L without a cost basis |
+
+### 0.1 Freeze review (2026-11-21)
+
+The owner approved v2 and asked for six checks before the freeze. Results:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | D1–D7 defaults | Applied as recommended, except D3, which was tightened by check 2. Recorded in §15 |
+| 2 | Economic manipulation of permissionless invalidation | Four risks examined, all closed (§4.5): **(a)** A single admin moving a market with a known loss to 50/50 → emergency invalidation now needs admin **and** oracle. **(b)** A tiny timeout letting losing-side holders race the oracle → on-chain bounds of 10 s to 30 days, and the Devnet setup refuses anything below 86,400 s. **(c)** A late close shortening the oracle's window → the window counts from `closed_at`, so the oracle always gets the full timeout after closure. **(d)** The oracle and an expirer racing at the boundary → the windows are disjoint (`now < T` resolves, `now ≥ T` expires), so exactly one can succeed. Emergency recovery (`invalidate_market`, `expire_market`) uses separate instructions from normal settlement (`resolve_market`) and is recorded in `Market.resolution_path` |
+| 3 | Contract guarantees vs. matcher fairness | New §5.10 separates what the program enforces from what is only service policy, and the UI must not present policy as a guarantee |
+| 4 | Adversarial arbitrage and crossed-quote tests | §13.2 adds named tests across all three bots and both books: within-book crosses, cross-book arbitrage for every ordered bot pair, randomized inventories and user books, and an all-bots book that gives the keeper nothing to match. Implemented as pure tests in `@metrex/exchange` at V0 |
+| 5 | Reliable one-wallet partial fill | Found a flaw: inventory skew after the presenter's buy can raise Bot B's bid above Bot C's, so the 200-share sell could fill 150, or all 200 if bots end up quoting the same price. Fix: the featured market runs with skew off, and each bot's bid prices are fixed and distinct (§8.3). An executable test replays the whole demo sequence against the bot ladder (§13.2) |
+| 6 | Reset with a new round without touching settled accounts | `create_round` writes only Config and the new Round. No instruction reopens or closes a Round, Market, mint or vault. Market PDAs include the round, so a new round can never reuse a market. A test checks that every byte of the earlier round's accounts is unchanged after a reset, and that the earlier market still redeems afterward (§12, §13.1) |
 
 **Product-level tradeoff (not a flaw, flagged for the owner):** v1 was hedger-initiated, and the homeowner created the contract. In v2 the operator lists markets and a homeowner buys YES. Size is preserved, since 1 YES = 1 mUSD of protection. Location was already limited to registered properties. The pitch changes from "list your risk" to "buy protection on a listed risk".
 
@@ -111,6 +124,11 @@ Every market page shows, verbatim: *"Pays the full amount if the final mapped fo
 | `MAX_SPLIT_QTY` | 1,000,000 pairs per call |
 | `DEFAULT_TRIGGER_DISTANCE_M` | 500 |
 | `SCENARIO_PALISADES_2025` | 1 |
+| `MIN_RESOLUTION_TIMEOUT_S` / `MAX_RESOLUTION_TIMEOUT_S` | 10 / 2,592,000 (30 days) |
+| `MAX_ROUND_DURATION_S` | 2,592,000 (30 days between `create_round` and `trading_ends_at`) |
+| `OUTCOME_YES` / `OUTCOME_NO` | 0 / 1 (instruction arguments and `Order.outcome`) |
+| `SIDE_BUY` / `SIDE_SELL` | 0 / 1 |
+| `PATH_ORACLE` / `PATH_EMERGENCY` / `PATH_EXPIRY` | 1 / 2 / 3 (`Market.resolution_path`; 0 = unresolved) |
 
 **Client limits (frozen at V0, verified by a transaction-size test):** `MAX_TAKE_LEVELS = 4` per market-order transaction, `MAX_MATCH_LEVELS = 3` per limit-order transaction.
 
@@ -154,7 +172,17 @@ Partial redemption is allowed. Burning makes double redemption impossible. Losin
 
 ### 4.5 Invalid
 
-Invalid pays 0.5 mUSD per share to both sides. It is a defined fallback for a market that can't be resolved, not a reversal of trades. Anyone who bought above 0.5 mUSD loses on Invalid. The UI states this beside the trade button. Who can invalidate and when is defined in §6.6 (`invalidate_market`).
+Invalid pays 0.5 mUSD per share to both sides. It is a defined fallback for a market that can't be resolved, not a reversal of trades. Anyone who bought above 0.5 mUSD loses on Invalid. The UI states this beside the trade button.
+
+**Normal settlement and emergency recovery are separate instructions.** Let `T = round.closed_at + config.resolution_timeout_s`.
+
+| Path | Instruction | Signers | Window | Result |
+|---|---|---|---|---|
+| Normal | `resolve_market(triggered, evidence_hash)` | oracle | round Closed, `now < T` | Yes or No, `resolution_path = 1` |
+| Emergency | `invalidate_market(reason)` | admin **and** oracle | round Closed | Invalid, `resolution_path = 2` |
+| Liveness | `expire_market()` | anyone | `now ≥ T` | Invalid, `resolution_path = 3` |
+
+Each market resolves exactly once, through whichever path lands first. The oracle can never resolve at or after `T`, so the oracle and an expirer can't both succeed. A losing-side holder gains from Invalid only if the oracle stays offline for the whole timeout (86,400 s on Devnet). The holder has no on-chain way to cause that.
 
 ### 4.6 Collateral invariants (I1)
 
@@ -253,6 +281,20 @@ Both close the Order and its escrow. The entire escrow balance, including any un
 
 Round Closed, or `now ≥ trading_ends_at`, stops `split`, `place_order`, `take_order` and `match_orders` on every member market. That check is the only lifecycle input to those instructions. `merge`, `cancel_order` and `sweep_order` keep working. Outcome tokens are standard SPL tokens. The cutoff stops MetrEx execution, not peer-to-peer SPL transfers.
 
+### 5.10 What the contract guarantees and what is only policy
+
+The UI and the pitch must not describe a policy item as a guarantee.
+
+| Guaranteed by the program (holds against any client, keeper or operator) | Policy of MetrEx's off-chain services (holds only while they behave) |
+|---|---|
+| Every share is backed by escrowed mUSD (I1). Only `split` mints (I2) | **Price-time priority.** Which eligible counterparty a keeper or client picks |
+| Every resting order is fully escrowed (I3) | **Timeliness.** How quickly crossed orders are matched or orders are swept |
+| No fill outside either limit price. Execution at the older or resting price. Exact refunds (I4) | **Book completeness.** Whether the indexer shows every order |
+| Fills never exceed remaining quantity. Cancelled orders can't fill. ABA is rejected (I4, I11) | **Bot behaviour.** Post-only, non-crossing, complement NO quotes, spreads, sizes |
+| No trading after close or the deadline on any member market (I6) | **Chart and volume.** Derived from events by the indexer |
+| Settlement authority, windows and exact payouts (I7–I9) | **When the controller closes** (before the deadline) and **when the oracle submits** (within the window) |
+| Escrow and rent always return to the maker (I11). Self-trade is rejected (I12) | Self-trade across two wallets of one person can't be detected |
+
 ---
 
 ## 6. On-chain program `metrex_exchange`
@@ -269,7 +311,7 @@ New Anchor program in `programs/metrex-exchange/`, pinned to the same toolchain 
 | `collateral_mint` | Pubkey | 6 decimals, **no freeze authority**, checked at init |
 | `latest_round` | Pubkey | `Pubkey::default()` until the first round. The frontend features this round |
 | `next_round_id` | u64 | |
-| `resolution_timeout_s` | i64 | > 0. Devnet 86,400. The local test validator uses 10 |
+| `resolution_timeout_s` | i64 | On-chain bounds `[MIN_RESOLUTION_TIMEOUT_S, MAX_RESOLUTION_TIMEOUT_S]`. `setup-devnet-v2.ts` refuses anything below 86,400. The local test validator uses 10 |
 | `version` | u8 | 2 |
 | `bump` | u8 | |
 
@@ -310,6 +352,8 @@ One market per property per round.
 | `pairs_outstanding` | u64 | `split` adds, `merge` subtracts |
 | `next_order_seq` | u64 | |
 | `created_at`, `resolved_at` | i64 | |
+| `resolution_path` | u8 | 0 unresolved, 1 oracle, 2 emergency, 3 expiry |
+| `invalid_reason` | u8 | Set by `invalidate_market`. 0 otherwise |
 | `bump`, `yes_mint_bump`, `no_mint_bump`, `vault_bump` | u8 | |
 
 ### 6.5 `Order` — `["order", market, maker, client_nonce: u64]`
@@ -346,29 +390,53 @@ Fills and matches take Market and Round **read-only**, so they don't serialize b
 | `cancel_order()` | maker | Order exists | §5.8 |
 | `sweep_order()` | anyone | §5.8 table | §5.8 |
 | `close_round()` | `round_controller` any time while Open; **anyone** once `now ≥ trading_ends_at` | Round Open | Closed; `closed_at = now` |
-| `resolve_market(triggered, evidence_hash)` | `oracle_authority` | Round Closed; market Unresolved; `now < closed_at + resolution_timeout_s`; hash non-zero | Outcome Yes or No; store hash; `resolved_at`; `round.resolved_count += 1` |
-| `invalidate_market(reason: u8)` | `admin` once the round is Closed, **or anyone** once `now ≥ closed_at + resolution_timeout_s` | Round Closed; market Unresolved | Outcome Invalid; `round.resolved_count += 1` |
+| `resolve_market(triggered, evidence_hash)` | `oracle_authority` | Round Closed; market Unresolved; `now < T`; hash non-zero | Outcome Yes or No; store hash; `resolved_at`; path 1; `round.resolved_count += 1` |
+| `invalidate_market(reason: u8)` | `admin` **and** `oracle_authority` | Round Closed; market Unresolved | Outcome Invalid; path 2; `invalid_reason`; `round.resolved_count += 1` |
+| `expire_market()` | anyone | Round Closed; market Unresolved; `now ≥ T` | Outcome Invalid; path 3; `round.resolved_count += 1` |
 | `redeem(outcome, q)` | holder | Market resolved; §4.4 | §4.4 |
 
-Resolution and invalidation windows don't overlap for anyone except the admin. Once the timeout passes, the oracle is locked out. That makes the liveness fallback deterministic (flaw #3).
+`T = round.closed_at + config.resolution_timeout_s`. The normal and liveness windows are disjoint (flaw #3, §0.1 check 2).
+
+**Account contexts (frozen).** Every token account is bound by mint and authority, or by its canonical ATA address. Mints, vault and escrows are bound by PDA seeds or by `has_one` on Market or Order. Market and Round are read-only in `take_order` and `match_orders`.
+
+- `split` / `merge`: holder, config, round (read), market (mut), yes_mint, no_mint, vault, collateral_mint, holder collateral account, holder YES and NO ATAs (`split` creates them if needed).
+- `redeem`: holder, config, market, outcome_mint (must be the market's YES or NO mint, per `outcome`), vault, holder share account, holder collateral account.
+- `place_order`: maker, config, round, market (mut), order (init), escrow_mint, escrow (init), maker_source, receive_mint, maker_receive (canonical ATA, created if needed).
+- `take_order`: taker, config, round, market, order, escrow, escrow_mint, receive_mint, maker_receive (address = ATA(order.maker, receive_mint)), taker_source, taker_receive (ATA, created if needed).
+- `match_orders`: caller, config, round, market, outcome_mint, collateral_mint, buy_order, buy_escrow, sell_order, sell_escrow, buyer_shares = ATA(buy.maker, outcome_mint), buyer_collateral = ATA(buy.maker, collateral), seller_collateral = ATA(sell.maker, collateral).
+- `cancel_order`: maker, config, market, order (close → maker), escrow, escrow_mint, maker_refund (ATA, created if needed).
+- `sweep_order`: caller, maker (address = order.maker, receives rent), config, round, market, order (close → maker), escrow, escrow_mint, maker_refund (ATA, created if needed, paid by caller).
+
+From V0 until V2 lands, the five order instructions keep their full account contexts but return `NotImplemented`.
 
 ### 6.7 State machines
 
 ```
 Round:   Open ──close_round──▶ Closed                 (no reopen instruction exists)
-Market:  Unresolved ──resolve_market──▶ Yes | No      (round Closed, inside the window)
-         Unresolved ──invalidate_market──▶ Invalid    (admin after close, or anyone after the timeout)
+Market:  Unresolved ──resolve_market──▶ Yes | No      (oracle; round Closed; now < T)
+         Unresolved ──invalidate_market──▶ Invalid    (admin + oracle; round Closed)
+         Unresolved ──expire_market──▶ Invalid        (anyone; now ≥ T)
 Order:   exists(remaining>0) ──fills──▶ exists(remaining=0)
          any ──cancel_order | sweep_order──▶ closed
 ```
 
 ### 6.8 Errors (named, frozen at V0)
 
-`Unauthorized`, `InvalidMint`, `InvalidTokenAccount`, `InvalidMintConfig`, `RoleConflict`, `InvalidCoordinates`, `InvalidTriggerDistance`, `UnsupportedScenario`, `ScenarioMismatch`, `PreviousRoundOpen`, `InvalidDeadline`, `InvalidTimeout`, `RoundNotOpen`, `TradingEnded`, `RoundNotClosed`, `MarketResolved`, `MarketNotResolved`, `ResolutionWindowClosed`, `InvalidationNotAllowed`, `InvalidEvidenceHash`, `InvalidOutcome`, `InvalidSide`, `InvalidPrice`, `InvalidQuantity`, `InvalidExpiry`, `OrderExpired`, `OrderNotActive`, `OrderMismatch`, `OrderSeqMismatch`, `OrdersDoNotCross`, `PriceLimitExceeded`, `SelfTrade`, `NotSweepable`, `InsufficientPairs`, `LosingOutcome`, `InsufficientFunds`, `MathOverflow`.
+`Unauthorized`, `InvalidMint`, `InvalidTokenAccount`, `InvalidMintConfig`, `RoleConflict`, `InvalidCoordinates`, `InvalidTriggerDistance`, `UnsupportedScenario`, `ScenarioMismatch`, `PreviousRoundOpen`, `InvalidDeadline`, `InvalidTimeout`, `RoundNotOpen`, `TradingEnded`, `RoundNotClosed`, `MarketResolved`, `MarketNotResolved`, `ResolutionWindowClosed`, `ResolutionWindowOpen`, `InvalidEvidenceHash`, `InvalidOutcome`, `InvalidSide`, `InvalidPrice`, `InvalidQuantity`, `InvalidExpiry`, `OrderExpired`, `OrderNotActive`, `OrderMismatch`, `OrderSeqMismatch`, `OrdersDoNotCross`, `PriceLimitExceeded`, `SelfTrade`, `NotSweepable`, `InsufficientPairs`, `LosingOutcome`, `InsufficientFunds`, `MathOverflow`, `NotImplemented` (V0/V1 order-instruction stubs only; never returned once V2 ships). Codes start at 6000 in this order.
 
 ### 6.9 Events
 
-`RoundCreated`, `MarketCreated`, `SharesSplit`, `SharesMerged`, `OrderPlaced` (all order fields), `OrderFilled`, `OrderCancelled` (`swept: bool`, returned amounts), `RoundClosed`, `MarketResolved` (outcome, evidence hash), `SharesRedeemed`.
+| Event | Fields |
+|---|---|
+| `RoundCreated` | round, round_id, scenario_id, dataset_sha256, trading_ends_at |
+| `MarketCreated` | market, round, property_id, yes_mint, no_mint, vault |
+| `SharesSplit` / `SharesMerged` | market, holder, quantity, amount |
+| `OrderPlaced` | market, order, maker, outcome, side, price_bps, quantity, seq, expires_at |
+| `OrderFilled` | see below |
+| `OrderCancelled` | market, order, maker, swept, remaining_qty, returned_amount |
+| `RoundClosed` | round, closed_at, by_controller |
+| `MarketResolved` | market, round, outcome (1 Yes, 2 No, 3 Invalid), path, evidence_hash, reason |
+| `SharesRedeemed` | market, holder, outcome, quantity, payout |
 
 `OrderFilled { market, outcome, buy_order, sell_order, buyer, seller, quantity, price_bps, quote_amount, buyer_refund, maker_order }`. In a direct take, the taker's order field is `Pubkey::default()`. `maker_order` is the older or resting order. These events are the only source for trades, volume and charts. Use `emit!`. The demo's transactions are small enough that log truncation isn't a risk. A test asserts every event in a 4-level market order is parsed.
 
@@ -383,7 +451,7 @@ Order:   exists(remaining>0) ──fills──▶ exists(remaining=0)
 | I5 | Conservation: total mUSD across wallets, vaults and escrows is unchanged by every program instruction. YES and NO supply change only through `split` (+), `merge` (−) and `redeem` (−) |
 | I6 | Lifecycle: trading only when Open, before the deadline and Unresolved; resolution only when Closed; one Open round; markets only in Open rounds with a matching scenario; one market per (round, property) |
 | I7 | Authorities come only from Config. No instruction takes an authority as an argument |
-| I8 | Each market resolves once. YES or NO only within the window. Invalid only by admin after close or by anyone after the timeout |
+| I8 | Each market resolves once. YES or NO only by the oracle while `now < T`. Emergency Invalid needs admin and oracle signatures. Anyone can expire to Invalid only when `now ≥ T` |
 | I9 | Redemption burns only the signer's tokens, pays only the signer's mUSD account, only for winning or Invalid outcomes, at the exact amount |
 | I10 | Cross-market isolation: every token account matches this market's mints, vault or the order's escrow, and `order.market == market` |
 | I11 | Cancel and sweep return the full escrow and rent to the maker. A closed order can't be filled. ABA is defeated by `expected_seq` |
@@ -446,7 +514,7 @@ On a new Open market: split the configured inventory, then quote both books. Kee
 
 At zero inventory this gives YES bids 410 (C), 400 (B), 370 (A) and asks 430 (A), 500 (B), 590 (C). The highest bid is below the lowest ask, so the default ladder never crosses, and the post-only clamp is only a safety net. A test asserts this for the shipped parameters.
 
-1. Skew: `ref' = ref + clamp(k × net_yes / tolerance, ±skew_max)`.
+1. Skew: `ref' = ref + clamp(k × net_yes / tolerance, ±skew_max)`. **On the featured market `skew_max = 0`** (§8.3). Inventory limits still apply there by dropping levels, never by moving prices.
 2. YES bid = `ref' − h`, YES ask = `ref' + h`.
 3. **Complement NO quotes:** NO bid = 10,000 − YES ask, NO ask = 10,000 − YES bid. A bot's own quotes can then never offer split-and-sell or buy-and-merge arbitrage.
 4. **Post-only clamp** against the live book (all makers, including other bots and users): bid ≤ best opposing ask − 1, ask ≥ best opposing bid + 1, applied to both books after step 3. Drop any level that clamping would invert. Bots never take liquidity, never cross each other and never fill a user's resting order through the keeper. This is what keeps the demo's resting remainder resting.
@@ -455,7 +523,17 @@ Property test: for random books and inventories, no bot quote crosses the book, 
 
 ### 8.3 Demo depth guarantee
 
-On the featured market at zero inventory, the best YES bid is Bot C's 100 @ 410, so a 200-share sell limited at 410 fills 100 and rests 100. Bot B's next bid is 400, below the limit. The top two YES ask levels (A 200 @ 430, B 150 @ 500) hold at least 300 shares. The prepare script checks both (§12). The trade panel's live preview makes the demo correct even if the numbers drift.
+On the featured market, the best YES bid is Bot C's 100 @ 410, so a 200-share sell limited at 410 fills 100 and rests 100. Bot B's next bid is 400, below the limit. The top two YES ask levels (A 200 @ 430, B 150 @ 500) hold at least 300 shares.
+
+**Why this is reliable with one wallet.** The partial fill needs three things at signing time: the depth at prices ≥ 410 must be positive and below 200, the presenter's shares must cover the sell, and the matched order must still exist.
+
+- **Depth.** With skew off, the bid prices 410, 400 and 370 don't depend on inventory, so only Bot C's 100 shares are at or above 410. Each bot's bid price is distinct, so two bots can never aggregate at one price.
+- **Shares.** The presenter holds 300 YES from the market buy.
+- **Order still exists.** Bots requote a level only when its target changes. Bot C's target bid doesn't change until it is filled.
+- **The resting remainder stays resting.** Once the presenter's 100 rest at 410, the post-only clamp keeps every bot bid at or below 409.
+- **Fallbacks.** If anything still drifts, the preview shows the actual split before signing, and a stale order makes the whole transaction fail with nothing moved. The UI then re-quotes once.
+
+The prepare script asserts this exact ladder before the demo (§12), and §13.2 replays the full sequence. The prepare script checks both (§12). The trade panel's live preview makes the demo correct even if the numbers drift.
 
 ### 8.4 Information isolation (flaw #14)
 
@@ -490,7 +568,7 @@ After the first settled round, the outcome is public on-chain and through MetrEx
 
 ### 9.5 Failure
 
-Closing never depends on the oracle. If resolution fails partway, trading stays closed, resolved markets stay final and unresolved markets stay pending. The oracle retries idempotently until the window ends. After that, anyone can invalidate. No evidence is published before that market's finalized resolution.
+Closing never depends on the oracle. If resolution fails partway, trading stays closed, resolved markets stay final and unresolved markets stay pending. The oracle retries idempotently until the window ends. After that, anyone can call `expire_market` (Invalid, 0.5 / 0.5). A broken dataset can instead be handled at once with admin and oracle `invalidate_market`. No evidence is published before that market's finalized resolution.
 
 ---
 
@@ -566,6 +644,8 @@ Numbers at zero bot inventory: buying 300 YES costs 8.6 + 5.0 = 13.6 mUSD. Selli
 
 ## 12. Demo repeatability — `scripts/prepare-demo-v2.ts` (idempotent)
 
+**Reset guarantee (program-level).** A reset is a new round, never a mutation. `create_round` writes only `Config.latest_round`, `Config.next_round_id` and the new Round. It requires the previous round to be Closed, but it doesn't touch that round. No instruction reopens a round or closes a Round, Market, mint or vault account. Every market PDA includes its round, so a new round can't reuse a market. Settled markets from earlier rounds stay redeemable forever. An earlier round that closed but didn't fully settle can still be resolved inside its window or expired after it, independently of the new round.
+
 1. Verify the Devnet genesis hash, the v2 program ID, Config, and that the collateral mint is the existing mUSD mint.
 2. If the latest round is Open: if it is fresh (created by this script, only bot fills) and has more than 2 h to its deadline, reuse it. Otherwise settle it first: close, resolve each market, sweep. Never reopen a round or reuse a resolved market.
 3. Create a new round with the committed dataset hash from `data/scenarios.json` and `trading_ends_at = now + 24 h`. Create markets for properties 1 and 2.
@@ -585,6 +665,8 @@ A helper `assertMarketInvariants(market)` checks I1, I3 and I5 after **every** s
 - **Orders:** BUY and SELL placement escrow. Insufficient balance. Price 1 and 9,999. Quantity 1 and `MAX_ORDER_QTY`. Overflow attempts. Expired placement.
 - **Fills:** take at the maker price; taker limit violated; `expected_seq` ABA (cancel and re-place the same nonce at a worse price → `OrderSeqMismatch`); two takers competing for one order, where the second gets the remainder or fails; self-trade; wrong market's mint; wrong escrow; match at the older price both ways with an exact refund; partial fills down to zero; fill after cancel; cancel after a partial fill; the same escrow in two matches in one transaction.
 - **Lifecycle:** fills fail after `close_round` and after `trading_ends_at`. Anyone can close after the deadline but not before. A second Open round is rejected. Market in a Closed round rejected. Scenario mismatch rejected. Duplicate (round, property) rejected. Resolve before close is rejected. Resolve twice is rejected. Resolve after the timeout is rejected. Non-admin invalidation before the timeout is rejected. Permissionless invalidation after the timeout succeeds. Unauthorized signers are rejected for every role.
+- **Settlement paths:** emergency `invalidate_market` with admin only, with oracle only, and with both, where only both succeeds. `expire_market` before `T` fails and at or after `T` succeeds. `resolve_market` at or after `T` fails. After any path, every other path fails with `MarketResolved`. Timeout bounds are checked at init.
+- **Reset:** after round 1 is closed and resolved, `create_round` for round 2 leaves every byte of round 1's Round, Market, mints and vault unchanged. Round 1 redemptions still succeed, and creating a market in the closed round 1 is rejected.
 - **Recovery:** sweep after close returns SELL shares and BUY mUSD with rent to the maker. Sweep before close is rejected unless expired or filled. Sweep after the maker closed its ATA recreates it. Redeem after sweep succeeds. Resolution while orders are still escrowed succeeds.
 - **Size:** a serialized 4-level market order and a 3-level limit order fit in 1,232 bytes and under the compute limit, with all events parsed.
 - **End-to-end conservation:** full YES, NO and Invalid lifecycles with three makers and two takers. Total mUSD is conserved, and every winner receives exactly its entitlement.
@@ -592,7 +674,14 @@ A helper `assertMarketInvariants(market)` checks I1, I3 and I5 after **every** s
 ### 13.2 TypeScript
 
 - `@metrex/exchange`: quote math, book projection, price-time ordering, cross detection, the market-order planner (levels, slippage, level limits) and the chart reducer.
-- Bots: no-cross and no-arbitrage property tests, complement quotes, skew bounds, requote thresholds, and the isolation import test.
+- **Bots (adversarial, `@metrex/exchange` `ladder.test.ts` at V0, reused by `services/bots`):**
+  - `bots-no-cross-yes` / `bots-no-cross-no`: with the shipped parameters and zero inventory, the highest bid of any bot is below the lowest ask of any bot, on each book.
+  - `bots-no-cross-book-arb`: for every ordered pair of bots (i, j), including i = j, `yes_bid_i + no_bid_j ≤ 10,000` and `yes_ask_i + no_ask_j ≥ 10,000`. Split-and-sell and buy-and-merge never pay across the combined bot quotes.
+  - `bots-randomized`: 5,000 seeded cases with random inventories within tolerance and random user orders on both books. After the post-only clamp, the full book (bots and users) has no new cross created by a bot, and the cross-book arbitrage bound holds for all bot pairs.
+  - `bots-respect-resting-user`: a user ask inside the bot spread is never crossed by any bot bid after requoting, on either book.
+  - `bots-keeper-idle`: a book of only bot orders gives the keeper's cross detector zero matches.
+  - `demo-partial-fill`: replay §11 against the featured ladder. The buy of 300 fills 200 @ 430 and 100 @ 500. The sell of 200 @ 410 fills exactly 100 @ 410 and rests 100. After every bot requotes, the resting 100 is still uncrossed.
+- Bots: complement quotes, skew bounds, requote thresholds, and the isolation import test.
 - Indexer: event deduplication, restart rebuild giving an identical book, and hiding orders with a missing ATA.
 - Oracle: round gate on-chain, dataset hash mismatch refusal, evidence v2 canonical bytes, idempotent retry.
 
@@ -622,23 +711,23 @@ New: `programs/metrex-exchange/`, `tests/exchange.ts`, `packages/exchange/` (`@m
 
 ---
 
-## 15. Owner decisions required before Gate V0
+## 15. Owner decisions (approved 2026-11-21)
 
-| # | Decision | Recommendation |
+The owner approved v2 as the primary direction and asked for the recommended defaults unless they conflict with collateral safety, market integrity or the demo.
+
+| # | Decision | Final |
 |---|---|---|
-| D1 | New program ID for v2. Keep v1.1 frozen as the fallback | Yes |
-| D2 | Devnet SOL for the v2 deploy: about 4–5 SOL for program rent, plus bots, keeper and presenter | Human funds the deployer through the Solana Foundation faucet, as for Gate 2 |
-| D3 | Resolution timeout and permissionless invalidation; admin early invalidation kept and disclosed | Yes. 86,400 s on Devnet |
-| D4 | Featured market Home #1042 (YES), with Home #2210 (NO) in the same round | Yes |
-| D5 | Markets listed by the controller only (homeowners no longer create markets) | Yes |
-| D6 | Seeded warm-up trades from a labelled team wallet (`judge-1`) so the chart has fills at 0:00 | No. The quote-midpoint history (§7.3) already shows real data, and staged trades invite questions |
-| D7 | Blind replay (secret longitude shift) | No. Out of scope, as in the v1.2 review |
-
----
+| D1 | Program | **New program `metrex_exchange` at a new program ID.** v1.1 (`AHSbJKM2…igu8X`) stays deployed, frozen and unupgraded as the fallback demo |
+| D2 | Devnet SOL | **No v2 deploy until local gates V1–V3 pass.** A human then funds about 4–5 SOL for program rent plus top-ups for the bots, keeper and presenter |
+| D3 | Settlement windows | **Tightened (§4.5, §0.1 check 2).** Normal settlement: oracle only, while `now < T`. Emergency `invalidate_market`: admin **and** oracle. Liveness `expire_market`: anyone, once `now ≥ T`. Timeout bounds 10 s to 30 days on-chain. Devnet uses 86,400 s |
+| D4 | Featured market | **Home #1042 (YES)**, with Home #2210 (NO) in the same round for the independent NO validation |
+| D5 | Market listing | **Round controller only.** One market per (round, property) |
+| D6 | Warm-up trades | **None.** The chart uses fills plus quote history rebuilt from on-chain order events |
+| D7 | Blind replay | **Not built.** The UI keeps the public-outcome disclosure |
 
 ## 16. Known limits (disclose, don't fix)
 
-- **Trusted roles:** the oracle decides the outcome against a committed dataset, the controller decides when to close, and the admin can invalidate early. Mitigation: close and resolve back to back, and the timeout lockout.
+- **Trusted roles:** the oracle decides the outcome against a committed dataset, and the controller decides when to close. Admin and oracle together can invalidate. Mitigation: close and resolve back to back, and the timeout lockout.
 - **Matching fairness:** price-time priority is service policy. A different client can choose a different eligible counterparty. Limit prices and escrow are always enforced.
 - **Public outcome:** this is a replay, so the house bots lose to anyone who checks the public perimeter. mUSD has no value.
 - **Peer-to-peer transfers** of shares continue after close at the SPL level.

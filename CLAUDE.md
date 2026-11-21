@@ -11,7 +11,7 @@ The product has two generations in this repo:
 | | v1.1 (deployed, frozen) | v2 Exchange (current work) |
 |---|---|---|
 | Model | Per-offer RFQ underwriting, transferable claim rights | Binary outcome tokens + escrowed order book |
-| Program | `programs/metrex` at `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` | `programs/metrex-exchange` (new program ID, not yet created) |
+| Program | `programs/metrex` at `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` | `programs/metrex-exchange` (new program ID, local only until V3 passes) |
 | Spec | `docs/spec.md` | **`docs/spec-v2.md`** |
 | Plan | `docs/build-plan.md` (Gates 0–6, all passed) | `docs/build-plan-v2.md` (Gates V0–V6) |
 
@@ -93,7 +93,8 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 ### Authority and lifecycle
 - Admin, round controller, oracle and collateral mint come **only** from `Config`. No instruction accepts an authority argument.
 - Market coordinates come only from a registered `Property`. One market per (round, property). The property's scenario must equal the round's.
-- **At most one Open round.** One `close_round` stops every member market. Resolution needs a Closed round and must happen before `closed_at + resolution_timeout_s`. After that, anyone can invalidate.
+- **At most one Open round.** One `close_round` stops every member market. With `T = closed_at + resolution_timeout_s`, settlement and recovery are separate instructions: the oracle alone resolves (`resolve_market`, only while `now < T`), admin and oracle together invalidate in an emergency (`invalidate_market`), and anyone can expire to Invalid once `now ≥ T` (`expire_market`).
+- Contract guarantees and off-chain policy (price-time priority, keeper speed, bot behaviour) are listed separately in spec-v2 §5.10. Never present policy as a guarantee.
 - Redemption burns the signer's own tokens and pays the signer's own mUSD account. There is no redirection and no delegate path.
 - Check mint, owner and market binding on every token account (I10).
 

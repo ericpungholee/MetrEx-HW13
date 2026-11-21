@@ -8,33 +8,23 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 
 | Gate | Status | Notes |
 |---|---|---|
-| V0 — Freeze | **Blocked on owner decisions** | spec-v2 §15 D1–D7 |
+| V0 — Freeze | In progress | Spec frozen 2026-11-21 after the §0.1 freeze review |
 | V1 — Binary tokens | Not started | |
 | V2 — Trading protocol | Not started | Security review (R) runs after this gate |
 | V3 — Engine and liquidity (local) | Not started | |
-| V4 — Devnet | Not started | Needs Devnet SOL for the new program |
+| V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
 | V6 — Phantom rehearsal | Not started | |
 
-### Most serious fixes to the draft
+### Owner decisions (approved 2026-11-21, spec-v2 §15)
 
-- **Booked obligations, not raw equality.** A 1-unit deposit or a holder's own SPL burn would have broken `vault = supply` checks and blocked redemptions.
-- **One Open round at a time.** Two rounds on the Palisades fire would have leaked one round's reveal into the other, the v1.2 bug at round level.
-- **Liveness without the operator.** Trading deadline, permissionless close after it, and a resolution timeout after which anyone can invalidate.
-- **Order safety.** Client-nonce PDAs (fixes the v1.0 shared-counter collision), `expected_seq` plus a taker limit against cancel-and-replace attacks, market binding for every token account, and self-trade rejection.
-- **The demo can't depend on the keeper.** A limit order is `place_order` plus `match_orders` in the presenter's own transaction.
-- **The example bot ladder crossed itself** (A asks 4.2%, C bids 4.4%). Bots are now post-only with complementary NO quotes.
-- The draft's partial-fill example paid 40 mUSD where the correct amount is 4 mUSD.
-
-### Owner decisions needed (spec-v2 §15)
-
-1. **D1** New program ID for v2. Keep v1.1 frozen. *Recommended.*
-2. **D2** About 4–5 Devnet SOL for the v2 deploy, plus top-ups for the bots, `keeper` and presenter. **Human funding required.**
-3. **D3** Resolution timeout (86,400 s on Devnet) with permissionless invalidation after it. The admin's early invalidation is kept and disclosed.
-4. **D4** Featured market Home #1042 (YES), with Home #2210 (NO) in the same round for NO validation.
-5. **D5** Markets listed by the round controller only. Homeowners no longer create markets.
-6. **D6** No staged warm-up trades. The chart uses quote history rebuilt from on-chain order events.
-7. **D7** No blind replay.
+- **D1** New program `metrex_exchange`. v1.1 stays deployed and frozen as the fallback.
+- **D2** No v2 deploy until local V1–V3 pass. A human then funds about 4–5 Devnet SOL.
+- **D3** Tightened. The oracle alone resolves while `now < T`. Emergency invalidation needs admin **and** oracle. Anyone can `expire_market` once `now ≥ T`. On-chain timeout bounds are 10 s to 30 days, and Devnet uses 86,400 s.
+- **D4** Featured market Home #1042 (YES), with Home #2210 (NO) in the same round.
+- **D5** Only the round controller lists markets.
+- **D6** No warm-up trades.
+- **D7** No blind replay.
 
 ### Keys to generate at V0
 
@@ -43,7 +33,6 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 ### Effect on v1 open items
 
 - The staged v1 `list_position` price-bound upgrade (see "Design review (v1.2)" below) is **not needed** if v2 replaces the product. Don't upgrade the v1 program. The UI guard stays in place for the fallback demo.
-
 
 
 ## UI overhaul
