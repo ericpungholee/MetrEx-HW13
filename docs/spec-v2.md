@@ -591,7 +591,7 @@ Reuse the v1 shell: the white and black Geist layout from the UI overhaul, walle
 
 - The trigger sentence (§1.1) on every market page.
 - "Historical replay. The real outcome is public. Prices here are not forecasts."
-- Next to the trade button: "If the market is declared invalid, every share pays 0.50 mUSD. Buying above 0.50 can lose money on invalid."
+- Next to the trade button: "If the market is declared invalid, every share pays 0.50 mUSD (50¢). Buying above 50¢ can lose money on invalid."
 - House liquidity: "Liquidity is provided by MetrEx-operated market makers", and bot addresses are labelled in trades.
 - Explorer links use `?cluster=devnet`. Evidence and perimeter appear only after finalized settlement with a matching hash.
 
