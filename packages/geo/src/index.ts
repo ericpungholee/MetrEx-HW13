@@ -3,3 +3,4 @@
 export * from "./canonical";
 export * from "./evaluate";
 export * from "./evidence";
+export * from "./hazard";

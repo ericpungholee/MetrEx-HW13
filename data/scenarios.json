@@ -7,5 +7,35 @@
     "sha256": "8447bc02b2789c45d278327b4997789fb42112e457715b30847b2cbd64073b4a",
     "source": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0",
     "retrieved": "2026-11-20"
+  },
+  "2": {
+    "scenarioId": 2,
+    "name": "atlantic-hurricanes-2017-09",
+    "title": "Atlantic hurricanes, September 2017",
+    "file": "atlantic-hurricanes-2017-09.geojson",
+    "sha256": "49472d1dd7278f983cedf004146e1694ae6d339d7e6af728608dd653ec1ceacf",
+    "source": "https://www.nhc.noaa.gov/gis/ (best track al112017\u2013al152017)",
+    "retrieved": "2026-11-21",
+    "hazard": "hurricane"
+  },
+  "3": {
+    "scenarioId": 3,
+    "name": "south-napa-2014-08",
+    "title": "South Napa earthquake, August 2014",
+    "file": "south-napa-2014-08.json",
+    "sha256": "49a127e836c37b74db4e0f1f60b81600d55c2b7c99cc501cc5ea8661cd172e3e",
+    "source": "https://earthquake.usgs.gov/earthquakes/eventpage/nc72282711/shakemap",
+    "retrieved": "2026-11-21",
+    "hazard": "earthquake"
+  },
+  "4": {
+    "scenarioId": 4,
+    "name": "central-iowa-tornadoes-2024-05",
+    "title": "Central Iowa tornadoes, May 2024",
+    "file": "central-iowa-tornadoes-2024-05.geojson",
+    "sha256": "ab76b21d4f7f1b631adbc1ba44712e489e3f00c31363886149ab40769f9bfc96",
+    "source": "https://services.dat.noaa.gov/arcgis/rest/services/nws_damageassessmenttoolkit/DamageViewer/FeatureServer/1",
+    "retrieved": "2026-11-21",
+    "hazard": "tornado"
   }
 }

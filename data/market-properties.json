@@ -1,0 +1,42 @@
+[
+  {
+    "property_id": 7,
+    "label": "16185 Sunset Boulevard",
+    "lat_e6": 34048776,
+    "lon_e6": -118538346,
+    "scenario_id": 1,
+    "trigger_distance_m": 500,
+    "place": "Pacific Palisades, California",
+    "osm": "relation/6181038"
+  },
+  {
+    "property_id": 4,
+    "label": "1111 Memorial Drive",
+    "lat_e6": 25722631,
+    "lon_e6": -80277298,
+    "scenario_id": 2,
+    "trigger_distance_m": 0,
+    "place": "Coral Gables, Florida",
+    "osm": "node/6014195094"
+  },
+  {
+    "property_id": 5,
+    "label": "909 Stanly Way",
+    "lat_e6": 38247952,
+    "lon_e6": -122303461,
+    "scenario_id": 3,
+    "trigger_distance_m": 0,
+    "place": "Napa, California",
+    "osm": "node/11689072992"
+  },
+  {
+    "property_id": 6,
+    "label": "7007 Peckham Street",
+    "lat_e6": 41689042,
+    "lon_e6": -93744104,
+    "scenario_id": 4,
+    "trigger_distance_m": 500,
+    "place": "Johnston, Iowa",
+    "osm": "way/1340970761"
+  }
+]
