@@ -150,10 +150,16 @@ importers:
 
   services/indexer:
     dependencies:
+      '@metrex/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@metrex/shared':
         specifier: workspace:*
         version: link:../../packages/shared
     devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
       tsx:
         specifier: ^4.19.0
         version: 4.23.15

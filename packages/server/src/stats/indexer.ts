@@ -74,15 +74,33 @@ export interface StatsSource {
   fees(signatures: string[]): Promise<(bigint | null)[]>;
 }
 
-export function connectionSource(getConn: () => Connection, programId: PublicKey): StatsSource {
+/**
+ * RPC-backed source. Fees use single getTransaction calls with low concurrency: public Devnet
+ * rejects batched getTransaction with 429. A failed lookup yields null (retried next refresh).
+ */
+export function connectionSource(getConn: () => Connection, programId: PublicKey, concurrency = 2): StatsSource {
   return {
     async signatures(opts) {
       const rows = await getConn().getSignaturesForAddress(programId, opts, "confirmed");
       return rows.map((r) => ({ signature: r.signature, blockTime: r.blockTime ?? null, failed: r.err !== null }));
     },
     async fees(sigs) {
-      const txs = await getConn().getTransactions(sigs, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-      return txs.map((t) => (t?.meta ? BigInt(t.meta.fee) : null));
+      const out: (bigint | null)[] = new Array<bigint | null>(sigs.length).fill(null);
+      let next = 0;
+      const worker = async () => {
+        while (next < sigs.length) {
+          const i = next++;
+          const sig = sigs[i] as string;
+          try {
+            const t = await getConn().getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+            out[i] = t?.meta ? BigInt(t.meta.fee) : null;
+          } catch {
+            out[i] = null;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, sigs.length) }, worker));
+      return out;
     },
   };
 }
@@ -117,8 +135,8 @@ export class ProgramIndexer {
     this.o = {
       pageSize: opts.pageSize ?? 1000,
       maxBackfill: opts.maxBackfill ?? 20_000,
-      feeBatchesPerRefresh: opts.feeBatchesPerRefresh ?? 10,
-      feeBatchSize: opts.feeBatchSize ?? 25,
+      feeBatchesPerRefresh: opts.feeBatchesPerRefresh ?? 4,
+      feeBatchSize: opts.feeBatchSize ?? 10,
       minIntervalMs: opts.minIntervalMs ?? 5_000,
       now: opts.now ?? Date.now,
     };
