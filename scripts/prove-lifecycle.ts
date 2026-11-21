@@ -6,17 +6,18 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { verifyEvidenceText } from "@metrex/geo";
 import { KeypairWallet, explorerAddress, explorerTx, loadKeypair, requireEnv } from "@metrex/server";
-import { MUSD_UNIT, Side, marketStatusOf, offerStatusOf } from "@metrex/shared";
+import { MUSD_UNIT, Side, findVaultPda, marketStatusOf, offerStatusOf } from "@metrex/shared";
 import { Keypair, type PublicKey } from "@solana/web3.js";
 import {
-  acceptOffers, buyPosition, cancelOffer, claimAll, claimablePositions, createMarket, fetchListingsForOffers, fetchMarket, fetchMusdBalance,
-  fetchOffersByMarket, getConnection, placeOffer,
+  acceptOffers, buyPosition, cancelListing, cancelOffer, claimAll, claimablePositions, createMarket, fetchListingsForOffers, fetchMarket, fetchMusdBalance,
+  fetchOffersByMarket, getConnection, getProgram, listPosition, placeOffer,
 } from "../app/lib/client";
 
 const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const local = process.argv.includes("--local");
 const manual = process.argv.includes("--manual");
 const trading = process.argv.includes("--tier2");
+const both = process.argv.includes("--both");
 const app = new URL(process.env.METREX_APP_ORIGIN ?? "http://127.0.0.1:3000");
 
 function isLoopback(url: URL): boolean {
@@ -33,8 +34,21 @@ async function post(path: string, headers: Record<string, string>): Promise<Resp
   return response;
 }
 
+async function unavailableEvidence(market: PublicKey) {
+  for (const query of ["", "?raw=1", "?perimeter=1"]) {
+    const response = await fetch(new URL(`/api/evidence/${market}${query}`, app));
+    assert.equal(response.status, 404, "An unsettled market returned settlement data");
+  }
+}
+
+async function reject(label: string, request: Promise<unknown>, expected: RegExp) {
+  await assert.rejects(request, expected);
+  console.log(`${label} rejected: ${expected.source}`);
+}
+
 async function main(): Promise<void> {
   assert(!(manual && trading), "Choose either --manual or --tier2");
+  assert(!both || trading, "--both requires --tier2");
   const conn = getConnection();
   assert(isLoopback(app), "Run the demonstration API on a loopback address");
   if (local) assert(isLoopback(new URL(conn.rpcEndpoint)), "--local requires a loopback RPC");
@@ -61,17 +75,24 @@ async function main(): Promise<void> {
 
   const coverage = 10_000n * MUSD_UNIT;
   const closed: { market: PublicKey; propertyId: number; acceptedKeys: Set<string>; tradedOffer: string }[] = [];
-  for (const propertyId of manual ? [1] : trading ? [2] : [1, 2]) {
+  for (const propertyId of manual ? [1] : trading && !both ? [2] : [1, 2]) {
+    const beforeOffers = new Map(await Promise.all(
+      [homeowner, judge, ...bots].map(async ({ publicKey }) =>
+        [publicKey.toBase58(), await fetchMusdBalance(publicKey)] as const),
+    ));
     const created = await createMarket(homeowner, propertyId, coverage);
     const market = created.market;
     console.log(`Replay market ${local ? market.toBase58() : explorerAddress(market)}`);
     tx("Market created", created.results[0]!.signature);
 
+    const vault = (offer: PublicKey) => findVaultPda(getProgram().programId, offer)[0];
+    const vaultBalance = async (offer: PublicKey) =>
+      BigInt((await conn.getTokenAccountBalance(vault(offer))).value.amount);
     const openedAt = Date.now();
     if (manual) tx("Judge offer", (await placeOffer(judge, market, coverage, 400)).results[0]!.signature);
 
     let offers = await fetchOffersByMarket(market);
-    while (!manual && offers.length < 3 && Date.now() - openedAt < 10_000) {
+    while (!manual && offers.length < 3 && Date.now() - openedAt < 30_000) {
       await delay(300);
       offers = await fetchOffersByMarket(market);
     }
@@ -84,7 +105,7 @@ async function main(): Promise<void> {
       const undercut = await placeOffer(judge, market, 2_000n * MUSD_UNIT, 390);
       tx("Judge undercut", undercut.results[0]!.signature);
       const expectedRates = [380, 400, 450];
-      const deadline = Date.now() + 20_000;
+      const deadline = Date.now() + 45_000;
       for (;;) {
         const current = (await fetchOffersByMarket(market))
           .filter(({ account }) => offerStatusOf(account.status) === "open");
@@ -101,17 +122,44 @@ async function main(): Promise<void> {
         await delay(300);
       }
     }
-    for (const offer of offers) console.log(`Offer ${local ? offer.publicKey.toBase58() : explorerAddress(offer.publicKey)}`);
+    let premiumTotal = 0n;
+    for (const offer of offers) {
+      const { account, publicKey } = offer;
+      const premium = BigInt(account.premium.toString());
+      const collateral = BigInt(account.collateral.toString());
+      const booked = BigInt(account.coverage.toString());
+      const writer = account.underwriter.toBase58();
+      premiumTotal += premium;
+      assert.equal(booked, premium + collateral);
+      assert.equal(await vaultBalance(publicKey), collateral);
+      const writerBalance = await fetchMusdBalance(account.underwriter);
+      assert.equal(beforeOffers.get(writer)! - writerBalance, collateral);
+      const [placed] = await conn.getSignaturesForAddress(publicKey, { limit: 1 });
+      assert(placed && !placed.err);
+      tx("Offer placed", placed.signature);
+      console.log(`Offer ${publicKey} underwriter ${writer} mUSD base units ${beforeOffers.get(writer)} -> ${writerBalance}, vault ${vault(publicKey)} 0 -> ${collateral}, premium ${premium}, coverage ${booked}`);
+    }
 
     const acceptedKeys = new Set(offers.map(({ publicKey }) => publicKey.toBase58()));
     const accepted = await acceptOffers(homeowner, market, offers);
     assert.equal(accepted.length, 1, "Accept all must fit in one transaction");
     tx("Coverage accepted", accepted[0]!.signature);
+    const homeownerBalance = await fetchMusdBalance(homeowner.publicKey);
+    assert.equal(beforeOffers.get(homeowner.publicKey.toBase58())! - homeownerBalance, premiumTotal);
+    console.log(`Homeowner ${homeowner.publicKey} mUSD base units ${beforeOffers.get(homeowner.publicKey.toBase58())} -> ${homeownerBalance}`);
+    offers = (await fetchOffersByMarket(market)).filter(({ publicKey }) => acceptedKeys.has(publicKey.toBase58()));
+    for (const { account, publicKey } of offers) {
+      const booked = BigInt(account.coverage.toString());
+      assert(account.protectionHolder.equals(homeowner.publicKey));
+      assert(account.riskHolder.equals(account.underwriter));
+      assert.equal(await vaultBalance(publicKey), booked);
+      console.log(`Vault ${vault(publicKey)} increased to ${booked} mUSD base units at acceptance`);
+    }
 
     let tradedOffer = "";
     if (trading) {
       const offerKeys = offers.map(({ publicKey }) => publicKey);
-      const deadline = Date.now() + 15_000;
+      const deadline = Date.now() + 35_000;
       for (;;) {
         const listings = await fetchListingsForOffers(offerKeys);
         const listing = listings.find(({ account }) => account.side === Side.Risk);
@@ -119,10 +167,22 @@ async function main(): Promise<void> {
           const offer = offers.find(({ publicKey }) => publicKey.equals(listing.account.offer));
           assert(offer);
           const before = await fetchMusdBalance(judge.publicKey);
+          const sellerBefore = await fetchMusdBalance(listing.account.seller);
+          const vaultBefore = await vaultBalance(offer.publicKey);
+          const [listed] = await conn.getSignaturesForAddress(listing.publicKey, { limit: 1 });
+          assert(listed && !listed.err);
+          tx("Risk position listed", listed.signature);
           const [trade] = await buyPosition(judge, listing, offer);
           assert(trade);
           tx("Judge bought Risk position", trade.signature);
-          assert.equal(before - await fetchMusdBalance(judge.publicKey), BigInt(listing.account.price.toString()));
+          const after = await fetchMusdBalance(judge.publicKey);
+          const sellerAfter = await fetchMusdBalance(listing.account.seller);
+          const price = BigInt(listing.account.price.toString());
+          assert.equal(before - after, price);
+          assert.equal(sellerAfter - sellerBefore, price);
+          assert.equal(await vaultBalance(offer.publicKey), vaultBefore);
+          assert.equal(await conn.getAccountInfo(listing.publicKey), null);
+          console.log(`Risk trade mUSD base units buyer ${before} -> ${after}, seller ${sellerBefore} -> ${sellerAfter}, vault unchanged at ${vaultBefore}`);
           const updated = (await fetchOffersByMarket(market)).find(({ publicKey }) => publicKey.equals(offer.publicKey));
           assert(updated?.account.riskHolder.equals(judge.publicKey));
           tradedOffer = offer.publicKey.toBase58();
@@ -133,11 +193,25 @@ async function main(): Promise<void> {
       }
     }
 
-    const evidenceUrl = new URL(`/api/evidence/${market}?raw=1`, app);
-    assert.equal((await fetch(evidenceUrl)).status, 404, "Open market returned evidence");
+    const untraded = trading ? offers.find(({ publicKey }) => publicKey.toBase58() !== tradedOffer) : undefined;
+    const cutoffListing = untraded && (await listPosition(homeowner, untraded, Side.Protection, 1n))[0];
+    if (cutoffListing) tx("Protection cutoff test listing", cutoffListing.signature);
+    await unavailableEvidence(market);
     const close = await post(`/api/demo/close/${market}`, headers);
     tx("Market closed", (await close.json() as { signature: string }).signature);
-    assert.equal((await fetch(evidenceUrl)).status, 404, "Closed market returned evidence");
+    await unavailableEvidence(market);
+    const invalid = /InvalidMarketStatus|0x1771/;
+    await reject("Closed-market offer", placeOffer(judge, market, 10n * MUSD_UNIT, 400), invalid);
+    if (untraded) {
+      const testListing = (await fetchListingsForOffers([untraded.publicKey]))
+        .find(({ account }) => account.side === Side.Protection);
+      assert(testListing);
+      await reject("Closed-market purchase", buyPosition(judge, testListing, untraded), invalid);
+      const other = offers.find(({ publicKey }) => !publicKey.equals(untraded.publicKey));
+      assert(other);
+      await reject("Closed-market listing", listPosition(homeowner, other, Side.Protection, 1n), invalid);
+      tx("Cutoff listing cancelled", (await cancelListing(homeowner, testListing))[0]!.signature);
+    }
     closed.push({ market, propertyId, acceptedKeys, tradedOffer });
   }
 
@@ -146,6 +220,11 @@ async function main(): Promise<void> {
     const { signature } = await resolution.json() as { signature: string | null };
     if (signature) tx("Market resolved", signature);
 
+    const perimeter = await fetch(new URL(`/api/evidence/${market}?perimeter=1`, app));
+    assert(perimeter.ok);
+    assert.equal((await perimeter.json() as { type: string }).type, "MultiPolygon");
+    const retry = await post(`/api/oracle/resolve/${market}`, headers);
+    assert.equal((await retry.json() as { signature: string | null }).signature, null);
     const triggered = propertyId === 1;
     const label = triggered ? "YES" : "NO";
     const response = await fetch(new URL(`/api/evidence/${market}?raw=1`, app));
@@ -173,7 +252,18 @@ async function main(): Promise<void> {
       const claims = await claimAll(winner, positions);
       assert.equal(claims.length, 1, "Claims for each wallet must fit in one transaction");
       tx("Payout claimed", claims[0]!.signature);
-      paid += await fetchMusdBalance(winner.publicKey) - before;
+      const after = await fetchMusdBalance(winner.publicKey);
+      const payout = positions.reduce((sum, { offer }) => sum + BigInt(offer.account.coverage.toString()), 0n);
+      assert.equal(after - before, payout);
+      paid += payout;
+      console.log(`Winner ${winner.publicKey} mUSD base units ${before} -> ${after} (+${payout})`);
+      for (const { offer } of positions) {
+        const address = findVaultPda(getProgram().programId, offer.publicKey)[0];
+        assert.equal(await conn.getAccountInfo(address), null);
+        console.log(`Vault ${address} closed after paying ${offer.account.coverage} mUSD base units`);
+      }
+      await reject("Duplicate claim", claimAll(winner, positions), /AccountNotInitialized|0xbc4/);
+      assert.equal(await fetchMusdBalance(winner.publicKey), after);
     }
     assert.equal(paid, coverage);
     const finalOffers = (await fetchOffersByMarket(market))
