@@ -25,7 +25,6 @@ YES is parametric protection for homeowners dropped by insurers. It pays on fire
 | `docs/spec.md` | v1.1 spec. Governs `programs/metrex`, `packages/shared` and existing v1 code only |
 | `docs/build-plan-v2.md` | v2 gates, workstreams, agent briefs, acceptance |
 | `docs/STATUS.md` | Current gate status, owner decisions and blockers. Update it whenever a gate passes or you get blocked |
-| `docs/v1.2-design-review.md` | Why replay prices aren't forecasts, and the trusted-role limits. Still applies to v2 |
 | This file | Conventions and hard rules |
 
 If code and spec disagree, the spec wins. If the spec looks wrong, **stop and report** in `docs/STATUS.md` instead of improvising.

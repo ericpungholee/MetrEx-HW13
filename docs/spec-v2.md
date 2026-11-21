@@ -18,7 +18,7 @@ The draft's core model works: fungible outcome tokens, split, merge and redeem, 
 | # | Sev | Flaw in the draft | Concrete failure | Fix (section) |
 |---|---|---|---|---|
 | 1 | C | Invariants are written as raw equalities (`vault_balance = YES_supply × 1 mUSD`) | Anyone can transfer 1 base unit into a vault or escrow. Any holder can burn their own SPL shares without a mint authority. An on-chain equality check would then block every redemption. Tests and the bots would also flag a valid market as broken | Book obligations in program state (`pairs_outstanding`). Require `balance ≥ obligation`, never `=`. Payouts use booked amounts and never the raw balance (§4.6) |
-| 2 | C | Two Open rounds can share one historical fire | Round A closes and reveals the Palisades perimeter while Round B, on the same fire, still trades. This is the v1.2 cross-market leak, moved up to the round level | At most one Open round at a time. `create_round` requires the previous round to be Closed (§6.3) |
+| 2 | C | Two Open rounds can share one historical fire | Round A closes and reveals the Palisades perimeter while Round B, on the same fire, still trades. This is v1's cross-market leak, moved up to the round level | At most one Open round at a time. `create_round` requires the previous round to be Closed (§6.3) |
 | 3 | C | Settlement depends on the operator staying alive | If the controller never closes or the oracle never resolves, single-side holders are never paid. Recovery depends on the operator | `trading_ends_at` deadline. Anyone can close after it. After `closed_at + resolution_timeout_s` the oracle can no longer resolve, and anyone can `expire_market` for 0.5 / 0.5 (§4.5, §9.5) |
 | 4 | C | Invalidation is a discretionary admin power with no window | After closing, the admin knows the public outcome. It could invalidate a market where the house bots are losing and recover half | Emergency `invalidate_market` needs the admin **and** the oracle to sign, and only after the round is Closed. The oracle could already decide YES or NO, so co-signing adds no new trust, but one insider can no longer trigger it. The timeout path is a separate permissionless instruction (§4.5, §16) |
 | 5 | C | Order PDAs keyed by the market's order sequence | Two bots place orders in the same slot, derive the same address, and one fails. This is the v1.0 offer-counter bug again | PDA seeds use a client nonce. The program stores the sequence in the order and never uses it in a seed (§6.5) |
@@ -574,7 +574,7 @@ One `close_round` transaction stops trading on every member market (§5.9). Ther
 
 ### 9.4 Replays
 
-After the first settled round, the outcome is public on-chain and through MetrEx's own evidence API. Later rounds are labelled "replay". MetrEx claims no secrecy. The secret longitude-shift "blind replay" in [the v1.2 design review](v1.2-design-review.md) §2 remains an owner decision and is out of scope.
+After the first settled round, the outcome is public on-chain and through MetrEx's own evidence API. Later rounds are labelled "replay". MetrEx claims no secrecy. A secret longitude-shift "blind replay" would hide the answer, but it is out of scope (D7).
 
 ### 9.5 Failure
 

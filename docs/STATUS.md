@@ -44,7 +44,7 @@ Implement the bodies of `place_order`, `take_order`, `match_orders`, `cancel_ord
 
 ### Effect on v1 open items
 
-- The staged v1 `list_position` price-bound upgrade (see "Design review (v1.2)" below) is **not needed** if v2 replaces the product. Don't upgrade the v1 program. The UI guard stays in place for the fallback demo.
+- v1 is frozen as the fallback. Don't upgrade the v1 program.
 
 
 ## UI overhaul
