@@ -7,8 +7,8 @@ _Last updated: 2026-11-21_
 | Gate | Status | Notes |
 |---|---|---|
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
-| 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 62/62; independent review in progress before Devnet deployment |
-| 2 — Devnet live | Blocked | Devnet faucet rate limits. Both payer wallets reported 0 SOL |
+| 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 62/62. Independent review found protocol decisions required before deployment |
+| 2 — Devnet live | Blocked | Devnet faucet rate limits and two protocol decisions from review |
 | 3 — Human lifecycle | Not started | |
 | 4 — Definition of Done | Not started | |
 | 5 — Solana track (T2) | Not started | |
@@ -73,12 +73,63 @@ _Last updated: 2026-11-21_
 
 1. **Devnet SOL.** On November 21, the public Devnet RPC rate-limited both CLI airdrop requests. The deployer and admin both reported 0 SOL, and the program account was absent. Request about **14 Devnet SOL** for `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP` and **1 Devnet SOL** for `sQuXrM2LYdxq5sc8dAcsfgFSoa9V6jfNk5txzea87sD` using the [Solana Foundation faucet](https://faucet.solana.com/) with GitHub sign-in. The deployer target includes approximately 2.71 SOL in ProgramData rent, up to 10.4 SOL in `fund-bots.ts` wallet top-ups, the script's 0.1 SOL reserve and room for transaction fees.
 
+2. **Escrow accounting (§4.4, §6).** Classic SPL vaults can hold unbooked mUSD. The exact raw-balance assertion in `accept_offer` can reject a valid acceptance, and settlement and refund can exceed the recorded terms. Owner approval is needed to specify booked escrow, contractual transfer amounts, and where to route surplus while closing the vault.
+3. **Deferred Tier 2 entry points (§6).** The empty listing handlers can still apply Anchor account creation or closure. Owner approval is needed to make the frozen instructions reject calls until Gate 5, with their layouts, arguments and handler stubs intact.
+
 ## Gate 1 progress
 
 - **B (geo, dataset, properties): merged** (e50cbf0). Geo 31 tests green. Normalized `data/palisades-2025.geojson` SHA-256 `8447bc02…4b73a`. Properties: 1 Home #1042 (34.045, −118.526) inside, 672 m margin, YES; 2 Home #2210 (34.057, −118.458) 4,000 m out, NO; 3 Home #1187 (34.055, −118.515) inside, 559 m margin, YES. Map check: 1 and 3 lie inside the mapped burn area in Pacific Palisades; 2 checked on OpenStreetMap, on land in West LA by the I-405 near Brentwood. Real perimeter has no holes; hole logic covered by synthetic tests. §8.2 compares the full geodesic distance with the trigger radius. Evidence reports the distance floored to an integer.
 - **A (core program): merged** in `00dba89`. `anchor build` passed without warnings after removing the unused `lib` crate type, and the full Anchor suite passed on an isolated local validator (62 tests). The named `inv-1` through `inv-14` cases passed, including wrong-mint coverage for all five core token-moving instructions. YES and NO both conserved balances across wallets and vaults. The test harness now waits for confirmed setup transactions before dependent preflight checks. Shared tests passed (12), including IDL sync. `target/idl`, `target/types` and `packages/shared` match `25e10ac`, and the three Tier 2 handlers remain stubs.
 - **C (frontend): merged** in `6a253d0`. Fixtures and browser evidence verification use the registered demo property data.
-- **D (backend):** integration commit `869535b` on `ws-d-backend`. `/api/stats` returns the fields read by the app. The oracle uses the packaged geometry loader and rejects unknown scenarios. The setup script verifies upgrade authority before creating the mint and can recover the mint address from an initialized Config. Workspace tests passed (111), TypeScript checks passed and Next.js built with all five API routes. Local validation ran setup, funding and seeding twice, funded a fresh wallet through `/api/faucet`, and exercised both outcomes with the app client, the bots and the close, oracle and evidence routes. Bot offers arrived in about 1.2 s on both local runs. Three offers fit in one acceptance transaction, the YES claims fit in one transaction and each settlement paid exactly 10,000 mUSD. Both evidence files matched their on-chain hashes. The local stats route reported 27 program transactions and 135,000 lamports in fees for this run.
+- **D (backend): merged** in `ac24a36`. `/api/stats` returns the fields read by the app. The oracle uses the packaged geometry loader and rejects unknown scenarios. The setup script verifies upgrade authority before creating the mint and can recover the mint address from an initialized Config. Workspace tests passed (111), TypeScript checks passed and Next.js built with all five API routes. Local validation ran setup, funding and seeding twice, funded a fresh wallet through `/api/faucet`, and exercised both outcomes with the app client, the bots and the close, oracle and evidence routes. Bot offers arrived in about 1.2 s on both local runs. Three offers fit in one acceptance transaction, the YES claims fit in one transaction and each settlement paid exactly 10,000 mUSD. Both evidence files matched their on-chain hashes. The local stats route reported 27 program transactions and 135,000 lamports in fees for this run.
+
+## Independent core review (Workstream R)
+
+A fresh reviewer audited `00dba89` on November 21. The two deployment blockers are recorded above. The review inspected the code and test assertions. The recorded 62-test validator run was performed separately.
+
+### §6 instruction checks
+
+File names refer to [`programs/metrex/src/instructions`](../programs/metrex/src/instructions).
+
+| Instruction | Enforcement |
+|---|---|
+| `initialize_config` | `initialize_config.rs:9–35` binds the unique Config PDA, classic mint, program and upgrade authority. `:40–58` sets the distinct roles and requires six decimals. |
+| `register_property` | `register_property.rs:9–27` binds the Config admin and unique property ID. `:41–59` checks coordinates and a positive trigger and saves the data. |
+| `create_market` | `create_market.rs:10–27` binds the homeowner and registered Property. `:38–64` enforces target bounds and copies the registered data into an Open market. |
+| `place_offer` | `place_offer.rs:11–60` binds the source wallet, mint and PDAs. `:70–104` checks state, self-underwriting, terms and funds. `:106–142` transfers exact collateral and records the Open offer. |
+| `cancel_offer` | `cancel_offer.rs:10–55` binds the original underwriter and requires an Open offer in any market state. `:57–94` drains and closes the vault under Offer PDA authority and marks the offer Cancelled. |
+| `accept_offer` | `accept_offer.rs:10–82` binds the homeowner, accounts and Open states and checks remaining coverage and funds. `:84–118` transfers the booked premium and sets the initial holders. The raw-balance assertion can block acceptance when the vault contains surplus. |
+| `close_market` | `close_market.rs:8–34` binds the controller to Config and allows only Open → Closed. |
+| `resolve_market` | `resolve_market.rs:8–40` binds the oracle to Config and allows only Closed → ResolvedYes or ResolvedNo, with the evidence hash. |
+| `claim_payout` | `claim_payout.rs:10–74` binds the signer and destination to the current winning holder and checks resolved and Accepted states. `:76–113` pays the raw balance, closes the vault and marks Claimed. A surplus can increase payment above booked coverage. |
+| `list_position` | Tier 2 deferred. `list_position.rs:10–39` binds accounts and can create the Listing. `:44–46` returns success without applying the trading rules. |
+| `buy_position` | Tier 2 deferred. `buy_position.rs:10–63` binds accounts and declares Listing closure. `:66–69` returns success without payment or holder updates. |
+| `cancel_listing` | Tier 2 deferred. `cancel_listing.rs:9–20` checks the seller and declares Listing closure. `:23–26` returns success. |
+| `void_market` | `void_market.rs:8–32` binds the Config admin and allows only Open or Closed → Voided. |
+| `refund_offer` | `refund_offer.rs:10–83` binds the recorded parties and requires Voided and Accepted. `:86–133` refunds booked premium, sends the balance remainder to the original underwriter, closes the vault and marks Refunded. A surplus can increase the remainder above booked collateral. |
+
+### §6.3 invariants
+
+Test line numbers refer to [`tests/metrex.ts`](../tests/metrex.ts).
+
+| Invariant | Enforcement | Test line |
+|---|---|---:|
+| 1. Config authorities | `resolve_market.rs:8–16`, `close_market.rs:8–16`, `register_property.rs:9–18`, `void_market.rs:8–16` | 1206 |
+| 2. Config as source of authorities and mint | `initialize_config.rs:22–58` is the one-time, upgrade-authority-gated setup exception. `place_offer.rs:38–51` binds the supplied mint account to Config. | 1224 |
+| 3. Registry coordinates | `register_property.rs:20–27`, `create_market.rs:14–18,44–55` | 1247 |
+| 4. Homeowner accepts and original underwriter cancels | `accept_offer.rs:10–22`, `cancel_offer.rs:10–28` | 1277 |
+| 5. Self-underwriting rejected | `place_offer.rs:75–78` | 1288 |
+| 6. Accepted offers cannot cancel | `cancel_offer.rs:47–52` | 1296 |
+| 7. Activated coverage bounded by target | `create_market.rs:56–58`, `accept_offer.rs:69–78,106–111` | 1308 |
+| 8. Booked premium and collateral sum to coverage | `place_offer.rs:89–99,132–135` | 1329 |
+| 9. Terminal market states | `close_market.rs:26–34`, `resolve_market.rs:26–40`, `void_market.rs:26–32`, `accept_offer.rs:54–64` | 1355 |
+| 10. Terminal offer states | `cancel_offer.rs:47–52,68–94`, `claim_payout.rs:67–70,87–113`, `refund_offer.rs:62–72,98–133` | 1377 |
+| 11. Winner alone can claim | `claim_payout.rs:10–11,57–71` | 1408 |
+| 12. Token mint equals Config mint | `place_offer.rs:38–60`, `cancel_offer.rs:30–55`, `accept_offer.rs:37–51,65–67`, `claim_payout.rs:36–54,72–74`, `refund_offer.rs:34–59,73–75` | 1444, 1534 |
+| 13. Checked arithmetic and classic Token CPI | `place_offer.rs:89–99,106–116`, `accept_offer.rs:69–111`, `refund_offer.rs:77–83`. Vault outflows use Offer PDA seeds in `cancel_offer.rs:57–91`, `claim_payout.rs:76–110`, `refund_offer.rs:86–130`. Deposits use the source wallet signature. | 1483, 1534 |
+| 14. Current stored holder receives the claim | `accept_offer.rs:114–118`, `claim_payout.rs:43–48,57–71` | 1513 |
+
+The integrated setup creates and verifies a mint without a freeze authority. Direct initialization is upgrade-authority-gated and checks mint decimals in `initialize_config.rs:47–51`. Property registration trusts the admin for scenario ID, positive trigger and label bytes in `register_property.rs:41–59`. Provisioning validates the packaged scenario, 500 m trigger and encoded labels. The frozen `u16` `accepted_count` limits a market to 65,535 accepted offers. `accept_offer.rs:106–111` rolls back on overflow. The nine named core lifecycle events in §6.5 are emitted. The frozen event list defines no events for initialization or registration.
 
 ## Resolved
 
