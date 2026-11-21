@@ -9,7 +9,7 @@ _Last updated: 2026-11-21_
 | 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
 | 1 — Core program | **Passed 2026-11-21** | Merged in `00dba89`. Anchor 68/68 after approved review fixes |
 | 2 — Devnet live | Blocked | Awaiting the first Devnet SOL top-up. The review fixes passed locally |
-| 3 — Human lifecycle | Not started | |
+| 3 — Human lifecycle | In progress | Scripted app-client lifecycle passed on Devnet. Awaiting the real-wallet homeowner signatures |
 | 4 — Definition of Done | Not started | |
 | 5 — Solana track (T2) | Not started | |
 | 6 — Demo-ready | Not started | |
@@ -71,9 +71,8 @@ _Last updated: 2026-11-21_
 
 ## Blockers (human)
 
-1. **Devnet SOL.** On November 21, all thirteen project wallets were checked at 0 SOL. The program account was absent and no upgrade buffers were found for either the deployer or admin. The Devnet CLI rate-limited requests. SolFaucet returned RPC error 410 (faucet closed). Pine Stake exposed no amount for an unauthenticated request. QuickNode requires an existing mainnet balance and verification. DevnetFaucet.org accepted GitHub authorization but rejected the submitted claim because the account was outside its eligibility list. The next funding attempt is through the Solana Foundation faucet. The Ellipsis Labs proof-of-work CLI was built with compatible dependencies in a temporary directory. The documented 0.02 SOL pool was empty, the CLI's fee bootstrap was rate-limited, and the only discoverable balance large enough for its own reward paid 100 lamports per claim, below the transaction fee.
-2. **Funding request.** The deployer address is `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`. [DevnetFaucet.org](https://www.devnetfaucet.org/) advertises 20 free Devnet SOL and requires GitHub authorization. The [Solana Foundation faucet](https://faucet.solana.com/) is an alternative for an initial 3.2 Devnet SOL deposit. The 537,880-byte compiled core costs 2.73330924 SOL for ProgramData plus 0.00083312 SOL for Program rent at the measured Devnet rate, before fees. The initial target includes a small admin top-up and the `fund-bots.ts --minimum` profile. Full demo-day balances use the default profile and can be topped up later.
-3. **Human lifecycle.** The real-wallet Gate 3 run follows Devnet provisioning. The scripted equivalent and both oracle outcomes have passed locally.
+1. **Human lifecycle.** The owner must sign the create, accept and claim transactions in a Wallet Standard wallet on Devnet. The agent can place the judge offer and handle operator settlement separately.
+2. **Demo-day funding and backup RPC.** The project initially funded the minimum execution balances. The full §14 faucet and bot balances, and a verified backup Devnet endpoint, remain open for Gate 6.
 
 ## Gate 1 progress
 
@@ -87,7 +86,7 @@ _Last updated: 2026-11-21_
 - The owner approved §4.4 surplus accounting and disabled Tier 2 entry points on November 21. Booked obligations use the recorded Offer terms. Cancellation sends collateral and surplus to the original underwriter. A void refund sends premium to the original homeowner and collateral and surplus to the original underwriter. A claim sends exactly coverage to the current winner and routes surplus to the original underwriter, or to the original homeowner if the underwriter is the claimant. The writable surplus token destination uses Anchor remaining accounts and is validated as a classic SPL account for the approved owner and mint. The app can create the destination permissionlessly and falls back to a fresh token account if the usual ATA cannot receive it. The frozen IDL, types, and shared package still match Gate 0.
 - All three disabled Tier 2 calls reject with the existing `Unauthorized` error. The local test fixture exercises purchase and cancellation against a valid Listing and checks its data, holders and balances remain intact. A separate test checks listing creation rolls back. The app keeps trading controls off until `NEXT_PUBLIC_ENABLE_TIER2=1`.
 - Local validator setup registered all three properties and the minimum funding profile supported a seeded fallback market. `scripts/prove-lifecycle.ts --manual --local` completed the app-client judge lifecycle. `--local` then funded a fresh wallet through the faucet, received three bot offers on each market within 10 seconds, accepted all three in one transaction, verified each evidence hash against its resolved account and paid exactly 10,000 mUSD on both outcomes. The YES claims fit in one transaction. The local stats route reported 33 transactions and 165,000 lamports in fees. These proofs used a local validator.
-- Devnet deployment uses the backed-up program keypair for the same address and the admin as upgrade authority, with the deployer as fee payer. Verify the deployed authority before running `setup-devnet.ts`. No live market or deployment signatures are recorded yet.
+- Devnet deployment uses the backed-up program keypair for the same address and the admin as upgrade authority, with the deployer as fee payer. Verify the deployed authority before running `setup-devnet.ts`. The [Devnet verification record](demo-script.md) links the deployed program, Config, properties, funding transactions and funded fallback market.
 
 ## Independent core review (Workstream R)
 
@@ -136,6 +135,13 @@ Test line numbers refer to [`tests/metrex.ts`](../tests/metrex.ts).
 | 14. Current stored holder receives the claim | `accept_offer.rs:114–118`, `claim_payout.rs:43–48,57–71` | 1513 |
 
 The integrated setup creates and verifies a mint without a freeze authority. Direct initialization is upgrade-authority-gated and checks mint decimals in `initialize_config.rs:47–51`. Property registration trusts the admin for scenario ID, positive trigger and label bytes in `register_property.rs:41–59`. Provisioning validates the packaged scenario, 500 m trigger and encoded labels. The frozen `u16` `accepted_count` limits a market to 65,535 accepted offers. `accept_offer.rs:106–111` rolls back on overflow. The nine named core lifecycle events in §6.5 are emitted. The frozen event list defines no events for initialization or registration.
+
+## Gate 2 verification
+
+- A confirmed 5 SOL deposit funded the Devnet deployer. The earlier CLI airdrops were rate-limited, and SolFaucet reported its RPC faucet closed. DevnetFaucet.org authenticated GitHub but rejected the submitted claim under its eligibility list. The documented proof-of-work pool was empty and its fee bootstrap was rate-limited. Funding came through the Solana Foundation web faucet.
+- RPC write transport hit the public per-IP rate limit. Retrying with the same explicit buffer and default TPU transport succeeded. The ProgramData is 537,880 bytes at slot 524610462. The downloaded bytes match the tested build, and the on-chain authority is the admin. The measured ProgramData and Program rent totals 2.73414236 Devnet SOL before transaction fees.
+- The admin was funded, initialized the no-freeze mUSD mint and Config, and registered properties 1–3. Minimum funding transactions topped up the bots and demo wallets. The fallback market has three accepted positions and 10,000 mUSD activated.
+- The separately reviewed Tier 2 rehearsal is on [codex/tier2-local](https://github.com/ericpungholee/MetrEx-HW13/tree/codex/tier2-local), with 71 Anchor tests and a verified local purchase and claim. The live program still rejects Tier 2 instructions.
 
 ## Resolved
 
