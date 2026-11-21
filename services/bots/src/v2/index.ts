@@ -4,7 +4,7 @@
 //   BOTS_COOLDOWN_MS      per-bot, per-market requote cooldown (default 3000)
 //   BOTS_SPLIT_PAIRS      pairs split when a side runs low (default 2000)
 //   BOTS_FEATURED_PROPERTY featured property id, skew off there (default 1, §8.3)
-//   RPC_MAX_RPS           client-side request cap for this process (unset = no cap); see docs/STATUS.md
+//   RPC_MAX_RPS           client-side request cap for this process (unset = no cap); see docs/v2-build-log.md (V4, RPC rate limits)
 
 import { DEMO_BOTS } from "@metrex/exchange";
 import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, redactUrl, type KeypairName } from "@metrex/server/exchange";

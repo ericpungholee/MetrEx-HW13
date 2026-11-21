@@ -8,12 +8,12 @@ MetrEx is an on-chain exchange for catastrophe risk, built for Hack Western 13 (
 
 The product has two generations in this repo:
 
-| | v1.1 (deployed, frozen) | v2 Exchange (current work) |
+| | v1.1 (deployed, frozen, fallback at `/v1`) | v2 Exchange (deployed, serves `/`) |
 |---|---|---|
 | Model | Per-offer RFQ underwriting, transferable claim rights | Binary outcome tokens + escrowed order book |
-| Program | `programs/metrex` at `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` | `programs/metrex-exchange` (new program ID, local only until V3 passes) |
+| Program | `programs/metrex` at `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` | `programs/metrex-exchange` at `BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko` |
 | Spec | `docs/spec.md` | **`docs/spec-v2.md`** |
-| Plan | `docs/build-plan.md` (Gates 0–6, all passed) | `docs/build-plan-v2.md` (Gates V0–V6) |
+| Plan | `docs/build-plan.md` (Gates 0–6, all passed) | `docs/build-plan-v2.md` (Gates V0–V6, all passed) |
 
 YES is parametric protection for homeowners dropped by insurers. It pays on fire proximity, not on damage. MetrEx is a risk exchange, not insurance.
 
@@ -24,7 +24,8 @@ YES is parametric protection for homeowners dropped by insurers. It pays on fire
 | `docs/spec-v2.md` | **The specification for all new work.** Section 0 lists the design flaws found in the v2 draft and how they were fixed. Section numbers (§) below refer to it unless marked v1 |
 | `docs/spec.md` | v1.1 spec. Governs `programs/metrex`, `packages/shared` and existing v1 code only |
 | `docs/build-plan-v2.md` | v2 gates, workstreams, agent briefs, acceptance |
-| `docs/STATUS.md` | Current gate status, owner decisions and blockers. Update it whenever a gate passes or you get blocked |
+| `docs/STATUS.md` | Current state, open items, owner decisions and blockers. Update it whenever a gate passes or you get blocked |
+| `docs/v2-build-log.md`, `docs/v1-build-log.md` | Detailed per-gate results and rehearsal logs. Append detail here and keep STATUS.md short |
 | This file | Conventions and hard rules |
 
 If code and spec disagree, the spec wins. If the spec looks wrong, **stop and report** in `docs/STATUS.md` instead of improvising.
@@ -56,7 +57,7 @@ app/                          Next.js; v2 chain access via app/lib/exchange-clie
 services/bots/                market-maker bots
 services/indexer/             stats; v2 book, trades, keeper
 scripts/                      setup-devnet(-v2), prepare-demo-v2, fund-bots, fund-wallet, find-properties
-docs/                         spec-v2.md, build-plan-v2.md, STATUS.md, spec.md (v1), build-plan.md (v1)
+docs/                         spec-v2.md, build-plan-v2.md, STATUS.md, v2-build-log.md, spec.md (v1), build-plan.md (v1), v1-build-log.md, archive/
 ```
 
 ## Commands
@@ -116,7 +117,7 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 - Evidence and the perimeter require finalized settlement and a matching on-chain hash.
 - The homepage features only `Config.latest_round`. Operator controls live only at password-protected `/operator`.
 - Explorer links use `?cluster=devnet`.
-- The v1 app stays the default until Gate V5. Tag `v1.1-demo` before replacing pages.
+- Since Gate V5 the exchange is at `/` and the v1 app at `/v1` (tag `v1.1-demo`). Keep `/v1` working.
 
 ### Secrets
 - Keypairs live in `~/.config/metrex/*.json`, never in the repo. Only `.env.example` is committed.
@@ -133,7 +134,7 @@ Mainnet, real money, other risk types or fire scenarios, damage-based triggers, 
 ## Gates
 
 - v1 (`docs/build-plan.md`): 0–6 all passed on 2026-11-21.
-- v2 (`docs/build-plan-v2.md` §5): V0 Freeze → V1 Binary tokens → V2 Trading protocol (+ R exit checklist) → V3 Engine and liquidity (local) → V4 Devnet (YES and NO) → V5 App replaces v1 → V6 Phantom rehearsal.
+- v2 (`docs/build-plan-v2.md` §5): V0 Freeze → V1 Binary tokens → V2 Trading protocol (+ R exit checklist) → V3 Engine and liquidity (local) → V4 Devnet (YES and NO) → V5 App replaces v1 → V6 Phantom rehearsal. All passed on 2026-11-21.
 
 Nothing reaches main that breaks v1 tests or the v1 fallback demo before V5.
 
