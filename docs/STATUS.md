@@ -137,6 +137,16 @@ Test line numbers refer to [`tests/metrex.ts`](../tests/metrex.ts).
 
 The integrated setup creates and verifies a mint without a freeze authority. Direct initialization is upgrade-authority-gated and checks mint decimals in `initialize_config.rs:47–51`. Property registration trusts the admin for scenario ID, positive trigger and label bytes in `register_property.rs:41–59`. Provisioning validates the packaged scenario, 500 m trigger and encoded labels. The frozen `u16` `accepted_count` limits a market to 65,535 accepted offers. `accept_offer.rs:106–111` rolls back on overflow. The nine named core lifecycle events in §6.5 are emitted. The frozen event list defines no events for initialization or registration.
 
+## Tier 2 local rehearsal
+
+This work stays on `codex/tier2-local` until the core YES and NO runs pass on Devnet. The production app flag and bot Tier 2 flag stay off on the core deployment.
+
+- The full Anchor validator suite passed (71 tests), including invariants 15–17 and both price mismatch cases through the app client. Workspace tests (111), TypeScript checks, the Tier 2 production build and the frozen interface comparison also passed.
+- A 390 bps judge offer caused the three local bots to requote to 380, 400 and 450 bps. After accepting the three bot offers, the judge bought a listed Risk position and claimed it following the NO resolution. The winners received 10,000 mUSD in total, and the serialized evidence matched the on-chain hash. The local network panel reported 31 transactions and 155,000 lamports in fees.
+- Independent read-only review checked §6.3 invariants 15–17. Listing authority, state and price are checked in `list_position.rs:44–59`. Purchase binds the listing, offer, seller and both mUSD accounts in `buy_position.rs:13–63`, rejects stale holders and conflicting roles in its handler, then transfers the price and records the buyer before Anchor closes the listing. The account contexts for listing, purchase and cancellation have no vault account. Cancellation binds the seller and refunds listing rent in `cancel_listing.rs:8–20`.
+- The app funds a temporary token account with the displayed price and closes it within the purchase transaction. A higher on-chain price exceeds that balance. A lower price leaves a balance that prevents closure and rolls back payment and ownership changes. A validator regression exercised both mismatched quotes through the app client, then executed the matching quote.
+- The [demo rehearsal script](demo-script.md) lists the recordings and Explorer links to collect on Devnet.
+
 ## Resolved
 
 - Keypairs generated 2026-11-20 in `~/.config/metrex/` (mode 600): `admin`, `oracle`, `controller`, `deployer`, `mint-authority`, `faucet`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`; program keypair backed up as `metrex-program.json`. Local test wallet at `~/.config/solana/id.json` (localnet only).

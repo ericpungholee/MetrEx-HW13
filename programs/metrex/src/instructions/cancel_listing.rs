@@ -3,7 +3,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::ListingCancelled, state::*};
 
 #[derive(Accounts)]
 pub struct CancelListing<'info> {
@@ -20,7 +20,10 @@ pub struct CancelListing<'info> {
     pub listing: Account<'info, Listing>,
 }
 
-pub fn handler(_ctx: Context<CancelListing>) -> Result<()> {
-    msg!("Position trading is disabled");
-    err!(MetrexError::Unauthorized)
+pub fn handler(ctx: Context<CancelListing>) -> Result<()> {
+    let listing = &ctx.accounts.listing;
+    emit!(ListingCancelled {
+        offer: listing.offer, listing: listing.key(), side: listing.side, seller: listing.seller,
+    });
+    Ok(())
 }

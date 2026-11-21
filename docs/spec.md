@@ -303,8 +303,6 @@ Every instruction that touches tokens checks: `token_account.mint == config.mint
 | `void_market()` | `config.admin` | Market `Open` or `Closed` | Market → `Voided` |
 | `refund_offer()` | anyone | Market `Voided`; Offer `Accepted` | Transfer P → homeowner and K plus surplus → underwriter; close vault; Offer → `Refunded` |
 
-Before Gate 5, all three Tier 2 instructions reject calls and their account and token changes roll back.
-
 `void_market` / `refund_offer` are a safety valve, built after the core lifecycle passes its tests (P0.5). Open offers on a voided market use `cancel_offer` as usual.
 
 ### 6.1 Market state machine
@@ -553,7 +551,7 @@ Next.js, TypeScript, Tailwind, Solana wallet adapter, Anchor TS client from the 
 
 ### 10.4 Position trading (Tier 2)
 
-On the market page, a "Positions" table shows every accepted position with its current Protection and Risk holders and any active listing. A holder can list either side at a price; any other wallet can buy with one click (one signature, atomic). The portfolio shows bought positions with entry price.
+On the market page, a "Positions" table shows every accepted position with its current Protection and Risk holders and any active listing. A holder can list either side at a price; any other wallet can buy with one click (one signature, atomic). The portfolio shows bought positions with entry price. The app funds a temporary token account with the displayed listing price and closes it in the same purchase transaction. A price change before execution makes the transaction roll back.
 
 ### 10.5 Network panel (Tier 2)
 

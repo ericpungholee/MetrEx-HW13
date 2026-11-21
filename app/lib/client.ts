@@ -6,7 +6,9 @@ import { BN, BorshCoder, EventParser, Program, type Idl } from "@anchor-lang/cor
 import {
   ACCOUNT_SIZE,
   createAssociatedTokenAccountIdempotentInstruction,
+  createCloseAccountInstruction,
   createInitializeAccount3Instruction,
+  createTransferInstruction,
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
   unpackAccount,
@@ -674,21 +676,25 @@ async function prepareClaimSurplus(payer: PublicKey, owner: PublicKey, mint: Pub
   } catch {
     // The funded address may contain another account type. Use a fresh token account instead.
   }
+  return prepareTemporaryTokenAccount(payer, owner, mint);
+}
+
+async function prepareTemporaryTokenAccount(payer: PublicKey, owner: PublicKey, mint: PublicKey) {
   const seed = `metrex-${randomNonce().toString(16)}`;
-  const auxiliary = await PublicKey.createWithSeed(payer, seed, TOKEN_PROGRAM_ID);
+  const address = await PublicKey.createWithSeed(payer, seed, TOKEN_PROGRAM_ID);
   return {
-    address: auxiliary,
+    address,
     setup: [
       SystemProgram.createAccountWithSeed({
         fromPubkey: payer,
         basePubkey: payer,
-        newAccountPubkey: auxiliary,
+        newAccountPubkey: address,
         seed,
-        lamports: await conn.getMinimumBalanceForRentExemption(ACCOUNT_SIZE),
+        lamports: await getConnection().getMinimumBalanceForRentExemption(ACCOUNT_SIZE),
         space: ACCOUNT_SIZE,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(auxiliary, mint, owner),
+      createInitializeAccount3Instruction(address, mint, owner),
     ],
   };
 }
@@ -740,7 +746,7 @@ export async function listPosition(
   return sendGroups(wallet, [[ix]], [], opts);
 }
 
-/** Tier 2: buy a listed side in one atomic instruction. */
+/** Buy the listed side at the displayed price in one transaction. */
 export async function buyPosition(
   wallet: WalletSigner,
   listing: Keyed<ListingAccount>,
@@ -755,6 +761,16 @@ export async function buyPosition(
     ...(await ataIfMissing(wallet.publicKey, wallet.publicKey, mint)),
     ...(await ataIfMissing(wallet.publicKey, seller, mint)),
   ];
+  // A listing PDA can be reused after cancellation. Fund only the displayed
+  // price, then require the payment account to close empty in the same transaction.
+  const buyer = wallet.publicKey;
+  const payment = await prepareTemporaryTokenAccount(buyer, buyer, mint);
+  const fund = createTransferInstruction(
+    getAssociatedTokenAddressSync(mint, buyer, true),
+    payment.address,
+    buyer,
+    BigInt(listing.account.price.toString()),
+  );
   const ix = await getProgram()
     .methods.buyPosition()
     .accountsStrict({
@@ -764,12 +780,13 @@ export async function buyPosition(
       offer: offer.publicKey,
       listing: listing.publicKey,
       seller,
-      buyerToken: getAssociatedTokenAddressSync(mint, wallet.publicKey, true),
+      buyerToken: payment.address,
       sellerToken: getAssociatedTokenAddressSync(mint, seller, true),
       tokenProgram: TOKEN_PROGRAM_ID,
     })
     .instruction();
-  return sendGroups(wallet, [[ix]], prefix, opts);
+  const close = createCloseAccountInstruction(payment.address, buyer, buyer);
+  return sendGroups(wallet, [[...payment.setup, fund, ix, close]], prefix, opts);
 }
 
 /** Tier 2: cancel your own listing (rent back to you). */

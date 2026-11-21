@@ -2,9 +2,9 @@
 //! instruction; Listing closed (rent → seller). Never touches the vault (invariant 17).
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::PositionBought, state::*};
 
 #[derive(Accounts)]
 pub struct BuyPosition<'info> {
@@ -63,7 +63,43 @@ pub struct BuyPosition<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(_ctx: Context<BuyPosition>) -> Result<()> {
-    msg!("Position trading is disabled");
-    err!(MetrexError::Unauthorized)
+pub fn handler(ctx: Context<BuyPosition>) -> Result<()> {
+    require!(
+        matches!(ctx.accounts.market.status, MarketStatus::Open | MarketStatus::Closed),
+        MetrexError::InvalidMarketStatus
+    );
+    let offer = &mut ctx.accounts.offer;
+    require!(offer.status == OfferStatus::Accepted, MetrexError::InvalidOfferStatus);
+    let listing = &ctx.accounts.listing;
+    let protection_holder = offer.protection_holder;
+    let risk_holder = offer.risk_holder;
+    let (holder, opposite_holder) = match listing.side {
+        0 => (&mut offer.protection_holder, risk_holder),
+        1 => (&mut offer.risk_holder, protection_holder),
+        _ => return err!(MetrexError::InvalidSide),
+    };
+    let seller = listing.seller;
+    let buyer = ctx.accounts.buyer.key();
+    require_keys_eq!(seller, *holder, MetrexError::StaleListing);
+    require!(buyer != seller && buyer != opposite_holder, MetrexError::SelfTrade);
+    let price = listing.price;
+    require!(price > 0, MetrexError::InvalidPrice);
+    require!(ctx.accounts.buyer_token.amount >= price, MetrexError::InsufficientFunds);
+
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.buyer_token.to_account_info(),
+                to: ctx.accounts.seller_token.to_account_info(),
+                authority: ctx.accounts.buyer.to_account_info(),
+            },
+        ),
+        price,
+    )?;
+    *holder = buyer;
+    emit!(PositionBought {
+        offer: offer.key(), listing: listing.key(), side: listing.side, seller, buyer, price,
+    });
+    Ok(())
 }
