@@ -73,6 +73,11 @@ _Last updated: 2026-11-20_
 
 1. **Devnet SOL.** `solana airdrop` on the public Devnet RPC returns "rate limit reached" for every request (2, 1 and 0.5 SOL, 2026-11-20). Deploy needs ~3–4 SOL on `deployer`. Retrying periodically; if it keeps failing, a human must use https://faucet.solana.com (GitHub sign-in) for `deployer` = `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`.
 
+## Gate 1 progress
+
+- **B (geo, dataset, properties): merged** (e50cbf0). Geo 31 tests green. Normalized `data/palisades-2025.geojson` SHA-256 `8447bc02…4b73a`. Properties: 1 Home #1042 (34.045, −118.526) inside, 672 m margin, YES; 2 Home #2210 (34.057, −118.458) 4,000 m out, NO; 3 Home #1187 (34.055, −118.515) inside, 559 m margin, YES. Map check: 1 and 3 lie inside the mapped burn area in Pacific Palisades; 2 checked on OpenStreetMap, on land in West LA by the I-405 near Brentwood. Real perimeter has no holes; hole logic covered by synthetic tests. Rule at the boundary: `triggered = inside || floor(distance) <= 500` (keeps evidence self-consistent).
+- A (program), C (frontend), D (bots/scripts/routes): in progress on `ws-a-core`, `ws-c-frontend`, `ws-d-backend`.
+
 ## Resolved
 
 - Keypairs generated 2026-11-20 in `~/.config/metrex/` (mode 600): `admin`, `oracle`, `controller`, `deployer`, `mint-authority`, `faucet`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`; program keypair backed up as `metrex-program.json`. Local test wallet at `~/.config/solana/id.json` (localnet only).
