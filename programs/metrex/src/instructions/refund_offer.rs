@@ -2,9 +2,9 @@
 //! P → original homeowner, K → original underwriter (regardless of current holders); vault closed.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount};
+use anchor_spl::token::{self, CloseAccount, Token, TokenAccount, Transfer};
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::OfferRefunded, state::*};
 
 #[derive(Accounts)]
 pub struct RefundOffer<'info> {
@@ -59,7 +59,86 @@ pub struct RefundOffer<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(_ctx: Context<RefundOffer>) -> Result<()> {
-    // Workstream A (P0.5).
+pub fn handler(ctx: Context<RefundOffer>) -> Result<()> {
+    let market = &ctx.accounts.market;
+    let offer = &ctx.accounts.offer;
+    require!(
+        market.status == MarketStatus::Voided,
+        MetrexError::InvalidMarketStatus
+    );
+    require!(
+        offer.status == OfferStatus::Accepted,
+        MetrexError::InvalidOfferStatus
+    );
+    let vault = &ctx.accounts.vault;
+    require!(vault.mint == ctx.accounts.config.mint, MetrexError::WrongMint);
+    require!(vault.owner == offer.key(), MetrexError::WrongTokenOwner);
+
+    let premium = offer.premium;
+    // Normally exactly K. Anything sent to the vault from outside also goes back to the
+    // underwriter (who funded the vault), so the vault always empties and can close.
+    let collateral = vault
+        .amount
+        .checked_sub(premium)
+        .ok_or(MetrexError::MathOverflow)?;
+    let homeowner_key = market.homeowner;
+
+    let market_key = offer.market;
+    let underwriter_key = offer.underwriter;
+    let nonce_bytes = offer.offer_nonce.to_le_bytes();
+    let bump = [offer.bump];
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        OFFER_SEED,
+        market_key.as_ref(),
+        underwriter_key.as_ref(),
+        &nonce_bytes,
+        &bump,
+    ]];
+
+    token::transfer(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.vault.to_account_info(),
+                to: ctx.accounts.homeowner_token.to_account_info(),
+                authority: ctx.accounts.offer.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        premium,
+    )?;
+    token::transfer(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.vault.to_account_info(),
+                to: ctx.accounts.underwriter_token.to_account_info(),
+                authority: ctx.accounts.offer.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        collateral,
+    )?;
+    token::close_account(CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        CloseAccount {
+            account: ctx.accounts.vault.to_account_info(),
+            destination: ctx.accounts.underwriter.to_account_info(),
+            authority: ctx.accounts.offer.to_account_info(),
+        },
+        signer_seeds,
+    ))?;
+
+    let offer = &mut ctx.accounts.offer;
+    offer.status = OfferStatus::Refunded;
+
+    emit!(OfferRefunded {
+        market: market_key,
+        offer: offer.key(),
+        homeowner: homeowner_key,
+        underwriter: underwriter_key,
+        premium,
+        collateral,
+    });
     Ok(())
 }

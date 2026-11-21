@@ -2,7 +2,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::MarketVoided, state::*};
 
 #[derive(Accounts)]
 pub struct VoidMarket<'info> {
@@ -23,7 +23,16 @@ pub struct VoidMarket<'info> {
     pub market: Account<'info, Market>,
 }
 
-pub fn handler(_ctx: Context<VoidMarket>) -> Result<()> {
-    // Workstream A (P0.5).
+pub fn handler(ctx: Context<VoidMarket>) -> Result<()> {
+    let market = &mut ctx.accounts.market;
+    require!(
+        matches!(market.status, MarketStatus::Open | MarketStatus::Closed),
+        MetrexError::InvalidMarketStatus
+    );
+    market.status = MarketStatus::Voided;
+
+    emit!(MarketVoided {
+        market: market.key(),
+    });
     Ok(())
 }

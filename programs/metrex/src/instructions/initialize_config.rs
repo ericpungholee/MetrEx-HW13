@@ -37,7 +37,24 @@ pub struct InitializeConfig<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_ctx: Context<InitializeConfig>, _oracle: Pubkey, _controller: Pubkey) -> Result<()> {
-    // Workstream A (Gate 1).
+pub fn handler(ctx: Context<InitializeConfig>, oracle: Pubkey, controller: Pubkey) -> Result<()> {
+    // §2: the oracle and the demo controller are distinct keys, and neither is the default key.
+    require!(oracle != controller, MetrexError::Unauthorized);
+    require!(
+        oracle != Pubkey::default() && controller != Pubkey::default(),
+        MetrexError::Unauthorized
+    );
+    // §4.1: mUSD has 6 decimals.
+    require!(
+        ctx.accounts.mint.decimals == MUSD_DECIMALS,
+        MetrexError::WrongMint
+    );
+
+    let config = &mut ctx.accounts.config;
+    config.admin = ctx.accounts.admin.key();
+    config.oracle_authority = oracle;
+    config.demo_controller = controller;
+    config.mint = ctx.accounts.mint.key();
+    config.bump = ctx.bumps.config;
     Ok(())
 }
