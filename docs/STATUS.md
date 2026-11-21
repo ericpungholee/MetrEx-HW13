@@ -12,7 +12,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 | V1 — Binary tokens | **Passed** 2026-11-21 | Config, property, round, market, split, merge, the three settlement paths and redeem are implemented. `tests/exchange.ts` has 36 tests, with `assertMarketInvariants` (I1, I2, I5) after every state change. I1, I2 and I5–I9 have named tests, and YES, NO and Invalid conservation pass. The 78 v1 tests still pass |
 | V2 — Trading protocol | **Passed** 2026-11-21 | `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` are implemented against the frozen contexts. The IDL is unchanged. `tests/exchange.ts` now has 67 tests: 31 for V2, including I3, I4 and I10–I12, the §11 demo replay and the size test. A mutation check, with the execution price forced to the SELL price and the take self-trade check removed, fails 5 of them. R checklist: all six items pass (see below) |
 | V3 — Engine and liquidity (local) | **Passed** 2026-11-21 | `scripts/v3-local.sh` passes end to end on a disposable validator (results below). Workspace tests: exchange 33, geo 35, server 50, bots 38, scripts 5, app 13, shared 12. App build passes with the v1 pages unchanged. `anchor test`: 145 passing (67 v2, 78 v1). Program and IDL unchanged |
-| V4 — Devnet | Not started | No deploy until V1–V3 pass locally. Needs Devnet SOL |
+| V4 — Devnet | **Blocked** | Needs about 8 Devnet SOL in the deployer for the deploy peak (see below) |
 | V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
 | V6 — Phantom rehearsal | Not started | |
 
@@ -72,9 +72,14 @@ Run with `bash scripts/v3-local.sh`. It uses throwaway keys in a temp dir (never
 - **Local finality** lags about 13 s. Pre-checks in `prepare-demo-v2` read at `confirmed`, and round creation and settlement wait for `finalized`.
 - `app/next.config.ts` adds `@metrex/exchange` to `transpilePackages`, because the server root now imports it.
 
-### Next: Gate V4 (Devnet)
+### Blocked: Gate V4 (Devnet) needs Devnet SOL (D2)
 
-Needs a human to fund about 4–5 Devnet SOL (D2). Then: deploy `metrex_exchange`, run `setup-devnet-v2.ts`, `fund-bots.ts` and `prepare-demo-v2.ts` against Devnet, and run both outcomes.
+Checked 2026-11-21. `metrex_exchange` is not on Devnet yet.
+
+- **Deploy cost.** `metrex_exchange.so` is 755,024 B, and its ProgramData rent is 3.836 SOL. A standard deploy also funds a buffer of the same size until the deploy instruction closes it. The peak is therefore about **7.7 SOL**, and about 3.84 SOL stays locked after the deploy. D2's estimate of 4–5 SOL covers only the steady state. Deploying with `--max-len` at the .so size, from a single buffer, needs the full peak.
+- **Balances now.** Deployer 0.05, admin 0.045, controller 0.02, oracle 0.02, keeper 0, bots about 1.0 each, faucet 5.55, presenter 0.029 SOL.
+- **Ask.** Fund the deployer with about **8 Devnet SOL** (it is refunded to about 4 after the deploy), plus about 0.5 SOL each for the admin and the keeper. I won't take SOL from the v1 faucet, because the v1 fallback demo depends on it.
+- **Once funded:** deploy with the admin as upgrade authority → `setup-devnet-v2.ts` (Devnet timeout 86,400 s) → `fund-bots.ts` → start the bots and the keeper → `prepare-demo-v2.ts` → the §13.3 YES and NO runs recorded in `docs/v2-devnet-verification.md`.
 
 ### Effect on v1 open items
 
