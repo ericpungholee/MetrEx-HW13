@@ -6,7 +6,7 @@ _Last updated: 2026-11-20_
 
 | Gate | Status | Notes |
 |---|---|---|
-| 0 — Freeze | **Awaiting human review** | `anchor build` + `anchor test` green; IDL generated; review structs/seeds, then freeze |
+| 0 — Freeze | **Passed 2026-11-20** | Frozen on owner's instruction to proceed with Gates 1–6. Interfaces in commit 25e10ac are frozen |
 | 1 — Core program | Not started | |
 | 2 — Devnet live | Not started | |
 | 3 — Human lifecycle | Not started | |
@@ -26,8 +26,8 @@ _Last updated: 2026-11-20_
 - [x] Program ID `AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X` in `declare_id!` and `Anchor.toml` (localnet + devnet)
 - [x] `anchor test` green on local validator (upgradeable deploy; smoke test only)
 - [x] IDL + types generated (`target/idl/metrex.json`, `target/types/metrex.ts`): 14 instructions, 5 accounts, 12 events, errors 6000–6021, 19 constants
-- [ ] IDL + types committed
-- [ ] Human review of structs and seeds against spec §5, then **freeze**
+- [x] IDL + types committed (25e10ac)
+- [x] Freeze: owner instructed autonomous execution of Gates 1–6 against these interfaces
 
 ## Pinned versions
 
@@ -71,9 +71,12 @@ _Last updated: 2026-11-20_
 
 ## Blockers (human)
 
-1. **Keypairs missing.** `~/.config/metrex/` does not exist. Need `admin`, `oracle`, `controller`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`, `deployer`, `mint-authority`, `faucet`.
-2. **Devnet SOL** not yet requested for `deployer` and `admin`.
-3. **Raw fire perimeter** not in `data/raw/` (CAL FIRE / NIFC final Palisades perimeter).
+1. **Devnet SOL.** `solana airdrop` on the public Devnet RPC returns "rate limit reached" for every request (2, 1 and 0.5 SOL, 2026-11-20). Deploy needs ~3–4 SOL on `deployer`. Retrying periodically; if it keeps failing, a human must use https://faucet.solana.com (GitHub sign-in) for `deployer` = `7CdaAZPSiSKSs7TF4RCrCZZbkaiwTCs8t43qnu7QGvrP`.
+
+## Resolved
+
+- Keypairs generated 2026-11-20 in `~/.config/metrex/` (mode 600): `admin`, `oracle`, `controller`, `deployer`, `mint-authority`, `faucet`, `bot-a/b/c`, `homeowner-demo`, `judge-1..3`; program keypair backed up as `metrex-program.json`. Local test wallet at `~/.config/solana/id.json` (localnet only).
+- Raw perimeter downloaded 2026-11-20 to `data/raw/wfigs-palisades-2025.geojson` from NIFC WFIGS Interagency Perimeters (FeatureServer layer 0, OBJECTID 36398, `2025-CALFD-000738`, 23,448 GIS acres, 16 polygons, no holes). SHA-256 `a88cb3a7785ad1b108c3edc84ddb948885a5a03c291e18a28e3d16a0bb45c6ba`.
 
 ## Open questions
 
