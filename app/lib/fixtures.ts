@@ -1,8 +1,6 @@
 // FIXTURE DATA — used only when NEXT_PUBLIC_USE_FIXTURES=1 (dev only; `next build` refuses it).
 // Every page shows a "FIXTURE DATA" banner in this mode and every write is disabled.
-// Nothing here is on-chain. Coordinates are the placeholder point from spec §8.4
-// (property 1) and labelled placeholder offsets from it; they are NOT registered
-// properties and must never be used as demo coordinates.
+// Nothing here is on-chain. Property coordinates come from data/properties.json.
 import { BN } from "@anchor-lang/core";
 import { PublicKey } from "@solana/web3.js";
 import {
@@ -55,13 +53,15 @@ function statusRaw<T extends string>(s: T): { [K in T]: Record<string, never> } 
   return { [s]: {} } as { [K in T]: Record<string, never> };
 }
 
-// Spec §8.4 placeholder point, plus labelled offsets for the other two fixtures.
-const PLACEHOLDER = { lat: 34_045_000, lon: -118_526_000 };
-const FIXTURE_PROPERTIES: { id: number; label: string; lat: number; lon: number }[] = [
-  { id: 1, label: "Palisades · Home #1042", lat: PLACEHOLDER.lat, lon: PLACEHOLDER.lon },
-  { id: 2, label: "Westside · Home #2210", lat: PLACEHOLDER.lat - 30_000, lon: PLACEHOLDER.lon + 60_000 },
-  { id: 3, label: "Palisades · Home #1187", lat: PLACEHOLDER.lat + 6_000, lon: PLACEHOLDER.lon - 8_000 },
-];
+// The real demo properties chosen by scripts/find-properties.ts (data/properties.json, §8.3).
+// Coordinates are never invented (CLAUDE.md "Data and the oracle").
+import PROPERTIES from "../../data/properties.json";
+const FIXTURE_PROPERTIES: { id: number; label: string; lat: number; lon: number }[] = PROPERTIES.map((p) => ({
+  id: p.property_id,
+  label: p.label,
+  lat: p.lat_e6,
+  lon: p.lon_e6,
+}));
 
 export interface FixtureState {
   config: ConfigAccount;

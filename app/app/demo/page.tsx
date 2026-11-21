@@ -2,6 +2,7 @@
 
 // Settlement (spec §3.1 item 5, §11.2 step 5): operator view. Close a market, show the fire
 // perimeter against the property's 500 m circle, run the oracle, show and verify the evidence.
+import { verifyEvidenceText } from "@metrex/geo";
 import { marketStatusOf } from "@metrex/shared";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
@@ -30,14 +31,15 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 /**
- * TODO(integrator, Workstream B): browser-side canonical re-check (spec §8.4).
- * Replace the body with `@metrex/geo`'s canonicalizer once it is exported, e.g.
- *   import { canonicalize } from "@metrex/geo";
- *   return sha256Hex(canonicalize(JSON.parse(text)));
- * Returning null shows "pending @metrex/geo" in the evidence panel.
+ * Browser-side canonical re-check (spec §8.4): re-canonicalize the served evidence with
+ * `@metrex/geo` and hash it. Returns null if the text is not valid evidence JSON.
  */
-async function recomputeCanonicalHash(_text: string): Promise<string | null> {
-  return null;
+async function recomputeCanonicalHash(text: string): Promise<string | null> {
+  try {
+    return verifyEvidenceText(text).hashHex;
+  } catch {
+    return null;
+  }
 }
 
 export default function DemoPage() {
@@ -243,7 +245,7 @@ export default function DemoPage() {
                           </span>
                         </>
                       ) : (
-                        <span className="text-faint">pending @metrex/geo canonicalizer (TODO hook)</span>
+                        <span className="text-faint">not valid evidence JSON</span>
                       )}
                     </span>
                   </div>
