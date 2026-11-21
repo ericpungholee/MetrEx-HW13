@@ -1,0 +1,26 @@
+# Dependencies / build output
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# Anchor / Rust. The IDL and generated types are committed (Gate 0).
+.anchor/
+test-ledger/
+target/*
+!target/idl/
+!target/types/
+
+# Secrets: keypairs live in ~/.config/metrex, never in the repo
+.env
+.env.*
+!.env.example
+*-keypair.json
+**/keys/
+id.json
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

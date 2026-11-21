@@ -1,0 +1,13 @@
+{
+  "name": "scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "setup-devnet, fund-bots, fund-wallet, seed-demo (D); find-properties (B). Run with pnpm tsx scripts/<name>.ts",
+  "dependencies": {
+    "@metrex/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "metrex"
+version = "0.1.0"
+description = "MetrEx: on-chain underwriting exchange for parametric wildfire risk"
+edition = "2021"
+# Cargo/rustc bundled with Solana platform-tools v1.54 (cargo-build-sbf 4.1.x).
+# Keeps the lockfile resolver from picking crates that need a newer compiler.
+rust-version = "1.84"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "metrex"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "=0.32.3"
+anchor-spl = { version = "=0.32.3", default-features = false, features = ["token", "token_2022"] } # token_2022 only because `init` codegen references it; the program uses classic SPL Token
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

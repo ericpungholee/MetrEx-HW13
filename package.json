@@ -1,0 +1,27 @@
+{
+  "name": "metrex",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint:ts": "pnpm -r --if-present run typecheck",
+    "test:ts": "pnpm -r --if-present run test"
+  },
+  "devDependencies": {
+    "@anchor-lang/core": "0.32.3",
+    "@metrex/shared": "workspace:*",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0",
+    "@types/bn.js": "^5.1.6",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.0",
+    "chai": "^4.5.0",
+    "mocha": "^10.8.2",
+    "ts-mocha": "^10.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

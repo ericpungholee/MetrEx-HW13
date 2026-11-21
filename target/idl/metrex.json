@@ -1,0 +1,2603 @@
+{
+  "address": "AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X",
+  "metadata": {
+    "name": "metrex",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "MetrEx: on-chain underwriting exchange for parametric wildfire risk"
+  },
+  "instructions": [
+    {
+      "name": "accept_offer",
+      "discriminator": [
+        227,
+        82,
+        234,
+        131,
+        1,
+        18,
+        48,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "homeowner",
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "homeowner_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "buy_position",
+      "discriminator": [
+        210,
+        108,
+        108,
+        28,
+        10,
+        46,
+        226,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          },
+          "relations": [
+            "listing"
+          ]
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              },
+              {
+                "kind": "account",
+                "path": "listing.side",
+                "account": "Listing"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seller",
+          "writable": true,
+          "relations": [
+            "listing"
+          ]
+        },
+        {
+          "name": "buyer_token",
+          "writable": true
+        },
+        {
+          "name": "seller_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancel_listing",
+      "discriminator": [
+        41,
+        183,
+        50,
+        232,
+        230,
+        233,
+        157,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "listing"
+          ]
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "listing.offer",
+                "account": "Listing"
+              },
+              {
+                "kind": "account",
+                "path": "listing.side",
+                "account": "Listing"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancel_offer",
+      "discriminator": [
+        92,
+        203,
+        223,
+        40,
+        92,
+        89,
+        53,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "underwriter",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "underwriter_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_payout",
+      "discriminator": [
+        127,
+        240,
+        132,
+        62,
+        227,
+        198,
+        146,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "claimant",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "claimant_token",
+          "writable": true
+        },
+        {
+          "name": "underwriter",
+          "writable": true,
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_market",
+      "discriminator": [
+        88,
+        154,
+        248,
+        186,
+        48,
+        14,
+        123,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "demo_controller",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market",
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "homeowner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "property",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  101,
+                  114,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "property_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "homeowner"
+              },
+              {
+                "kind": "arg",
+                "path": "market_nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "property_id",
+          "type": "u16"
+        },
+        {
+          "name": "coverage_target",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_config",
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The mUSD mint. Stored in Config; every token account is checked against it."
+          ]
+        },
+        {
+          "name": "program",
+          "address": "AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "oracle",
+          "type": "pubkey"
+        },
+        {
+          "name": "controller",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "list_position",
+      "discriminator": [
+        252,
+        73,
+        186,
+        182,
+        15,
+        2,
+        202,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "offer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "listing",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  115,
+                  116,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              },
+              {
+                "kind": "arg",
+                "path": "side"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "place_offer",
+      "discriminator": [
+        55,
+        98,
+        219,
+        43,
+        72,
+        108,
+        121,
+        97
+      ],
+      "accounts": [
+        {
+          "name": "underwriter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "underwriter"
+              },
+              {
+                "kind": "arg",
+                "path": "offer_nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "Declared before `vault` because the vault's `init` reads it."
+          ]
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Escrow for this offer. Token authority is the Offer PDA (§5.5)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "underwriter_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "offer_nonce",
+          "type": "u64"
+        },
+        {
+          "name": "coverage",
+          "type": "u64"
+        },
+        {
+          "name": "premium_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "refund_offer",
+      "discriminator": [
+        171,
+        18,
+        70,
+        32,
+        244,
+        121,
+        60,
+        75
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer.market",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.underwriter",
+                "account": "Offer"
+              },
+              {
+                "kind": "account",
+                "path": "offer.offer_nonce",
+                "account": "Offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "homeowner_token",
+          "writable": true
+        },
+        {
+          "name": "underwriter_token",
+          "writable": true
+        },
+        {
+          "name": "underwriter",
+          "writable": true,
+          "relations": [
+            "offer"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_property",
+      "discriminator": [
+        25,
+        115,
+        131,
+        71,
+        59,
+        22,
+        25,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "property",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  101,
+                  114,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "property_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "property_id",
+          "type": "u16"
+        },
+        {
+          "name": "label",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "lat_e6",
+          "type": "i32"
+        },
+        {
+          "name": "lon_e6",
+          "type": "i32"
+        },
+        {
+          "name": "scenario_id",
+          "type": "u16"
+        },
+        {
+          "name": "trigger_distance_m",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "resolve_market",
+      "discriminator": [
+        155,
+        23,
+        80,
+        173,
+        46,
+        74,
+        23,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "oracle_authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "triggered",
+          "type": "bool"
+        },
+        {
+          "name": "evidence_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "void_market",
+      "discriminator": [
+        243,
+        175,
+        46,
+        124,
+        95,
+        101,
+        39,
+        69
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.homeowner",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_nonce",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Listing",
+      "discriminator": [
+        218,
+        32,
+        50,
+        73,
+        43,
+        134,
+        26,
+        58
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Offer",
+      "discriminator": [
+        215,
+        88,
+        60,
+        71,
+        170,
+        162,
+        73,
+        229
+      ]
+    },
+    {
+      "name": "Property",
+      "discriminator": [
+        195,
+        247,
+        69,
+        181,
+        195,
+        47,
+        152,
+        19
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ListingCancelled",
+      "discriminator": [
+        11,
+        46,
+        163,
+        10,
+        103,
+        80,
+        139,
+        194
+      ]
+    },
+    {
+      "name": "MarketClosed",
+      "discriminator": [
+        86,
+        91,
+        119,
+        43,
+        94,
+        0,
+        217,
+        113
+      ]
+    },
+    {
+      "name": "MarketCreated",
+      "discriminator": [
+        88,
+        184,
+        130,
+        231,
+        226,
+        84,
+        6,
+        58
+      ]
+    },
+    {
+      "name": "MarketResolved",
+      "discriminator": [
+        89,
+        67,
+        230,
+        95,
+        143,
+        106,
+        199,
+        202
+      ]
+    },
+    {
+      "name": "MarketVoided",
+      "discriminator": [
+        217,
+        12,
+        138,
+        39,
+        108,
+        75,
+        89,
+        26
+      ]
+    },
+    {
+      "name": "OfferAccepted",
+      "discriminator": [
+        81,
+        238,
+        238,
+        115,
+        140,
+        18,
+        8,
+        20
+      ]
+    },
+    {
+      "name": "OfferCancelled",
+      "discriminator": [
+        45,
+        42,
+        175,
+        214,
+        51,
+        192,
+        154,
+        9
+      ]
+    },
+    {
+      "name": "OfferPlaced",
+      "discriminator": [
+        233,
+        184,
+        192,
+        153,
+        227,
+        71,
+        86,
+        83
+      ]
+    },
+    {
+      "name": "OfferRefunded",
+      "discriminator": [
+        132,
+        208,
+        236,
+        25,
+        125,
+        249,
+        160,
+        13
+      ]
+    },
+    {
+      "name": "PayoutClaimed",
+      "discriminator": [
+        200,
+        39,
+        105,
+        112,
+        116,
+        63,
+        58,
+        149
+      ]
+    },
+    {
+      "name": "PositionBought",
+      "discriminator": [
+        195,
+        211,
+        22,
+        156,
+        218,
+        3,
+        223,
+        135
+      ]
+    },
+    {
+      "name": "PositionListed",
+      "discriminator": [
+        182,
+        248,
+        5,
+        32,
+        220,
+        197,
+        216,
+        164
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Signer is not authorized for this action"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidMarketStatus",
+      "msg": "Market is not in a status that allows this action"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidOfferStatus",
+      "msg": "Offer is not in a status that allows this action"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidBps",
+      "msg": "Premium rate must be between 1 and 9,999 bps"
+    },
+    {
+      "code": 6004,
+      "name": "CoverageTooSmall",
+      "msg": "Coverage is below the minimum"
+    },
+    {
+      "code": 6005,
+      "name": "CoverageExceedsTarget",
+      "msg": "Coverage exceeds the market's coverage target"
+    },
+    {
+      "code": 6006,
+      "name": "CoverageExceedsRemaining",
+      "msg": "Accepting this offer would exceed the remaining coverage"
+    },
+    {
+      "code": 6007,
+      "name": "PremiumRoundsToZero",
+      "msg": "Premium rounds to zero"
+    },
+    {
+      "code": 6008,
+      "name": "SelfUnderwriting",
+      "msg": "The homeowner cannot underwrite their own market"
+    },
+    {
+      "code": 6009,
+      "name": "WrongMint",
+      "msg": "Token account has the wrong mint"
+    },
+    {
+      "code": 6010,
+      "name": "WrongTokenOwner",
+      "msg": "Token account has the wrong owner"
+    },
+    {
+      "code": 6011,
+      "name": "OfferMarketMismatch",
+      "msg": "Offer does not belong to this market"
+    },
+    {
+      "code": 6012,
+      "name": "NotWinner",
+      "msg": "Only the winning side can claim"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidCoordinates",
+      "msg": "Coordinates or trigger distance out of range"
+    },
+    {
+      "code": 6014,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6015,
+      "name": "VaultBalanceMismatch",
+      "msg": "Vault balance does not match the expected amount"
+    },
+    {
+      "code": 6016,
+      "name": "NotHolder",
+      "msg": "Signer does not hold this side of the position"
+    },
+    {
+      "code": 6017,
+      "name": "StaleListing",
+      "msg": "Listing seller no longer holds this side"
+    },
+    {
+      "code": 6018,
+      "name": "SelfTrade",
+      "msg": "Buyer cannot be the seller or the opposite-side holder"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidPrice",
+      "msg": "Price must be at least 1 base unit"
+    },
+    {
+      "code": 6020,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient mUSD balance"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidSide",
+      "msg": "Side must be 0 (Protection) or 1 (Risk)"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Global configuration. Seeds: `[\"config\"]` (§5.1)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "demo_controller",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Listing",
+      "docs": [
+        "Tier 2. Seeds: `[\"listing\", offer, side: u8]` (§5.6)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "docs": [
+              "0 = Protection, 1 = Risk."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seller",
+            "docs": [
+              "Must equal the current holder of `side` when listed and when bought."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "docs": [
+              "mUSD base units the buyer pays the seller."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ListingCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "docs": [
+        "Seeds: `[\"market\", homeowner, market_nonce: u64 LE]` (§5.3)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "homeowner",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "property_id",
+            "type": "u16"
+          },
+          {
+            "name": "lat_e6",
+            "docs": [
+              "Copied from Property at creation."
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "lon_e6",
+            "type": "i32"
+          },
+          {
+            "name": "scenario_id",
+            "type": "u16"
+          },
+          {
+            "name": "trigger_distance_m",
+            "type": "u32"
+          },
+          {
+            "name": "coverage_target",
+            "type": "u64"
+          },
+          {
+            "name": "coverage_activated",
+            "docs": [
+              "Sum of accepted offers' coverage."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "accepted_count",
+            "type": "u16"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "MarketStatus"
+              }
+            }
+          },
+          {
+            "name": "evidence_hash",
+            "docs": [
+              "Zero until resolved."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "closed_at",
+            "type": "i64"
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "closed_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "homeowner",
+            "type": "pubkey"
+          },
+          {
+            "name": "property_id",
+            "type": "u16"
+          },
+          {
+            "name": "coverage_target",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "triggered",
+            "type": "bool"
+          },
+          {
+            "name": "evidence_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Closed"
+          },
+          {
+            "name": "ResolvedYes"
+          },
+          {
+            "name": "ResolvedNo"
+          },
+          {
+            "name": "Voided"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketVoided",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Offer",
+      "docs": [
+        "Seeds: `[\"offer\", market, underwriter, offer_nonce: u64 LE]` (§5.4).",
+        "Vault seeds: `[\"vault\", offer]` (§5.5)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "underwriter",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "coverage",
+            "docs": [
+              "C"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "premium_bps",
+            "docs": [
+              "b"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "premium",
+            "docs": [
+              "P = floor(C × b / 10_000), computed on-chain."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "collateral",
+            "docs": [
+              "K = C − P, computed on-chain."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "protection_holder",
+            "docs": [
+              "`Pubkey::default()` until accepted; then the homeowner. Receives the vault on YES."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "risk_holder",
+            "docs": [
+              "`Pubkey::default()` until accepted; then the underwriter. Receives the vault on NO."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "OfferStatus"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "accepted_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferAccepted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "homeowner",
+            "type": "pubkey"
+          },
+          {
+            "name": "underwriter",
+            "type": "pubkey"
+          },
+          {
+            "name": "coverage",
+            "type": "u64"
+          },
+          {
+            "name": "premium",
+            "type": "u64"
+          },
+          {
+            "name": "coverage_activated",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "underwriter",
+            "type": "pubkey"
+          },
+          {
+            "name": "refunded",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "underwriter",
+            "type": "pubkey"
+          },
+          {
+            "name": "coverage",
+            "type": "u64"
+          },
+          {
+            "name": "premium_bps",
+            "type": "u16"
+          },
+          {
+            "name": "premium",
+            "type": "u64"
+          },
+          {
+            "name": "collateral",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "homeowner",
+            "type": "pubkey"
+          },
+          {
+            "name": "underwriter",
+            "type": "pubkey"
+          },
+          {
+            "name": "premium",
+            "type": "u64"
+          },
+          {
+            "name": "collateral",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Accepted"
+          },
+          {
+            "name": "Cancelled"
+          },
+          {
+            "name": "Claimed"
+          },
+          {
+            "name": "Refunded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayoutClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "claimant",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionBought",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionListed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "listing",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Property",
+      "docs": [
+        "Admin-registered property. Seeds: `[\"property\", property_id: u16 LE]` (§5.2)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "property_id",
+            "type": "u16"
+          },
+          {
+            "name": "label",
+            "docs": [
+              "UTF-8, zero-padded."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "lat_e6",
+            "type": "i32"
+          },
+          {
+            "name": "lon_e6",
+            "type": "i32"
+          },
+          {
+            "name": "scenario_id",
+            "type": "u16"
+          },
+          {
+            "name": "trigger_distance_m",
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "BPS_DENOMINATOR",
+      "type": "u64",
+      "value": "10000"
+    },
+    {
+      "name": "CONFIG_SEED",
+      "type": "bytes",
+      "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "DEFAULT_TRIGGER_DISTANCE_M",
+      "type": "u32",
+      "value": "500"
+    },
+    {
+      "name": "LISTING_SEED",
+      "type": "bytes",
+      "value": "[108, 105, 115, 116, 105, 110, 103]"
+    },
+    {
+      "name": "MARKET_SEED",
+      "type": "bytes",
+      "value": "[109, 97, 114, 107, 101, 116]"
+    },
+    {
+      "name": "MAX_ABS_LAT_E6",
+      "type": "i32",
+      "value": "90000000"
+    },
+    {
+      "name": "MAX_ABS_LON_E6",
+      "type": "i32",
+      "value": "180000000"
+    },
+    {
+      "name": "MAX_BPS",
+      "type": "u16",
+      "value": "9999"
+    },
+    {
+      "name": "MAX_COVERAGE_TARGET",
+      "type": "u64",
+      "value": "1000000000000"
+    },
+    {
+      "name": "MIN_BPS",
+      "type": "u16",
+      "value": "1"
+    },
+    {
+      "name": "MIN_COVERAGE",
+      "type": "u64",
+      "value": "10000000"
+    },
+    {
+      "name": "MUSD_DECIMALS",
+      "type": "u8",
+      "value": "6"
+    },
+    {
+      "name": "MUSD_UNIT",
+      "type": "u64",
+      "value": "1000000"
+    },
+    {
+      "name": "OFFER_SEED",
+      "type": "bytes",
+      "value": "[111, 102, 102, 101, 114]"
+    },
+    {
+      "name": "PROPERTY_SEED",
+      "type": "bytes",
+      "value": "[112, 114, 111, 112, 101, 114, 116, 121]"
+    },
+    {
+      "name": "SCENARIO_PALISADES_2025",
+      "type": "u16",
+      "value": "1"
+    },
+    {
+      "name": "SIDE_PROTECTION",
+      "type": "u8",
+      "value": "0"
+    },
+    {
+      "name": "SIDE_RISK",
+      "type": "u8",
+      "value": "1"
+    },
+    {
+      "name": "VAULT_SEED",
+      "type": "bytes",
+      "value": "[118, 97, 117, 108, 116]"
+    }
+  ]
+}
