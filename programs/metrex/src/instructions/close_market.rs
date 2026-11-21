@@ -2,7 +2,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::{constants::*, errors::MetrexError, state::*};
+use crate::{constants::*, errors::MetrexError, events::MarketClosed, state::*};
 
 #[derive(Accounts)]
 pub struct CloseMarket<'info> {
@@ -23,7 +23,19 @@ pub struct CloseMarket<'info> {
     pub market: Account<'info, Market>,
 }
 
-pub fn handler(_ctx: Context<CloseMarket>) -> Result<()> {
-    // Workstream A (Gate 1).
+pub fn handler(ctx: Context<CloseMarket>) -> Result<()> {
+    let market = &mut ctx.accounts.market;
+    require!(
+        market.status == MarketStatus::Open,
+        MetrexError::InvalidMarketStatus
+    );
+    let now = Clock::get()?.unix_timestamp;
+    market.status = MarketStatus::Closed;
+    market.closed_at = now;
+
+    emit!(MarketClosed {
+        market: market.key(),
+        closed_at: now,
+    });
     Ok(())
 }

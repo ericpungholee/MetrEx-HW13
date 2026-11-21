@@ -3,7 +3,7 @@
 
 use anchor_lang::prelude::*;
 
-use crate::{constants::*, state::*};
+use crate::{constants::*, errors::MetrexError, events::MarketCreated, state::*};
 
 #[derive(Accounts)]
 #[instruction(market_nonce: u64, property_id: u16)]
@@ -30,11 +30,45 @@ pub struct CreateMarket<'info> {
 }
 
 pub fn handler(
-    _ctx: Context<CreateMarket>,
-    _market_nonce: u64,
+    ctx: Context<CreateMarket>,
+    market_nonce: u64,
     _property_id: u16,
-    _coverage_target: u64,
+    coverage_target: u64,
 ) -> Result<()> {
-    // Workstream A (Gate 1).
+    require!(coverage_target >= MIN_COVERAGE, MetrexError::CoverageTooSmall);
+    require!(
+        coverage_target <= MAX_COVERAGE_TARGET,
+        MetrexError::CoverageExceedsTarget
+    );
+
+    // The Property PDA seeds bind `property` to `property_id`; all coordinates come from it.
+    let property = &ctx.accounts.property;
+    let now = Clock::get()?.unix_timestamp;
+
+    let market = &mut ctx.accounts.market;
+    market.homeowner = ctx.accounts.homeowner.key();
+    market.market_nonce = market_nonce;
+    market.property_id = property.property_id;
+    market.lat_e6 = property.lat_e6;
+    market.lon_e6 = property.lon_e6;
+    market.scenario_id = property.scenario_id;
+    market.trigger_distance_m = property.trigger_distance_m;
+    market.coverage_target = coverage_target;
+    market.coverage_activated = 0;
+    market.accepted_count = 0;
+    market.status = MarketStatus::Open;
+    market.evidence_hash = [0u8; 32];
+    market.created_at = now;
+    market.closed_at = 0;
+    market.resolved_at = 0;
+    market.bump = ctx.bumps.market;
+
+    emit!(MarketCreated {
+        market: market.key(),
+        homeowner: market.homeowner,
+        property_id: market.property_id,
+        coverage_target,
+        created_at: now,
+    });
     Ok(())
 }
