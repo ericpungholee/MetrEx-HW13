@@ -2,6 +2,9 @@
 // app/app/api/** are one-liners over these, so this layer is unit-testable.
 
 import type { PublicKey } from "@solana/web3.js";
+import { exchangeProgramId } from "../exchange/program";
+import { getExchangeEvidence, getExchangeSettledPerimeter } from "../oracle/exchange";
+import { getRpc } from "../rpc";
 import { parsePublicKey } from "../env";
 import { getEvidence, getSettledPerimeter, type EvidenceDeps } from "../oracle/evidence";
 import { resolveMarket } from "../oracle/resolve";
@@ -40,7 +43,7 @@ function marketParam(value: string | undefined): PublicKey {
 
 const operatorBudget = new OperatorPasswordBudget();
 
-function requirePassword(req: Request): void {
+export function requirePassword(req: Request): void {
   const password = process.env.DEMO_PASSWORD;
   if (!password) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
   const result = operatorBudget.check(req.headers.get(DEMO_PASSWORD_HEADER), password);
@@ -107,9 +110,12 @@ export function handleEvidence(req: Request, market: string | undefined, deps?: 
   return run(async () => {
     const pk = marketParam(market);
     const params = new URL(req.url).searchParams;
-    if (params.get("perimeter") === "1") return json(await getSettledPerimeter(pk, deps));
+    const v2 = deps?.readMarket ? false : await isExchangeMarket(pk);
+    if (params.get("perimeter") === "1") {
+      return json(v2 ? await getExchangeSettledPerimeter(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }) : await getSettledPerimeter(pk, deps));
+    }
     const raw = params.get("raw") === "1";
-    const ev = await getEvidence(pk, deps);
+    const ev = v2 ? await getExchangeEvidence(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }) : await getEvidence(pk, deps);
     if (raw) {
       return new Response(ev.canonical, {
         status: 200,
@@ -118,6 +124,23 @@ export function handleEvidence(req: Request, market: string | undefined, deps?: 
     }
     return json(ev);
   });
+}
+
+/** Owner of an account never changes, so the v1/v2 dispatch is cached per address. */
+const ownerIsExchange = new Map<string, boolean>();
+async function isExchangeMarket(pk: PublicKey): Promise<boolean> {
+  const k = pk.toBase58();
+  const hit = ownerIsExchange.get(k);
+  if (hit !== undefined) return hit;
+  const info = await getRpc()
+    .run((c) => c.getAccountInfo(pk, "confirmed"))
+    .catch(() => {
+      throw unavailable("Evidence temporarily unavailable");
+    });
+  if (!info) return false;
+  const v2 = info.owner.equals(exchangeProgramId());
+  ownerIsExchange.set(k, v2);
+  return v2;
 }
 
 /** GET /api/stats */

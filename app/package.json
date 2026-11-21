@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anchor-lang/core": "0.32.3",
+    "@metrex/exchange": "workspace:*",
     "@metrex/geo": "workspace:*",
     "@metrex/server": "workspace:*",
     "@metrex/shared": "workspace:*",

@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@metrex/exchange": "workspace:*",
     "@metrex/geo": "workspace:*",
     "@metrex/server": "workspace:*",
     "@metrex/shared": "workspace:*",

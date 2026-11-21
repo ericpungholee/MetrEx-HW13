@@ -1,0 +1,28 @@
+[package]
+name = "metrex-exchange"
+version = "0.2.0"
+description = "MetrEx Exchange v2: binary outcome tokens and an escrowed order book (docs/spec-v2.md)"
+edition = "2021"
+# Cargo/rustc bundled with Solana platform-tools v1.54 (cargo-build-sbf 4.1.x).
+rust-version = "1.84"
+
+[lib]
+crate-type = ["cdylib"]
+name = "metrex_exchange"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "=0.32.3", features = ["init-if-needed"] }
+# token_2022(+extensions) only because `init` codegen for mints and token accounts references them;
+# every instruction uses classic SPL Token (`Program<Token>`).
+anchor-spl = { version = "=0.32.3", default-features = false, features = ["token", "token_2022", "token_2022_extensions", "associated_token"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

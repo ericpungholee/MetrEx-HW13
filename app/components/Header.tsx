@@ -6,7 +6,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { fetchMusdBalance, fetchSolLamports, requestFaucet, describeError, USE_FIXTURES, viewerFor } from "@/lib/client";
+import { requestFaucet, describeError } from "@/lib/client";
+import { fetchHoldings, USE_FIXTURES } from "@/lib/exchange-client";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 
@@ -15,11 +16,11 @@ const WalletMultiButton = dynamic(
   { ssr: false, loading: () => <div className="h-10 w-36 animate-pulse bg-bg-muted" /> },
 );
 
+// The v1 pages live under /v1 (fallback, unlinked); /operator is never linked (spec-v2 §10.6).
 const NAV = [
-  { href: "/", label: "Markets" },
-  { href: "/create", label: "Create" },
+  { href: "/", label: "Market" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/demo", label: "Settlement" },
+  { href: "/rounds", label: "Rounds" },
 ];
 
 const LOW_SOL_LAMPORTS = 10_000_000n;
@@ -28,14 +29,15 @@ const LOW_MUSD = 100n * MUSD_UNIT;
 export function Header() {
   const pathname = usePathname();
   const { publicKey } = useWallet();
-  const viewer = viewerFor(publicKey);
+  const viewer = publicKey ?? null;
   const balances = usePoll(
     async () => {
       if (!viewer) return null;
-      const [musd, sol] = await Promise.all([fetchMusdBalance(viewer), fetchSolLamports(viewer)]);
-      return { musd, sol };
+      const h = await fetchHoldings(viewer, []);
+      return { musd: h.musd, sol: h.sol };
     },
     [viewer?.toBase58()],
+    6_000,
   );
   const [faucetMsg, setFaucetMsg] = useState<string | null>(null);
   const [faucetBusy, setFaucetBusy] = useState(false);

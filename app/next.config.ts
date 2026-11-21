@@ -23,12 +23,12 @@ export default function config(phase: string): NextConfig {
     // Don't let `next dev` write an AGENTS.md into app/ (the repo's CLAUDE.md is authoritative).
     agentRules: false,
     // Workspace packages ship TypeScript source.
-    transpilePackages: ["@metrex/shared", "@metrex/geo", "@metrex/server"],
+    transpilePackages: ["@metrex/shared", "@metrex/exchange", "@metrex/geo", "@metrex/server"],
     // The app imports the committed IDL from ../target, so the workspace root is the root.
     turbopack: { root: path.join(__dirname, "..") },
     outputFileTracingRoot: path.join(__dirname, ".."),
     outputFileTracingIncludes: {
-      "/api/**/*": ["../pnpm-workspace.yaml", "../target/idl/metrex.json"],
+      "/api/**/*": ["../pnpm-workspace.yaml", "../target/idl/metrex.json", "../target/idl/metrex_exchange.json"],
     },
   };
 }

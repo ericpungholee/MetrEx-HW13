@@ -1,5 +1,7 @@
 # MetrEx — Hackathon Specification v1.1
 
+> **Superseded for new work by [spec-v2.md](spec-v2.md)** (MetrEx Exchange v2). This v1.1 spec still governs the deployed, frozen `programs/metrex` and `packages/shared`.
+
 **Hackathon:** Hack Western 2026 · **Track:** MLH Best Use of Solana
 **Network:** Solana Devnet · **Stage:** MVP prototype
 **Supersedes:** v1.0. This document is self-contained; build from this one.

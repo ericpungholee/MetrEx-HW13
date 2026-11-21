@@ -48,6 +48,8 @@ export const KEYPAIRS = {
   judge1: { env: "JUDGE_1_KEYPAIR", file: "judge-1" },
   judge2: { env: "JUDGE_2_KEYPAIR", file: "judge-2" },
   judge3: { env: "JUDGE_3_KEYPAIR", file: "judge-3" },
+  /** v2 keeper (spec-v2 §7.4): no authority, pays match and sweep fees. */
+  keeper: { env: "KEEPER_KEYPAIR", file: "keeper" },
 } as const;
 
 export type KeypairName = keyof typeof KEYPAIRS;

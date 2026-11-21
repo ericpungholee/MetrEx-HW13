@@ -62,7 +62,7 @@ export default function CreatePage() {
       return r.results;
     });
     setBusy(false);
-    if (res && marketKey) router.push(`/market/${marketKey}`);
+    if (res && marketKey) router.push(`/v1/market/${marketKey}`);
   }
 
   return (

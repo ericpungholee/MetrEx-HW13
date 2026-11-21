@@ -12,9 +12,13 @@ skip-lint = false
 # ~/.config/metrex/metrex-program.json; losing it means a new program ID.
 [programs.devnet]
 metrex = "AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X"
+# v2 (spec-v2 D1). Not deployed until local gates V1–V3 pass. Keypair backed up at
+# ~/.config/metrex/metrex-exchange-program.json.
+metrex_exchange = "BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko"
 
 [programs.localnet]
 metrex = "AHSbJKM2kihhjNcaEhpwvDpX9DADQ2E36KX8tfCigu8X"
+metrex_exchange = "BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko"
 
 [registry]
 url = "https://api.apr.dev"
@@ -24,7 +28,8 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+# Quoted so mocha (not the shell) expands it; tests/helpers/ holds shared helpers, not specs.
+test = "pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 'tests/*.ts'"
 
 [test]
 startup_wait = 30000

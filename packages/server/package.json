@@ -6,7 +6,9 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./exchange": "./src/exchange/index.ts",
+    "./exchange/browser": "./src/exchange/browser.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.routes.json --noEmit",
@@ -14,6 +16,7 @@
   },
   "dependencies": {
     "@anchor-lang/core": "0.32.3",
+    "@metrex/exchange": "workspace:*",
     "@metrex/geo": "workspace:*",
     "@metrex/shared": "workspace:*",
     "@solana/spl-token": "^0.4.13",

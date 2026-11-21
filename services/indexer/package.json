@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "start": "tsx src/index.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start:v2": "tsx src/v2.ts"
   },
   "dependencies": {
+    "@metrex/exchange": "workspace:*",
     "@metrex/server": "workspace:*",
     "@metrex/shared": "workspace:*"
   },
