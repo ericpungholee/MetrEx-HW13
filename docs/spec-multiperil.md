@@ -127,15 +127,18 @@ At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) 
 
 ### 7.1 Required text
 
-Every market page shows, as plain text:
+Every market page shows the contract details in plain text:
 
 - its payout rule. The wildfire sentence is the verbatim spec-v2 §10.1 text. Every other rule names its source and threshold and ends "…, not on damage.";
-- the historical-replay disclosure, naming the replayed event ("This market replays …. Coverage dates are historical; trading time on-chain is the demo clock.");
-- the invalid-outcome disclosure, the liquidity disclosure and the settlement source.
+- the historical coverage month, the separate Devnet trading deadline, the settlement source and the invalid-outcome terms beside the ticket.
+
+This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution and each photo carries its credit.
 
 ### 7.2 Homepage
 
-The homepage lists the four catalog markets. Each card shows a regional photograph, place and hazard, the question, the live best YES ask and the historical contract month. The detail page shows the trigger and payout rule. The price comes from `GET /api/featured`: for each catalog entry, the newest recent round of its scenario that contains the property, with that book's best YES bid, best YES ask and ask depth. With no ask the card says "No YES offers right now", and a market not yet on the cluster says "Not listed on this cluster yet". A closed or settled market shows its state instead of a price.
+The homepage shows the four catalog markets in a 2×2 grid on desktop and a single column on phones. Cards show regional photography, the market question, historical contract month, finalized volume when available, and separate YES and NO actions. `GET /api/featured` selects each market and supplies its best YES ask. The NO ask comes from the NO order book. Selecting an outcome opens the market with that side selected in the trade ticket. A closed or settled market shows its state.
+
+The market detail page shows the live asks, with labelled midpoint or last-trade prices when an ask is unavailable. The price chart lets viewers switch between finalized trades and quoted midpoint history and filter either series by time. The rules show the historical month, settlement source and the separate Devnet trading deadline.
 
 ### 7.3 Imagery
 
@@ -143,32 +146,15 @@ Cards and market headers label their images as area photos and link to their sou
 
 ### 7.4 Coverage mode
 
-The trade panel has two modes: **Buy coverage ($)** and **Trade shares**. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover; presets 25k / 50k / 100k / 250k) with a default slippage of 100 bps. It shows only figures from the live book:
-
-- the premium for the plan;
-- the payout if the trigger is met;
-- the collateral provided by risk sellers;
-- the average price per $1 of cover;
-- the cost at the best offer alone, the slippage and the worst price sent;
-- a partial-fill warning when depth is short;
-- an annualized equivalent, labelled as arithmetic only.
+The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. The default tolerances remain 100 bps for coverage and 200 bps for share orders.
 
 ### 7.5 Portfolio
 
-A **Coverage** panel lists each market where the wallet holds YES:
-
-- the property and place;
-- the contract month (marked replay) and whether trading is open;
-- coverage in dollars;
-- the premium paid (net YES bought minus sold, from indexed fills only, or "indexing…");
-- the value at the current best YES bid;
-- the market state.
-
-It states that the value at best bid is not a forecast and that price moves don't change the payout. The portfolio looks back 8 rounds.
+The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio looks back 8 rounds.
 
 ### 7.6 Operator
 
-`/operator` lists the last 8 rounds with hazard, state and settled count. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server route already takes a round address.
+`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server route already takes a round address.
 
 ## 8. Tests
 

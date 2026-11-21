@@ -5,8 +5,7 @@
 // book on the left, compact trade ticket on the right. Every number comes from the §7.5 API.
 import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { PublicKey } from "@solana/web3.js";
+import { useEffect, useMemo, useState } from "react";
 import { catalogByProperty, HAZARD_LABEL, Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import {
   fetchBook,
@@ -15,34 +14,36 @@ import {
   fetchHealth,
   fetchHoldings,
   fetchMarketInfo,
+  fetchRound,
   fetchTrades,
   fetchWalletOrders,
   sha256HexOf,
   USE_FIXTURES,
   type Headline,
   type MarketInfo,
-  type RoundWithMarkets,
 } from "@/lib/exchange-client";
 import { formatPrice, formatShares, marketState, marketTitle, outcomeName, payoutRule, question } from "@/lib/exchange-format";
 import { explorerAddress, formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { Panel, TxLink } from "@/components/ui";
-import { LiquidityDisclosure, MakerLabel, MakersContext, ReplayDisclosure, StateLabel, TriggerSentence, Unavailable } from "./Labels";
+import { MakerLabel, MakersContext, StateLabel, Unavailable } from "./Labels";
 import { OrderBook } from "./OrderBook";
 import { MarketPhoto, MarketPhotoCredit } from "./MarketPhoto";
 import { MarketRiskMap } from "./MarketRiskMap";
 import { PriceChart } from "./PriceChart";
-import { TradePanel, type TradePick } from "./TradePanel";
+import { TradePanel, type TradeMode, type TradePick } from "./TradePanel";
 import { WalletPanel } from "./WalletPanel";
 
 function OutcomePrice({
   label,
   h,
+  ask,
   selected,
   onSelect,
 }: {
   label: "YES" | "NO";
   h: Headline;
+  ask: number | null | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -52,16 +53,16 @@ function OutcomePrice({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`flex min-w-0 flex-1 items-center justify-between gap-3 border px-4 py-3 text-left transition-colors ${
-        selected ? (yes ? "border-up bg-up-soft" : "border-down bg-down-soft") : "border-line hover:bg-bg-soft"
+      className={`flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 rounded-md border px-3 py-2 text-left transition-colors ${
+        selected ? (yes ? "border-up/40 bg-up-soft" : "border-down/40 bg-down-soft") : "border-line hover:bg-bg-soft"
       }`}
     >
       <span className={`text-sm font-semibold ${yes ? "text-up" : "text-down"}`}>{label}</span>
       <span className="text-right">
-        <span className="num block text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-          {h.source === "none" ? "—" : formatPrice(h.priceBps)}
+        <span className="num block text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+          {formatPrice(ask ?? h.priceBps)}
         </span>
-        <span className="text-[11px] text-faint">{h.source === "mid" ? "mid" : h.source === "last" ? "last" : "no quotes"}</span>
+        <span className="text-xs text-dim">{ask != null ? "Best ask" : h.source === "mid" ? "Midpoint" : h.source === "last" ? "Last trade" : "No price"}</span>
       </span>
     </button>
   );
@@ -123,10 +124,14 @@ function Settlement({ info }: { info: MarketInfo }) {
   );
 }
 
-export function MarketView({ market, round, children }: { market: string; round?: RoundWithMarkets | null; children?: ReactNode }) {
+export function MarketView({ market, initialOutcome }: {
+  market: string;
+  initialOutcome?: OutcomeCode;
+}) {
   const { publicKey } = useWallet();
   const me = publicKey?.toBase58() ?? null;
-  const [outcome, setOutcome] = useState<OutcomeCode>(Outcome.Yes);
+  const [outcome, setOutcome] = useState<OutcomeCode>(initialOutcome ?? Outcome.Yes);
+  const [mode, setMode] = useState<TradeMode>(initialOutcome === undefined ? "coverage" : "shares");
   const [pick, setPick] = useState<TradePick | null>(null);
   const [tab, setTab] = useState<"book" | "trades">("book");
 
@@ -136,11 +141,13 @@ export function MarketView({ market, round, children }: { market: string; round?
   const chart = usePoll(() => fetchChart(market), [market], 5_000);
   const health = usePoll(() => fetchHealth(), [], 10_000);
   const m = info.data?.market;
+  const siblingRound = info.data && info.data.round.marketCount > 1 ? info.data.round.address : undefined;
+  const related = usePoll(() => siblingRound ? fetchRound(siblingRound) : Promise.resolve(null), [siblingRound], 15_000);
   const wallet = usePoll(
     async () => {
       if (!publicKey || !m) return null;
       const [h, orders] = await Promise.all([fetchHoldings(publicKey, [m]), fetchWalletOrders(publicKey)]);
-      return { musd: h.musd, yes: h.yes.get(m.address) ?? 0n, no: h.no.get(m.address) ?? 0n, orders };
+      return { owner: publicKey.toBase58(), musd: h.musd, yes: h.yes.get(m.address) ?? 0n, no: h.no.get(m.address) ?? 0n, orders };
     },
     [me, m?.address],
     4_000,
@@ -151,6 +158,14 @@ export function MarketView({ market, round, children }: { market: string; round?
     wallet.refresh();
     trades.refresh();
   };
+  const selectOutcome = (next: OutcomeCode) => {
+    if (next === Outcome.No) setMode("shares");
+    setOutcome(next);
+  };
+  const selectMode = (next: TradeMode) => {
+    if (next === "coverage") setOutcome(Outcome.Yes);
+    setMode(next);
+  };
 
   const makers = useMemo(() => health.data?.marketMakers ?? new Map<string, string>(), [health.data]);
 
@@ -160,23 +175,23 @@ export function MarketView({ market, round, children }: { market: string; round?
   const r = info.data.round;
   const state = marketState(m.outcome, r);
   const closed = !info.data.tradingOpen || m.outcome !== "unresolved";
-  const siblings = round?.markets.filter((x) => x.address !== m.address) ?? [];
+  const siblings = related.data?.address === m.round ? related.data.markets.filter((x) => x.address !== m.address) : [];
   const c = catalogByProperty(m.propertyId);
+  const walletData = wallet.data?.owner === me ? wallet.data : null;
+  const activeBook = !closed && !book.error && book.data?.tradingOpen ? book.data : undefined;
+  const deadlines = r.tradingEndsAt > 0n ? new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
+  }).format(Number(r.tradingEndsAt) * 1000) : null;
 
   return (
     <MakersContext.Provider value={makers}>
       <div className="space-y-6 animate-in">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
-            <Link href="/rounds" className="hover:text-ink">
-              Round #{r.roundId.toString()}
-            </Link>
+            <Link href="/" className="hover:text-ink">Markets</Link>
             <span className="text-faint">·</span>
             <StateLabel state={state} />
-            <span className="text-faint">·</span>
-            <span className="num">
-              Vol {info.data.volume === null ? "…" : `${formatMusd(info.data.volume)} mUSD`}
-            </span>
+            {info.data.volume !== null && <span className="num">· Vol {formatMusd(info.data.volume)} mUSD</span>}
             {info.data.confirmingFills > 0 && (
               <>
                 <span className="text-faint">·</span>
@@ -184,40 +199,38 @@ export function MarketView({ market, round, children }: { market: string; round?
               </>
             )}
             <a className="ml-auto hover:text-ink" href="#risk-map">Risk map</a>
-            <a className="hover:text-ink" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">
-              Explorer
-            </a>
+            <a className="hover:text-ink lg:hidden" href="#trade">Trade</a>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             {c && (
-              <figure className="order-1 w-full shrink-0 sm:order-none sm:w-40">
-                <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 160px, 100vw" className="h-32 rounded-md sm:h-24" />
-                <figcaption className="mt-1 leading-4"><MarketPhotoCredit photo={c.photo} /></figcaption>
+              <figure className="order-1 flex shrink-0 items-center gap-2 sm:order-none sm:block sm:w-32">
+                <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 128px, 80px" className="h-12 w-20 shrink-0 rounded-md sm:h-20 sm:w-full" />
+                <figcaption className="leading-4 sm:mt-1"><MarketPhotoCredit photo={c.photo} /></figcaption>
               </figure>
             )}
             <div className="min-w-0 space-y-2">
               {c && (
                 <div className="text-xs text-dim">
-                  {c.place} · {HAZARD_LABEL[c.hazard]} · {c.month} contract · Trigger: {c.trigger}
+                  {HAZARD_LABEL[c.hazard]} · {c.place} · {c.month}
                 </div>
               )}
-              <h1 className="max-w-4xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{question(m)}</h1>
-              <p className="max-w-3xl text-[11px] leading-snug text-faint">
-                <TriggerSentence text={payoutRule(m)} /> <ReplayDisclosure className="inline" replayOf={c?.replayOf} />
-                {c && <> Settlement data: {c.source}. Its SHA-256 was committed on-chain when this round opened.</>}
-              </p>
+              <h1 className="max-w-4xl text-2xl font-semibold tracking-tight text-ink sm:text-4xl">{question(m)}</h1>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <OutcomePrice label="YES" h={info.data.headline.yes} selected={outcome === Outcome.Yes} onSelect={() => setOutcome(Outcome.Yes)} />
-          <OutcomePrice label="NO" h={info.data.headline.no} selected={outcome === Outcome.No} onSelect={() => setOutcome(Outcome.No)} />
-        </div>
-
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-4">
-            <PriceChart chart={chart.data} outcome={outcome} />
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid min-w-0 grid-cols-2 gap-2 lg:col-start-1 lg:row-start-1">
+            <OutcomePrice label="YES" h={info.data.headline.yes} ask={activeBook?.yes.bestAskBps} selected={outcome === Outcome.Yes} onSelect={() => selectOutcome(Outcome.Yes)} />
+            <OutcomePrice label="NO" h={info.data.headline.no} ask={activeBook?.no.bestAskBps} selected={outcome === Outcome.No} onSelect={() => selectOutcome(Outcome.No)} />
+          </div>
+          <aside id="trade" aria-label="Trade ticket" className="scroll-mt-20 lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+            <div className="rounded-lg border border-line bg-bg p-4 sm:p-5">
+              <TradePanel market={m} book={activeBook} mode={mode} onMode={selectMode} outcome={outcome} onOutcome={selectOutcome} have={walletData} tradingOpen={!closed} pick={pick} onDone={refresh} />
+            </div>
+          </aside>
+          <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
+            <PriceChart key={outcome} chart={chart.error ? undefined : chart.data} unavailable={!!chart.error} outcome={outcome} />
 
             <div>
               <div className="mb-3 flex items-center gap-1 border-b border-line text-sm">
@@ -230,6 +243,7 @@ export function MarketView({ market, round, children }: { market: string; round?
                   <button
                     key={id}
                     type="button"
+                    aria-pressed={tab === id}
                     onClick={() => setTab(id)}
                     className={`-mb-px border-b-2 px-3 py-2 transition-colors ${
                       tab === id ? "border-ink font-medium text-ink" : "border-transparent text-dim hover:text-ink"
@@ -251,7 +265,10 @@ export function MarketView({ market, round, children }: { market: string; round?
                     book={outcome === Outcome.Yes ? book.data?.yes : book.data?.no}
                     outcome={outcome}
                     onOutcome={setOutcome}
-                    onPick={(priceBps: number, side: OrderSideCode) => setPick({ priceBps, side, at: Date.now() })}
+                    onPick={(priceBps: number, side: OrderSideCode) => {
+                      setMode("shares");
+                      setPick({ priceBps, side, at: Date.now() });
+                    }}
                     me={me}
                     closed={closed}
                     compact
@@ -287,12 +304,6 @@ export function MarketView({ market, round, children }: { market: string; round?
             </div>
           </div>
 
-          <aside className="lg:sticky lg:top-20">
-            <div className="border border-line bg-bg p-4 sm:p-5">
-              <div className="mb-3 text-xs font-medium tracking-wide text-faint uppercase">Trade</div>
-              <TradePanel market={m} book={book.data} outcome={outcome} onOutcome={setOutcome} have={wallet.data ?? null} tradingOpen={!closed} pick={pick} onDone={refresh} />
-            </div>
-          </aside>
         </div>
 
         <MarketRiskMap
@@ -308,14 +319,29 @@ export function MarketView({ market, round, children }: { market: string; round?
           zoom={c?.hazard === "hurricane" ? 10 : c?.hazard === "earthquake" ? 13 : 14}
         />
 
-        <Panel title="Position">
-          <WalletPanel market={m} have={wallet.data ?? null} orders={wallet.data?.orders} trades={trades.data} onDone={refresh} />
-        </Panel>
+        <div id="position" className="scroll-mt-20">
+          <Panel title="Position">
+            <WalletPanel market={m} have={walletData} orders={walletData?.orders} trades={trades.data} onDone={refresh} />
+          </Panel>
+        </div>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          <Panel title="Settlement">
+          <section aria-labelledby="rules-title" className="space-y-2 border-t border-line pt-4">
+            <h2 id="rules-title" className="text-lg font-semibold tracking-tight">Market rules</h2>
+            <p className="text-sm text-ink-secondary">{payoutRule(m)}</p>
+            {c && <p className="text-sm text-dim">Historical coverage · {c.month}</p>}
+            {deadlines && <p className="text-sm text-dim">Devnet trading deadline {deadlines} UTC</p>}
+            {c && <p className="text-sm text-dim">Settlement source · {c.source}</p>}
+          </section>
+          <section id="settlement" aria-labelledby="settlement-title" className="scroll-mt-20 space-y-2 border-t border-line pt-4">
+            <h2 id="settlement-title" className="text-lg font-semibold tracking-tight">Settlement</h2>
             <Settlement key={`${m.address}:${m.evidenceHash}`} info={info.data} />
-          </Panel>
+            <details className="text-xs text-dim">
+              <summary className="cursor-pointer">On-chain details</summary>
+              <p className="mt-2 break-all">Round #{r.roundId.toString()} · Dataset SHA-256 {r.datasetSha256}</p>
+              <a className="mt-1 inline-block underline" href={explorerAddress(m.address)} target="_blank" rel="noreferrer">Market on Solana Explorer</a>
+            </details>
+          </section>
           {siblings.length > 0 && (
             <Panel title="Same round">
               <div className="divide-y divide-line">
@@ -330,17 +356,6 @@ export function MarketView({ market, round, children }: { market: string; round?
           )}
         </div>
 
-        {children}
-        <div className="space-y-1 border-t border-line pt-4 text-xs text-faint">
-          <LiquidityDisclosure />
-          <p>
-            {m.address.slice(0, 8)}… · vault{" "}
-            <a className="hover:underline" href={explorerAddress(new PublicKey(m.vault))} target="_blank" rel="noreferrer">
-              {m.vault.slice(0, 8)}…
-            </a>{" "}
-            · {formatShares(m.pairsOutstanding)} pairs
-          </p>
-        </div>
       </div>
     </MakersContext.Provider>
   );

@@ -24,31 +24,39 @@ interface Pt {
   signature: string;
 }
 
-export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; outcome: OutcomeCode }) {
-  const [hover, setHover] = useState<Pt | null>(null);
+const RANGES = [["1H", 3_600], ["24H", 86_400], ["All", null]] as const;
+
+export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo | undefined; outcome: OutcomeCode; unavailable?: boolean }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [table, setTable] = useState(false);
+  const [series, setSeries] = useState<"trade" | "mid">("trade");
+  const [range, setRange] = useState<(typeof RANGES)[number][1]>(null);
 
   const pts = useMemo(() => {
     if (!chart) return [];
+    const cutoff = range === null ? null : Date.now() / 1000 - range;
+    const inRange = (p: { blockTime: number | null }) => cutoff === null || (p.blockTime !== null && p.blockTime >= cutoff);
     const order = (slot: number, i: number) => slot * 1_000 + i;
     const mids: Pt[] = chart.quotes
-      .filter((q) => q.outcome === outcome && q.midBps !== null)
+      .filter((q) => q.outcome === outcome && q.midBps !== null && inRange(q))
       .map((q, i) => ({ x: order(q.slot, i), kind: "mid" as const, priceBps: q.midBps as number, blockTime: q.blockTime, signature: q.signature }));
     const trades: Pt[] = chart.trades
-      .filter((t) => t.outcome === outcome)
+      .filter((t) => t.outcome === outcome && inRange(t))
       .map((t, i) => ({ x: order(t.slot, 500 + i), kind: "trade" as const, priceBps: t.priceBps, quantity: t.quantity, blockTime: t.blockTime, signature: t.signature }));
-    return [...mids, ...trades].sort((a, b) => a.x - b.x);
-  }, [chart, outcome]);
+    return (series === "trade" ? trades : mids).sort((a, b) => a.x - b.x);
+  }, [chart, outcome, range, series]);
 
-  if (!chart) return <div className="h-[180px] animate-pulse bg-bg-soft" />;
-  if (chart.indexing) return <div className="flex h-16 items-center text-xs text-dim">Indexing…</div>;
-  if (!pts.length) return <div className="flex h-16 items-center text-xs text-dim">No chart data yet</div>;
+  const hover = hoverIndex === null ? undefined : pts[hoverIndex];
+  const last = pts.at(-1);
+  const first = pts[0];
+  const change = first && last && pts.length > 1 ? last.priceBps - first.priceBps : null;
+  const maxQty = pts.reduce((max, p) => p.quantity !== undefined && p.quantity > max ? p.quantity : max, 0n);
 
   // Even spacing by event order: chain order is what matters, gaps in time are not data.
   const xs = pts.map((_, i) => i);
   const prices = pts.map((p) => p.priceBps);
-  let lo = Math.min(...prices);
-  let hi = Math.max(...prices);
+  let lo = prices.length ? Math.min(...prices) : 0;
+  let hi = prices.length ? Math.max(...prices) : 10_000;
   const padBps = Math.max(20, Math.round((hi - lo) * 0.15));
   lo = Math.max(0, lo - padBps);
   hi = Math.min(10_000, hi + padBps);
@@ -68,22 +76,31 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
   if (prevY !== null) path += `H${sx(pts.length - 1)}`;
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] text-dim">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3" style={{ background: MID }} /> Mid
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TRADE }} /> Trades
-          </span>
-          <span className="text-faint">{outcomeName(outcome)}</span>
+    <section aria-label={`${outcomeName(outcome)} price history`} className="rounded-md border border-line px-3 pt-3 sm:px-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2 text-xs text-dim">
+        <div className="flex items-center gap-2">
+          <button type="button" aria-pressed={series === "trade"} onClick={() => { setSeries("trade"); setHoverIndex(null); }} className={`rounded px-2 py-1.5 ${series === "trade" ? "bg-bg-muted font-medium text-ink" : "hover:text-ink"}`}>Trades</button>
+          <button type="button" aria-pressed={series === "mid"} onClick={() => { setSeries("mid"); setHoverIndex(null); }} className={`rounded px-2 py-1.5 ${series === "mid" ? "bg-bg-muted font-medium text-ink" : "hover:text-ink"}`}>Quoted midpoint</button>
         </div>
-        <button className="text-faint hover:text-ink" onClick={() => setTable((t) => !t)}>
-          {table ? "Chart" : "Table"}
-        </button>
+        <div className="flex items-center gap-1">
+          {RANGES.map(([label, seconds]) => (
+            <button key={label} type="button" aria-pressed={range === seconds} onClick={() => { setRange(seconds); setHoverIndex(null); }} className={`rounded px-2 py-1.5 ${range === seconds ? "bg-bg-muted font-medium text-ink" : "hover:text-ink"}`}>{label}</button>
+          ))}
+          {pts.length > 0 && <button type="button" aria-pressed={table} className="px-2 py-1.5 hover:text-ink" onClick={() => setTable((t) => !t)}>{table ? "Chart" : "Table"}</button>}
+        </div>
       </div>
-      {table ? (
+      {change !== null && (
+        <p className="num pt-2 text-xs text-dim">
+          {change > 0 ? "+" : change < 0 ? "−" : ""}{formatPrice(Math.abs(change))} across shown {series === "trade" ? "trades" : "quotes"}
+        </p>
+      )}
+      {!pts.length ? (
+        <div className="grid min-h-40 place-items-center text-center text-sm text-dim">
+          {unavailable ? "Price history unavailable." : !chart || chart.indexing ? "Loading price history…" :
+            series === "trade" ? (range === null ? "No finalized trades yet." : "No finalized trades in this period.") :
+              (range === null ? "No quoted midpoint history yet." : "No quotes in this period.")}
+        </div>
+      ) : table ? (
         <div className="max-h-[220px] overflow-auto border border-line">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-bg-soft text-left text-xs text-faint">
@@ -108,7 +125,7 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
         </div>
       ) : (
         <div className="relative">
-          <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${outcomeName(outcome)} quoted midpoint and trades`} onMouseLeave={() => setHover(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${outcomeName(outcome)} ${series === "trade" ? "finalized trades" : "quoted midpoint history"}`} onMouseLeave={() => setHoverIndex(null)}>
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={PAD.l} x2={W - PAD.r} y1={sy(t)} y2={sy(t)} stroke="#e8e7e4" strokeWidth={1} />
@@ -118,11 +135,14 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
               </g>
             ))}
             {path && <path d={path} fill="none" stroke={MID} strokeWidth={2} strokeLinejoin="round" />}
-            {pts.map((p, i) =>
-              p.kind === "trade" ? <circle key={`t${p.x}`} cx={sx(i)} cy={sy(p.priceBps)} r={4.5} fill={TRADE} stroke="#fff" strokeWidth={2} /> : null,
-            )}
-            {hover && (
-              <line x1={sx(pts.indexOf(hover))} x2={sx(pts.indexOf(hover))} y1={PAD.t} y2={H - PAD.b} stroke="#d4d3cf" strokeWidth={1} />
+            {pts.map((p, i) => p.kind === "trade" && (
+              <g key={`t${p.x}`}>
+                {p.quantity !== undefined && maxQty > 0n && <rect x={sx(i) - 2} y={H - PAD.b - Number(p.quantity * 18n / maxQty)} width={4} height={Number(p.quantity * 18n / maxQty)} fill={TRADE} opacity={0.25} />}
+                <circle cx={sx(i)} cy={sy(p.priceBps)} r={4.5} fill={TRADE} stroke="#fff" strokeWidth={2} />
+              </g>
+            ))}
+            {hover && hoverIndex !== null && (
+              <line x1={sx(hoverIndex)} x2={sx(hoverIndex)} y1={PAD.t} y2={H - PAD.b} stroke="#d4d3cf" strokeWidth={1} />
             )}
             {pts.map((p, i) => (
               <rect
@@ -132,7 +152,7 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
                 width={Math.max(12, (W - PAD.l - PAD.r) / pts.length)}
                 height={H - PAD.t - PAD.b}
                 fill="transparent"
-                onMouseEnter={() => setHover(p)}
+                onMouseEnter={() => setHoverIndex(i)}
               />
             ))}
           </svg>
@@ -147,6 +167,6 @@ export function PriceChart({ chart, outcome }: { chart: ChartInfo | undefined; o
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }

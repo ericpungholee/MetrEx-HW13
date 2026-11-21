@@ -3,18 +3,24 @@
 // Portfolio (spec-v2 §10.5): available mUSD, YES/NO holdings per market, reserved balances, open
 // orders, claimable redemptions and recent fills. P&L is not shown.
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import type { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { catalogByProperty, Outcome, PAYOUT_PER_SHARE } from "@metrex/exchange";
+import { catalogByProperty, OrderSide, Outcome, PAYOUT_PER_SHARE } from "@metrex/exchange";
 import {
+  bookOrders,
   fetchBook,
+  fetchFeatured,
   fetchHoldings,
   fetchLatestRound,
   fetchRound,
   fetchTrades,
   fetchWalletOrders,
+  previewTrade,
   redemptionValue,
   reservedOf,
   TradeIndexingError,
+  type RoundInfo,
   type RoundWithMarkets,
 } from "@/lib/exchange-client";
 import { formatPrice, formatShares, marketState, marketTitle, outcomeName, sideName } from "@/lib/exchange-format";
@@ -28,25 +34,44 @@ const ROUNDS_BACK = 8n;
 
 export default function PortfolioPage() {
   const { publicKey } = useWallet();
+  const { setVisible } = useWalletModal();
+  if (publicKey) return <ConnectedPortfolio key={publicKey.toBase58()} publicKey={publicKey} />;
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Portfolio" />
+      <section className="space-y-3 rounded-md border border-line px-5 py-6">
+        <h2 className="text-lg font-semibold">Connect a wallet to view your portfolio</h2>
+        <p className="text-sm text-dim">See your coverage, open orders and claimable payouts.</p>
+        <button type="button" className="btn btn-primary" onClick={() => setVisible(true)}>Connect wallet</button>
+      </section>
+    </div>
+  );
+}
+
+function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
+  const me = publicKey.toBase58();
+  const featured = usePoll(fetchFeatured, [], 12_000);
+  const history = usePoll(async () => {
+    const latest = await fetchLatestRound();
+    if (!latest) return [];
+    const ids: bigint[] = [];
+    for (let id = latest.roundId - 1n; id >= 0n && id > latest.roundId - ROUNDS_BACK; id--) ids.push(id);
+    const older = await Promise.all(ids.map((id) => fetchRound(id)));
+    return [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
+  }, [], 30_000);
+  type PortfolioRound = Pick<RoundInfo, "address" | "state"> & Pick<RoundWithMarkets, "markets">;
+  const discovered = new Map<string, PortfolioRound>((history.data ?? []).map((r) => [r.address, r]));
+  for (const { round, market } of featured.data ?? []) {
+    if (!round || !market) continue;
+    const siblings = (discovered.get(round.address)?.markets ?? []).filter((m) => m.address !== market.address);
+    discovered.set(round.address, { ...round, markets: [...siblings, market] });
+  }
+  const loaded = !!(featured.data || history.data);
+  const discoveryKey = [...discovered.values()].flatMap((r) => r.markets.map((m) => m.address)).sort().join(",");
   const data = usePoll(
     async () => {
-      if (!publicKey) return null;
-      const latest = await fetchLatestRound();
-      if (!latest) {
-        return {
-          rounds: [] as RoundWithMarkets[],
-          holdings: null,
-          orders: [],
-          fills: [],
-          indexing: false,
-          premium: new Map<string, bigint>(),
-          bids: new Map<string, number | null>(),
-        };
-      }
-      const ids: bigint[] = [];
-      for (let id = latest.roundId - 1n; id >= 0n && id > latest.roundId - ROUNDS_BACK; id--) ids.push(id);
-      const older = await Promise.all(ids.map((id) => fetchRound(id)));
-      const rounds: RoundWithMarkets[] = [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
+      if (!loaded) return null;
+      const rounds = [...discovered.values()];
       const markets = rounds.flatMap((r) => r.markets);
       const [holdings, orders, trades] = await Promise.all([
         fetchHoldings(publicKey, markets),
@@ -63,32 +88,49 @@ export default function PortfolioPage() {
         ),
       ]);
       const indexing = trades.some((t) => t === null);
-      const me = publicKey.toBase58();
       const mine = trades.flatMap((t) => t ?? []).filter((t) => t.buyer === me || t.seller === me);
-      // Premium paid per market: YES bought minus YES sold, from indexed fills only (never estimated).
       const premium = new Map<string, bigint>();
+      const buys = new Map<string, { quantity: bigint; quote: bigint }>();
       for (const t of mine) {
-        if (t.outcome !== Outcome.Yes) continue;
-        const sign = t.buyer === me ? 1n : -1n;
-        premium.set(t.market.address, (premium.get(t.market.address) ?? 0n) + sign * t.quoteAmount);
+        if (!t.finalized) continue;
+        if (t.outcome === Outcome.Yes) {
+          const sign = t.buyer === me ? 1n : -1n;
+          premium.set(t.market.address, (premium.get(t.market.address) ?? 0n) + sign * t.quoteAmount);
+        }
+        if (t.buyer === me) {
+          const key = `${t.market.address}:${t.outcome}`;
+          const prev = buys.get(key) ?? { quantity: 0n, quote: 0n };
+          buys.set(key, { quantity: prev.quantity + t.quantity, quote: prev.quote + t.quoteAmount });
+        }
       }
-      // Value at the best YES bid (what the book would pay now), for unresolved markets where this wallet holds YES.
-      const covered = markets.filter((m) => (holdings.yes.get(m.address) ?? 0n) > 0n && m.outcome === "unresolved");
-      const bids = new Map(
-        await Promise.all(covered.map(async (m) => [m.address, (await fetchBook(m.address).catch(() => null))?.yes.bestBidBps ?? null] as const)),
+      const heldOpen = rounds.flatMap((r) => r.state === "open" ? r.markets : []).filter((m) =>
+        m.outcome === "unresolved" && ((holdings.yes.get(m.address) ?? 0n) > 0n || (holdings.no.get(m.address) ?? 0n) > 0n),
       );
+      const estimates = await Promise.all(heldOpen.map(async (m) => {
+        const book = await fetchBook(m.address).catch(() => null);
+        if (!book?.tradingOpen) return null;
+        const rows = bookOrders(book);
+        return [Outcome.Yes, Outcome.No].map((outcome) => {
+          const quantity = (outcome === Outcome.Yes ? holdings.yes : holdings.no).get(m.address) ?? 0n;
+          return previewTrade(rows, { outcome, side: OrderSide.Sell, kind: "market", quantity, slippageBps: 9_999 }, me, { shares: quantity, musd: holdings.musd });
+        });
+      }));
+      const sellable = estimates.flatMap((estimate) => estimate ?? []);
+      const quoteValue = sellable.reduce((amount, estimate) => amount + estimate.filledQuote, 0n);
+      const incompleteValue = estimates.some((estimate) => estimate === null) || sellable.some((estimate) => estimate.restQty > 0n);
       const fills = [...mine].sort((a, b) => b.slot - a.slot).slice(0, 20);
-      return { rounds, holdings, orders, fills, indexing, premium, bids };
+      return { rounds, holdings, orders, fills, indexing, premium, buys, quoteValue, incompleteValue };
     },
-    [publicKey?.toBase58()],
+    [loaded, discoveryKey],
     6_000,
   );
 
-  if (!publicKey) return <PageHeader title="Portfolio" description="Connect a wallet." />;
-  if (!data.data) return data.error ? <Unavailable>Portfolio unavailable: {data.error}</Unavailable> : <div className="h-96 animate-pulse bg-bg-soft" />;
-  const { rounds, holdings, orders, fills, indexing, premium, bids } = data.data;
+  if (!data.data) {
+    const reason = data.error ?? (featured.error && history.error ? featured.error : null);
+    return reason ? <Unavailable>Portfolio unavailable: {reason}</Unavailable> : <div className="h-96 animate-pulse bg-bg-soft" aria-label="Loading portfolio" />;
+  }
+  const { rounds, holdings, orders, fills, indexing, premium, buys, quoteValue, incompleteValue } = data.data;
   const reserved = reservedOf(orders);
-  const me = publicKey.toBase58();
 
   const rows = rounds.flatMap((r) =>
     r.markets.map((m) => {
@@ -100,47 +142,45 @@ export default function PortfolioPage() {
   );
   const held = rows.filter((x) => x.yes > 0n || x.no > 0n || x.res.musd > 0n || x.res.yes > 0n || x.res.no > 0n);
   const claimable = rows.reduce((a, x) => a + x.claim, 0n);
+  const coverage = held.filter((x) => x.m.outcome === "unresolved" && x.yes + x.res.yes > 0n);
 
   return (
     <div className="space-y-8">
       <PageHeader title="Portfolio" />
-      <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <Stat label="mUSD available" large>
-          {holdings ? formatMusd(holdings.musd) : "—"}
-        </Stat>
-        <Stat label="mUSD reserved in bids" large>
-          {formatMusd(reserved.musd)}
-        </Stat>
-        <Stat label="Claimable redemptions" large>
-          {formatMusd(claimable)}
-        </Stat>
-        <Stat label="Open orders" large>
-          {orders.length}
-        </Stat>
+      <div className="grid grid-cols-2 gap-6 rounded-lg border border-line p-5 sm:grid-cols-4">
+        <div>
+          <Stat label="Available mUSD" large>{formatMusd(holdings.musd)}</Stat>
+          {reserved.musd > 0n && <p className="mt-1 text-xs text-dim">{formatMusd(reserved.musd)} reserved</p>}
+        </div>
+        <div>
+          <Stat label="Estimated sale proceeds" large>{incompleteValue && quoteValue === 0n ? "—" : formatMusd(quoteValue)}</Stat>
+          <p className="mt-1 text-xs text-dim">{incompleteValue ? "Partial book depth or unavailable quotes" : "Available shares in open markets"}</p>
+        </div>
+        <Stat label="Claimable mUSD" large>{formatMusd(claimable)}</Stat>
+        <Stat label="Open orders" large>{orders.length}</Stat>
       </div>
 
-      <Panel title="Coverage" right="YES shares held; one share pays $1 if the trigger is met">
-        {held.every((x) => x.yes + x.res.yes === 0n) ? (
-          <div className="text-sm text-dim">No coverage held. Buy YES on a property market to hold protection for that month.</div>
+      {data.error && <p role="status" className="text-sm text-warn">Portfolio refresh failed. Showing the last successful update.</p>}
+      {!history.data && <p className="text-xs text-dim">{history.error ? "Earlier round positions are temporarily unavailable." : "Loading positions from earlier rounds…"}</p>}
+      <Panel title="Active protection">
+        {coverage.length === 0 ? (
+          <div className="text-sm text-dim">No active protection. <Link href="/" className="underline underline-offset-2">Explore property markets</Link></div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[35rem] text-sm">
             <thead className="text-left text-xs text-faint">
               <tr>
                 <th className="pb-2 font-medium">Property</th>
                 <th className="pb-2 font-medium">Contract</th>
-                <th className="pb-2 text-right font-medium">Coverage</th>
-                <th className="pb-2 text-right font-medium">Premium paid</th>
-                <th className="pb-2 text-right font-medium">Value at best bid</th>
+                <th className="pb-2 text-right font-medium">Potential payout</th>
+                <th className="pb-2 text-right font-medium">Net YES cost</th>
                 <th className="pb-2 pl-4 font-medium">State</th>
               </tr>
             </thead>
             <tbody>
-              {held
-                .filter((x) => x.yes + x.res.yes > 0n)
+              {coverage
                 .map(({ r, m, yes, res }) => {
                   const c = catalogByProperty(m.propertyId);
                   const shares = yes + res.yes;
-                  const bid = bids.get(m.address) ?? null;
                   const paid = premium.get(m.address);
                   return (
                     <tr key={m.address} className="border-t border-line">
@@ -152,13 +192,9 @@ export default function PortfolioPage() {
                       </td>
                       <td className="py-2.5 text-dim">
                         {c ? `${c.month} (replay)` : "—"}
-                        <div className="text-xs text-faint">{r.state === "open" ? "trading open" : "trading closed"}</div>
                       </td>
                       <td className="num py-2.5 text-right">${formatMusd(shares * PAYOUT_PER_SHARE, 0)}</td>
-                      <td className="num py-2.5 text-right">{paid === undefined ? (indexing ? "indexing…" : "—") : `$${formatMusd(paid)}`}</td>
-                      <td className="num py-2.5 text-right">
-                        {m.outcome !== "unresolved" ? "—" : bid === null ? "no bids" : `$${formatMusd(shares * BigInt(bid) * 100n)}`}
-                      </td>
+                      <td className="num py-2.5 text-right">{indexing ? "Indexing…" : paid === undefined ? "—" : `$${formatMusd(paid)}`}</td>
                       <td className="py-2.5 pl-4">
                         <StateLabel state={marketState(m.outcome, r)} />
                       </td>
@@ -166,19 +202,16 @@ export default function PortfolioPage() {
                   );
                 })}
             </tbody>
-          </table>
+          </table></div>
         )}
-        <p className="mt-3 text-xs text-dim">
-          Value at best bid is what the current book would pay for these shares, not a forecast. A price change does not change the payout of shares
-          you already hold.
-        </p>
+        {coverage.length > 0 && <p className="mt-3 text-xs text-dim">Net YES cost comes from indexed finalized buys and sells. Payout follows the contract trigger.</p>}
       </Panel>
 
       <Panel title="Positions">
         {held.length === 0 ? (
           <div className="text-sm text-dim">No shares or resting orders in the latest rounds.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[36rem] text-sm">
             <thead className="text-left text-xs text-faint">
               <tr>
                 <th className="pb-2 font-medium">Market</th>
@@ -195,25 +228,25 @@ export default function PortfolioPage() {
                   <td className="py-2.5">
                     <Link className="font-medium hover:underline" href={`/market/${m.address}`}>
                       {marketTitle(m)}
-                    </Link>{" "}
-                    <span className="text-faint">round #{r.roundId.toString()}</span>
+                    </Link>
+                    {catalogByProperty(m.propertyId) && <div className="text-xs text-dim">{catalogByProperty(m.propertyId)?.month}</div>}
                   </td>
                   <td className="py-2.5">
                     <StateLabel state={marketState(m.outcome, r)} />
                   </td>
-                  <td className="num py-2.5 text-right">{formatShares(yes)}</td>
-                  <td className="num py-2.5 text-right">{formatShares(no)}</td>
+                  <td className="num py-2.5 text-right">{formatShares(yes)}{!indexing && yes > 0n && <IndexedAverage fill={buys.get(`${m.address}:${Outcome.Yes}`)} />}</td>
+                  <td className="num py-2.5 text-right">{formatShares(no)}{!indexing && no > 0n && <IndexedAverage fill={buys.get(`${m.address}:${Outcome.No}`)} />}</td>
                   <td className="num py-2.5 text-right text-dim">
                     {res.musd ? `${formatMusd(res.musd)} mUSD` : ""}
                     {res.yes ? ` ${formatShares(res.yes)} YES` : ""}
                     {res.no ? ` ${formatShares(res.no)} NO` : ""}
                     {!res.musd && !res.yes && !res.no ? "—" : ""}
                   </td>
-                  <td className="num py-2.5 text-right">{claim > 0n ? `${formatMusd(claim)} mUSD` : "—"}</td>
+                  <td className="num py-2.5 text-right">{claim > 0n ? <Link className="underline underline-offset-2" href={`/market/${m.address}#position`}>{formatMusd(claim)} mUSD</Link> : "—"}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
         {claimable > 0n && <p className="mt-2 text-xs text-faint">Redeem on each market page.</p>}
       </Panel>
@@ -222,7 +255,7 @@ export default function PortfolioPage() {
         {orders.length === 0 ? (
           <div className="text-sm text-dim">No open orders.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[28rem] text-sm">
             <tbody>
               {orders.map((o) => {
                 const m = rows.find((x) => x.m.address === o.market)?.m;
@@ -247,7 +280,7 @@ export default function PortfolioPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Panel>
 
@@ -256,7 +289,7 @@ export default function PortfolioPage() {
         {fills.length === 0 ? (
           indexing ? null : <div className="text-sm text-dim">No fills yet.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[28rem] text-sm">
             <tbody>
               {fills.map((t) => (
                 <tr key={`${t.signature}-${t.quantity}-${t.priceBps}`} className="border-t border-line">
@@ -272,9 +305,14 @@ export default function PortfolioPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Panel>
     </div>
   );
+}
+
+function IndexedAverage({ fill }: { fill?: { quantity: bigint; quote: bigint } }) {
+  if (!fill || fill.quantity === 0n) return null;
+  return <div className="text-xs text-dim">Avg. indexed buy {formatMusd(fill.quote / fill.quantity)} mUSD</div>;
 }
