@@ -12,7 +12,7 @@ export function MarketCard({ s }: { s: MarketSummary }) {
 
   return (
     <Link
-      href={`/market/${s.market.publicKey.toBase58()}`}
+      href={`/v1/market/${s.market.publicKey.toBase58()}`}
       className="group block border-b border-line py-6 transition-colors first:pt-0 last:border-b-0 hover:bg-bg-soft/60 sm:py-7"
     >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">

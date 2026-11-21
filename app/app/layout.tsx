@@ -9,8 +9,8 @@ import { Header } from "@/components/Header";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "MetrEx — parametric wildfire coverage",
-  description: "Trade fully collateralized wildfire risk on Solana. Pays on fire proximity, not on damage.",
+  title: "MetrEx — wildfire risk exchange",
+  description: "Trade fully collateralized YES and NO shares on historical wildfire proximity on Solana Devnet. Pays on fire proximity, not on damage.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -21,3 +21,5 @@ export * from "./routes/password";
 export * from "./stats";
 export * from "./oracle/exchange";
 export * from "./oracle/exchange-settle";
+export * from "./routes/rpc-proxy";
+export * from "./routes/operator";

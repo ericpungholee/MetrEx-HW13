@@ -13,7 +13,7 @@ The owner's v2 draft (binary outcome tokens and an escrowed order book) was revi
 | V2 — Trading protocol | **Passed** 2026-11-21 | `place_order`, `take_order`, `match_orders`, `cancel_order` and `sweep_order` are implemented against the frozen contexts. The IDL is unchanged. `tests/exchange.ts` now has 67 tests: 31 for V2, including I3, I4 and I10–I12, the §11 demo replay and the size test. A mutation check, with the execution price forced to the SELL price and the take self-trade check removed, fails 5 of them. R checklist: all six items pass (see below) |
 | V3 — Engine and liquidity (local) | **Passed** 2026-11-21 | `scripts/v3-local.sh` passes end to end on a disposable validator (results below). Workspace tests: exchange 33, geo 35, server 50, bots 38, scripts 5, app 13, shared 12. App build passes with the v1 pages unchanged. `anchor test`: 145 passing (67 v2, 78 v1). Program and IDL unchanged |
 | V4 — Devnet | **Passed** 2026-11-21 | Deployed at `BrHisWF8…Fko`, admin is upgrade authority, dumped bytes match the tested build. Every §13.3 item passed on Devnet, NO validated separately. See [v2-devnet-verification.md](v2-devnet-verification.md) |
-| V5 — App replaces v1 | Not started | Tag `v1.1-demo` first |
+| V5 — App replaces v1 | **Passed** 2026-11-21 | Tag `v1.1-demo` (local, on `47cbda2`). `/` is the exchange and v1 lives at `/v1`. Production build passes, and a fixture build is refused. Every page renders against Devnet and against fixtures. Workstream C acceptance is tested in `app/lib/exchange-client.test.ts`: a market buy and a limit order each build one transaction, and `RoundNotOpen` reads "Trading has closed for this round." Results below |
 | V6 — Phantom rehearsal | Not started | |
 
 ### Owner decisions (approved 2026-11-21, spec-v2 §15)
@@ -68,7 +68,7 @@ Run with `bash scripts/v3-local.sh`. It uses throwaway keys in a temp dir (never
 - **v2 bots** live in `services/bots/src/v2/` (`pnpm --filter bots start:v2`). The v1 bots are untouched for the fallback demo. The keeper and trade index are `services/indexer/src/v2.ts` (`start:v2`, `KEEPER_DISABLED=1` stops matching).
 - **Oracle isolation.** Bots and keeper import only `@metrex/server/exchange`, which never reaches oracle or geo code. Tests enforce this, and both workers refuse to start when `METREX_ORACLE_DATA_DIR` is set.
 - **Heartbeats** are files in `METREX_HEARTBEAT_DIR` (default `<repo>/.metrex/heartbeat`, gitignored). They are stale after 20 s. On a hosted deploy the app and workers must share this directory, or V4/V5 needs another channel.
-- **Routes.** The §7.5 handlers are in `packages/server/src/routes/exchange.ts`, mounted at `app/app/api/{rounds,markets,health}`. `/api/evidence` still serves v1 only. Wiring v2 evidence into the app is C/V5 work.
+- **Routes.** The §7.5 handlers are in `packages/server/src/routes/exchange.ts`, mounted at `app/app/api/{rounds,markets,health}`. Since V5, `/api/evidence` serves v2 markets too (it dispatches on the account owner).
 - **Local finality** lags about 13 s. Pre-checks in `prepare-demo-v2` read at `confirmed`, and round creation and settlement wait for `finalized`.
 - `app/next.config.ts` adds `@metrex/exchange` to `transpilePackages`, because the server root now imports it.
 
@@ -94,9 +94,33 @@ The full record is [v2-devnet-verification.md](v2-devnet-verification.md).
   - redemptions exact: 200 YES → 200 mUSD, 50 NO → 50 mUSD
 - **Round 2** (`Crp8ZE8C…`) is open with fresh markets for the demo.
 
-### Next: Gate V5 (app replaces v1)
+### V5 results
 
-Tag `v1.1-demo` first. Then build the §10 pages on `app/lib/exchange-client.ts` and wire v2 evidence into `/api/evidence`.
+- **v1 preserved.** Tag `v1.1-demo` (annotated, local, not pushed) marks main at `47cbda2`. The v1 pages moved unchanged to `/v1`, `/v1/market/[id]`, `/v1/portfolio`, `/v1/create` and `/v1/demo`. The nav no longer links them.
+- **Pages (§10).**
+  - `/` features `Config.latest_round`, and within it `NEXT_PUBLIC_FEATURED_PROPERTY` (default 1).
+  - `/market/[id]` has the headline mid or last, the chart (quoted midpoint and trades, from finalized events, with a table view), the YES/NO book with maker labels, a trade panel that previews and simulates before the wallet, the wallet panel (holdings, reserved, cancel, redeem) and settlement (evidence hash recomputed in the browser).
+  - `/portfolio` covers the last 3 rounds, `/rounds` the last 10, and `/operator` the Close and settle steps behind the password.
+  - All §10.1 texts are on the market page.
+- **New routes.**
+  - `/api/rpc` is the browser's JSON-RPC proxy. An allowlist keeps the provider key server-side. Exchange scans are refused, and scans of the v1 program alone are forwarded so `/v1` keeps working. Calls are paced like the server's.
+  - `/api/orders?maker=` serves a wallet's orders from the shared cached state.
+  - `/api/operator/settle-round` runs close, reject, resolve, sweep and status, one step per call.
+  - `/api/evidence` dispatches to v2 for exchange markets.
+- **Browser RPC.** It defaults to `<origin>/api/rpc`, and `NEXT_PUBLIC_RPC_URL` is now optional (key-free URLs only). The loopback bridge on port 3032 is no longer needed. The app server's `RPC_URL` is the hosted Devnet RPC with `RPC_MAX_RPS=6` and `RPC_MAX_SCAN_RPS=0.5` (ignored `app/.env.local`).
+- **Trade history** comes from one index per market (signatures of the market address, about 10 per round on Devnet, not 1,000+ program-wide), decoded newest first. Until a market's backfill is decoded, the API returns `indexing: true` and the UI says "indexing" instead of showing 0 volume or an empty chart.
+- **Older rounds** derive their market PDAs from the known property ids instead of scanning. Fully settled rounds are cached for good.
+- **Tests:** exchange 33, geo 35, server 56, bots 39, scripts 5, app 18, shared 12. `anchor test` was not rerun, because no program or IDL changed.
+
+**V5 gaps (not blocking):**
+- Portfolio has no "completed redemptions" history (§10.5). Only claimable amounts are shown.
+- `/v1` loads in about 20 s through the proxy, because its account scans are paced at 0.5/s for the hosted tier.
+- The first visit to an older round costs one property scan (about 10 s cold).
+- The faucet button is still the v1 faucet. It mints the same mUSD, which v2 uses.
+
+### Next: Gate V6 (Phantom rehearsal)
+
+Run the §11 demo end to end in Phantom on Devnet against the V5 app.
 
 RPC rate limits fixed (2026-11-21, after V4). The workers now read the books with batched, cached `getMultipleAccounts` calls, move order scans to the background, and pace requests with `RPC_MAX_RPS=8` and `RPC_MAX_SCAN_RPS=0.5`. On Devnet: 0 × HTTP 429, about 1.5 requests a second per worker, and bot quotes 6–7 s after market creation on the chain clock (previously 14–23 s). See the Risks section of [v2-devnet-verification.md](v2-devnet-verification.md).
 

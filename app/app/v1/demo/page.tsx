@@ -162,7 +162,7 @@ export default function DemoPage() {
             <section className="space-y-5">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <h2 className="text-2xl font-semibold tracking-tight">{sel.label}</h2>
-                <Link className="text-sm text-dim underline-offset-2 hover:text-ink hover:underline" href={`/market/${selKey.toBase58()}`}>
+                <Link className="text-sm text-dim underline-offset-2 hover:text-ink hover:underline" href={`/v1/market/${selKey.toBase58()}`}>
                   Open market
                 </Link>
               </div>

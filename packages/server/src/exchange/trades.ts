@@ -41,10 +41,15 @@ export interface TradeSource {
   decode(tx: TxRow & { txOrder: number }): PositionedEvent[];
 }
 
-export function connectionTradeSource(getConn: () => Connection, programId: PublicKey): TradeSource {
+/**
+ * `address` is the program id for a program-wide index, or one market's address for a per-market
+ * index: every instruction that emits a market event (split, merge, place, take, match, cancel,
+ * sweep, resolve, redeem) passes that market's account, so its signature list is complete for it.
+ */
+export function connectionTradeSource(getConn: () => Connection, address: PublicKey): TradeSource {
   return {
     async signatures(opts) {
-      const rows = await getConn().getSignaturesForAddress(programId, opts, "confirmed");
+      const rows = await getConn().getSignaturesForAddress(address, opts, "confirmed");
       return rows.map((r) => ({
         signature: r.signature,
         slot: r.slot,
@@ -100,6 +105,8 @@ export class TradeIndex {
   private nextOrder = 0;
   private inflight: Promise<void> | undefined;
   lastRefresh: number | undefined;
+  /** True once every transaction of the initial backfill has been decoded; stays true. */
+  backfilled = false;
 
   constructor(
     private readonly source: TradeSource,
@@ -133,7 +140,11 @@ export class TradeIndex {
     }
     if (fresh.length) this.newest = fresh[fresh.length - 1]?.signature;
 
-    const missing = [...this.entries.values()].filter((e) => e.events === null).slice(0, this.opts.txPerRefresh ?? 200);
+    // Newest first, so the current round's history appears before older rounds'.
+    const missing = [...this.entries.values()]
+      .filter((e) => e.events === null)
+      .sort((a, b) => b.order - a.order)
+      .slice(0, this.opts.txPerRefresh ?? 200);
     const txs = await this.source.transactions(missing.map((e) => e.row.signature));
     missing.forEach((e, i) => {
       const t = txs[i];
@@ -144,6 +155,7 @@ export class TradeIndex {
       const fin = await this.source.finalized(pending.map((e) => e.row.signature));
       pending.forEach((e, i) => (e.row.finalized ||= fin[i] ?? false));
     }
+    if (!this.backfilled && ![...this.entries.values()].some((e) => e.events === null)) this.backfilled = true;
     this.lastRefresh = Date.now();
   }
 

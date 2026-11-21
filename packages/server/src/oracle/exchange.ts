@@ -204,3 +204,16 @@ export async function getExchangeEvidence(market: PublicKey, deps: { rpc?: RpcPo
   }
   return { market: market.toBase58(), canonical: bytes.toString("utf8"), hashHex, record, onChain: { outcome: m.outcome, evidenceHash: hashHex, matches: true } };
 }
+
+/** §9.3 step 6 with `?perimeter=1`: the fire perimeter, only behind the same finalized, hash-matched gate. */
+export async function getExchangeSettledPerimeter(market: PublicKey, deps: { rpc?: RpcPool; dataDir?: string } = {}) {
+  const evidence = await getExchangeEvidence(market, deps);
+  try {
+    const dir = deps.dataDir ?? oracleDataDir();
+    const { scenario, geometry } = loadScenarioGeometry(loadScenarioRegistry(dir), evidence.record.scenario_id, dir);
+    if (scenario.sha256.toLowerCase() !== evidence.record.dataset.sha256) throw new Error("Dataset changed");
+    return geometry;
+  } catch {
+    throw unavailable("Perimeter temporarily unavailable");
+  }
+}
