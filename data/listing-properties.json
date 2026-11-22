@@ -1,0 +1,72 @@
+[
+  {
+    "property_id": 10,
+    "label": "17058 Avenida de Santa Ynez",
+    "lat_e6": 34071662,
+    "lon_e6": -118557749,
+    "scenario_id": 1,
+    "trigger_distance_m": 500,
+    "place": "Pacific Palisades, California",
+    "osm": "way/414612749"
+  },
+  {
+    "property_id": 12,
+    "label": "1433 Mendavia Avenue",
+    "lat_e6": 25728298,
+    "lon_e6": -80282421,
+    "scenario_id": 2,
+    "trigger_distance_m": 0,
+    "place": "Coral Gables, Florida",
+    "osm": "way/637745186"
+  },
+  {
+    "property_id": 13,
+    "label": "5363 Orduna Drive",
+    "lat_e6": 25720316,
+    "lon_e6": -80267822,
+    "scenario_id": 2,
+    "trigger_distance_m": 0,
+    "place": "Coral Gables, Florida",
+    "osm": "way/637379550"
+  },
+  {
+    "property_id": 14,
+    "label": "308 Vine Row Court",
+    "lat_e6": 38244838,
+    "lon_e6": -122305479,
+    "scenario_id": 3,
+    "trigger_distance_m": 0,
+    "place": "Napa, California",
+    "osm": "node/11686888520"
+  },
+  {
+    "property_id": 15,
+    "label": "112 Vintners Court",
+    "lat_e6": 38242947,
+    "lon_e6": -122304220,
+    "scenario_id": 3,
+    "trigger_distance_m": 0,
+    "place": "Napa, California",
+    "osm": "node/11686888515"
+  },
+  {
+    "property_id": 16,
+    "label": "9293 Northwest 70th Avenue",
+    "lat_e6": 41688619,
+    "lon_e6": -93745592,
+    "scenario_id": 4,
+    "trigger_distance_m": 500,
+    "place": "Johnston, Iowa",
+    "osm": "way/1098704007"
+  },
+  {
+    "property_id": 17,
+    "label": "6911 Northwest 93rd Street",
+    "lat_e6": 41686718,
+    "lon_e6": -93746681,
+    "scenario_id": 4,
+    "trigger_distance_m": 500,
+    "place": "Johnston, Iowa",
+    "osm": "way/1229199332"
+  }
+]

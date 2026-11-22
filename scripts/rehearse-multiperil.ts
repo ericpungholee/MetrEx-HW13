@@ -1,5 +1,5 @@
 // Real Devnet rehearsal with disposable signers and the running production app.
-// Set DEMO_PASSWORD, RPC_URL and METREX_APP_ORIGIN. Use --hazard to limit settlement scope.
+// Set RPC_URL and METREX_APP_ORIGIN. Use --hazard to limit settlement scope.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -20,11 +20,9 @@ async function main(): Promise<void> {
   const program = getExchangeProgram(conn);
   assert.equal(await rpc.run((c) => c.getGenesisHash()), DEVNET_GENESIS, "Devnet required");
   const root = process.env.METREX_APP_ORIGIN ?? "http://127.0.0.1:3015";
-  const password = process.env.DEMO_PASSWORD;
-  assert(password, "Set DEMO_PASSWORD");
   const json = async (path: string, body?: object) => {
     const r = await fetch(new URL(path, root), body ? {
-      method: "POST", headers: { "content-type": "application/json", "x-demo-password": password }, body: JSON.stringify(body),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     } : undefined);
     const result = await r.json();
     assert(r.ok, `${path}: ${r.status} ${JSON.stringify(result)}`);

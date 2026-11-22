@@ -51,7 +51,9 @@ export type SimAction =
   /** Complement arbitrage: buy YES and NO below 1 mUSD together, then merge. */
   | { kind: "buyMerge"; qty: bigint; yesWorstBps: number; noWorstBps: number; reason: string }
   /** Complement arbitrage: split 1 mUSD into a pair and sell both above 1 mUSD together. */
-  | { kind: "splitSell"; qty: bigint; yesWorstBps: number; noWorstBps: number; reason: string };
+  | { kind: "splitSell"; qty: bigint; yesWorstBps: number; noWorstBps: number; reason: string }
+  /** Underwriting: split 1 mUSD into a pair, sell the YES into a rich bid and keep the NO. */
+  | { kind: "underwrite"; qty: bigint; yesWorstBps: number; reason: string };
 
 /** Smallest trade worth sending, mUSD base units. */
 export const MIN_NOTIONAL = 5n * PAYOUT_PER_SHARE;
@@ -242,10 +244,28 @@ function homeowner(v: View): SimAction | null {
   return bid && bid.kind === "limit" ? { ...bid, qty: minB(bid.qty, remaining) } : bid;
 }
 
-/** Sells risk: accumulates NO when YES looks rich, posts NO bids, exits when YES looks cheap. */
+/**
+ * Underwrites a rich YES bid (a homeowner's premium, spec-multiperil §7.7): splits pairs and sells
+ * the YES into the bid when it is above belief by `edge`, keeping the NO. The net cost per share is
+ * 1 mUSD less the premium received; the NO held stays under the holding cap.
+ */
+export function underwrite(v: Pick<View, "p" | "q" | "h" | "ctx" | "rng">, L: number): SimAction | null {
+  const { p, q, h } = v;
+  if (!q.yesBid || lg(q.yesBid.priceBps) - L <= p.edge) return null;
+  const net = PAYOUT_PER_SHARE - costOf(1n, q.yesBid.priceBps);
+  const budget = buyBudget(p, h, v.ctx, v.rng);
+  const room = p.maxShares - h.no;
+  const qty = minB(q.yesBid.remaining, net > 0n ? budget / net : 0n, room > 0n ? room : 0n, MAX_ORDER_QTY);
+  if (qty <= 0n || qty * net < MIN_NOTIONAL) return null;
+  return { kind: "underwrite", qty, yesWorstBps: q.yesBid.priceBps, reason: "risk: underwrite YES bid" };
+}
+
+/** Sells risk: underwrites rich YES bids, accumulates NO when YES looks rich, posts NO bids, exits when YES looks cheap. */
 function riskInvestor(v: View): SimAction | null {
   const { p, q, h } = v;
   const L = beliefLogit(p, v.ctx, v.rng);
+  const uw = underwrite(v, L);
+  if (uw) return uw;
   if (h.no > 0n && q.noBid && L - lg(BPS_DENOMINATOR - q.noBid.priceBps) > p.edge) return sell(q, Outcome.No, h.no / 2n || h.no, 0.002, "risk: YES now cheap, reduce NO");
   if (q.noAsk && lg(BPS_DENOMINATOR - q.noAsk.priceBps) - L > p.edge && !v.rng.chance(p.limitShare)) {
     return buyNo(q, buyBudget(p, h, v.ctx, v.rng), logitToBps(L + p.edge / 2), "risk: sell YES via NO");

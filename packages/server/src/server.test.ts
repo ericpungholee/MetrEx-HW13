@@ -19,7 +19,6 @@ import { HttpError } from "./routes/errors";
 import { FAUCET_MUSD, FAUCET_SOL_LAMPORTS, FaucetLimiter, faucetInstructions } from "./routes/faucet";
 import { handleFaucet } from "./routes/http";
 import { handleClose, handleEvidence, handleResolve } from "./routes/legacy-http";
-import { checkDemoPassword, OperatorPasswordBudget } from "./routes/password";
 import { formatMusd, formatSol, formatUnits, musd, solToLamports } from "./token";
 import { RpcPool } from "./rpc";
 import { describeErrorText } from "./tx";
@@ -160,22 +159,6 @@ describe("env helpers", () => {
       describeErrorText(`Program log: AnchorError ... Error Code: InvalidBps. Error Number: ${errorCode("InvalidBps")}.`),
     ).toMatch(/^InvalidBps:/);
     expect(describeErrorText("nothing here")).toBeUndefined();
-  });
-});
-
-// ---------- password ----------
-
-describe("checkDemoPassword", () => {
-  it("denies when unset or empty", () => {
-    expect(checkDemoPassword("x", undefined)).toBe(false);
-    expect(checkDemoPassword("x", "")).toBe(false);
-  });
-  it("compares exactly", () => {
-    expect(checkDemoPassword("hunter2", "hunter2")).toBe(true);
-    expect(checkDemoPassword("hunter3", "hunter2")).toBe(false);
-    expect(checkDemoPassword("hunter2 ", "hunter2")).toBe(false);
-    expect(checkDemoPassword(null, "hunter2")).toBe(false);
-    expect(checkDemoPassword("", "hunter2")).toBe(false);
   });
 });
 
@@ -446,33 +429,10 @@ describe("oracle", () => {
 describe("route handlers", () => {
   const mk = () => Keypair.generate().publicKey.toBase58();
 
-  it("limits operator password attempts and restores access when the window expires", () => {
-    const budget = new OperatorPasswordBudget(2, 60_000);
-    expect(budget.check("wrong", "test", 0)).toBe("wrong");
-    expect(budget.check("wrong", "test", 1)).toBe("wrong");
-    expect(budget.check("test", "test", 59_999)).toBe("limited");
-    expect(budget.check("test", "test", 60_000)).toBe("allowed");
-  });
-
-  it("close/resolve require the demo password", async () => {
-    process.env.DEMO_PASSWORD = "pw";
-    const noPw = new Request("http://x/api", { method: "POST" });
-    expect((await handleClose(noPw, mk())).status).toBe(403);
-    const wrong = new Request("http://x/api", { method: "POST", headers: { "x-demo-password": "nope" } });
-    expect((await handleResolve(wrong, mk())).status).toBe(403);
-    delete process.env.DEMO_PASSWORD;
-    const any = new Request("http://x/api", { method: "POST", headers: { "x-demo-password": "" } });
-    const res = await handleClose(any, mk());
-    expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: string }).error).toMatch(/disabled/);
-  });
-
   it("validates the market address", async () => {
-    process.env.DEMO_PASSWORD = "pw";
-    const req = new Request("http://x/api", { method: "POST", headers: { "x-demo-password": "pw" } });
+    const req = new Request("http://x/api", { method: "POST" });
     expect((await handleResolve(req, "not-a-key")).status).toBe(400);
     expect((await handleEvidence(new Request("http://x/api"), "../../secrets")).status).toBe(400);
-    delete process.env.DEMO_PASSWORD;
   });
 
   it("validates the faucet body", async () => {

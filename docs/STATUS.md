@@ -13,6 +13,14 @@ Reset Demo opened rounds 29–32. The final V7 Phantom rehearsal settled wildfir
 
 Program [metrex_exchange](https://explorer.solana.com/address/BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko?cluster=devnet) · [Config](https://explorer.solana.com/address/786Mr9aEboyAe26Q91mPXpWA92KmsdtGivCkG15aaY2E?cluster=devnet) · [mUSD](https://explorer.solana.com/address/6cb8kKLX9hSfAeLGYxutmbadSckUfZ5cD8KyYZGNbTQC?cluster=devnet)
 
+## List your home (2026-11-21, spec-multiperil §7.7)
+
+`/new` lets a homeowner pick their address from a dropdown of 2,150 real homes in the four replay areas (`data/home-addresses.json`, IDs from 1000) and open the market with a YES bid, which is the premium. The server registers the home and creates the market in one transaction. Makers wait for the bid, then quote the hazard ladder around it. Simulated risk investors underwrite bids above their belief by splitting pairs and selling YES. The seven listing addresses (IDs 10 and 12–17) remain listable.
+
+- Devnet test: home 2797 (6620 Peckham Street, tornado) became [market 3EuDX6](https://explorer.solana.com/address/3EuDX6NPuAury9YwwUd3NyzDcaiUgjVFnwBfcaD4Hj24?cluster=devnet) with an empty book. A throwaway wallet bid 20,000 YES at 0.60¢ (120 mUSD premium). Makers B and C then quoted 0.62/0.60¢ bids and 0.76/0.90¢ asks.
+- Found during the test: seven wildfire resets (rounds 34–40) pushed the hurricane, earthquake and tornado rounds 30–32 out of the sim's newest-8-rounds window. The sim had stopped trading those hazards. It now widens its window to the oldest Open round, rechecked every minute.
+- Flood was not added: it needs a new scenario ID, which is a frozen-interface change.
+
 ## Verification
 
 - **Consolidation and data.** The active RFQ application, routes and workers are retired. Fresh property IDs replace the classroom and vacant parcel. All normalized datasets and residential sources reproduce from pinned inputs.
@@ -24,7 +32,7 @@ Program [metrex_exchange](https://explorer.solana.com/address/BrHisWF8aXQzrCvvDP
 
 ## V7 market simulation and demo operations (live on Devnet)
 
-The demo runs on port 3015 with 100 simulated traders. Operator controls are on password-protected `/operator`. See the [restart command](operations.md#start-and-restart), [spec](spec-simulation.md) and [verification log](v2-build-log.md#v7-reliability-and-phantom-rehearsal).
+The demo runs on port 3015 with 100 simulated traders. The app has no authentication other than Phantom. Each market page shows Settle market and Reset market, which call `/api/operator/*`. The `/operator` page is removed ([spec §7.1](spec-simulation.md#71-settle-and-reset-on-the-market-page)). See the [restart command](operations.md#start-and-restart), [spec](spec-simulation.md) and [verification log](v2-build-log.md#v7-reliability-and-phantom-rehearsal).
 
 - **Population.** 100 seeded traders (35 retail, 25 homeowners, 20 risk investors, 10 quants, 7 momentum, 3 large), 3,132,034 mUSD of finite capital, fees paid by one sponsor. Provisioning is idempotent and journaled. Reruns mint nothing to funded wallets. Each trader has a share-holding cap per outcome, so sub-cent YES prices cannot ask the makers for millions of shares.
 - **Makers.** Each maker has a 1.5M mUSD seed and budgets 375k per catalog market for bid escrow and inventory at full payout. The worker reserves cash across simultaneous plans, releases free surplus pairs with `merge`, and reports thin books. Maker A entered the pass with 30,223.7712 mUSD free across all four markets, 237,942.1943 mUSD in bids, 426,447 matched pairs and 817,341 unmatched NO shares. Its reconciled round-29 wildfire loss was 250,587.7948 mUSD. Gross open exposure can remain above budget until it unwinds.

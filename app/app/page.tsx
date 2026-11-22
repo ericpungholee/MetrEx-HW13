@@ -3,13 +3,13 @@
 // Homepage (docs/spec-multiperil.md §7.2): one property market per hazard, each from the newest round
 // of its scenario. Outcome buttons use the live asks from their own on-chain books.
 import Link from "next/link";
-import { CATALOG, HAZARD_LABEL, Outcome, type CatalogMarket } from "@metrex/exchange";
+import { CATALOG, HAZARD_LABEL, Outcome, entryFor, isHomeProperty, isListing, type CatalogMarket } from "@metrex/exchange";
 import { fetchFeatured, fetchMarketInfo, type FeaturedMarket } from "@/lib/exchange-client";
 import { formatPrice, marketState } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { StateLabel, Unavailable } from "@/components/exchange/Labels";
-import { MarketPhoto, MarketPhotoCredit } from "@/components/exchange/MarketPhoto";
+import { MarketPhoto } from "@/components/exchange/MarketPhoto";
 
 function OutcomeLink({ href, label, ask, pending, unavailable }: { href: string; label: "YES" | "NO"; ask: number | null; pending?: boolean; unavailable?: boolean }) {
   return (
@@ -38,7 +38,7 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
           {HAZARD_LABEL[c.hazard]} · {c.place}
         </div>
         <h2 className="text-lg font-semibold tracking-tight text-ink sm:text-xl">{c.question}</h2>
-        <div className="text-sm text-dim">{c.month}</div>
+        <div className="text-sm text-dim">{c.month}{isListing(c.propertyId) && " · Illustrative image"}</div>
       </div>
     </>
   );
@@ -72,7 +72,6 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
           </div>
         )}
       </div>
-      <div className="border-t border-line px-4 py-2 sm:px-5"><MarketPhotoCredit photo={c.photo} /></div>
     </article>
   );
 }
@@ -80,15 +79,25 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
 export default function Home() {
   const featured = usePoll(() => fetchFeatured(), [], 5_000);
   const byProperty = new Map((featured.data ?? []).map((f) => [f.propertyId, f]));
+  // Listed markets (spec-multiperil §7.7) follow the featured four while their round trades.
+  const listed = (featured.data ?? []).filter((f) => (isListing(f.propertyId) || isHomeProperty(f.propertyId)) && f.market && f.round?.state === "open" && f.market.outcome === "unresolved");
 
   return (
     <div className="space-y-5">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Property markets</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Property markets</h1>
+        <Link href="/new" className="btn btn-primary shrink-0">
+          List your home
+        </Link>
+      </div>
 
       {featured.error && !featured.data && <Unavailable>Exchange data unavailable: {featured.error}</Unavailable>}
       <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
         {CATALOG.map((c) => (
           <MarketCard key={byProperty.get(c.propertyId)?.market?.address ?? c.propertyId} c={c} f={byProperty.get(c.propertyId)} loading={featured.loading} failed={!!featured.error} />
+        ))}
+        {listed.map((f) => (
+          <MarketCard key={f.market!.address} c={entryFor(f.propertyId, f.market!.scenarioId, f.market!.label)!} f={f} loading={false} failed={!!featured.error} />
         ))}
       </div>
 

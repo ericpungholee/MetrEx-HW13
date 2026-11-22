@@ -26,6 +26,18 @@ interface Pt {
 
 const RANGES = [["1H", 3_600], ["24H", 86_400], ["All", null]] as const;
 
+// The latest finalized fill pulses continuously; keying the ring on the fill's signature restarts
+// the pulse the moment a new fill lands. Reduced-motion users get a static dot (globals.css).
+function LatestFill({ point, y }: { point: Pt; y: number }) {
+  return (
+    <g transform={`translate(${W - PAD.r} ${y})`} fill={TRADE}>
+      <title>Latest finalized trade</title>
+      <circle key={point.signature} className="fill-pulse" r={4} />
+      <circle r={4} />
+    </g>
+  );
+}
+
 export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo | undefined; outcome: OutcomeCode; unavailable?: boolean }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [table, setTable] = useState(false);
@@ -53,26 +65,21 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
   const maxQty = pts.reduce((max, p) => p.quantity !== undefined && p.quantity > max ? p.quantity : max, 0n);
 
   // Even spacing by event order: chain order is what matters, gaps in time are not data.
-  const xs = pts.map((_, i) => i);
   let lo = pts.reduce((min, p) => Math.min(min, p.priceBps), pts.length ? 10_000 : 0);
   let hi = pts.reduce((max, p) => Math.max(max, p.priceBps), pts.length ? 0 : 10_000);
   const padBps = Math.max(20, Math.round((hi - lo) * 0.15));
   lo = Math.max(0, lo - padBps);
   hi = Math.min(10_000, hi + padBps);
-  const sx = (i: number) => PAD.l + (xs.length === 1 ? (W - PAD.l - PAD.r) / 2 : (i / (xs.length - 1)) * (W - PAD.l - PAD.r));
+  const sx = (i: number) => pts.length === 1 ? W - PAD.r : PAD.l + i / (pts.length - 1) * (W - PAD.l - PAD.r);
   const sy = (bps: number) => PAD.t + (1 - (bps - lo) / (hi - lo || 1)) * (H - PAD.t - PAD.b);
   const ticks = [lo, Math.round((lo + hi) / 2), hi];
 
-  let path = "";
-  let prevY: number | null = null;
-  pts.forEach((p, i) => {
-    if (p.kind !== "mid") return;
+  const path = pts.map((p, i) => {
     const x = sx(i);
     const y = sy(p.priceBps);
-    path += prevY === null ? `M${x},${y}` : `H${x}V${y}`;
-    prevY = y;
-  });
-  if (prevY !== null) path += `H${sx(pts.length - 1)}`;
+    if (i === 0) return `M${x},${y}`;
+    return series === "trade" ? `L${x},${y}` : `H${x}V${y}`;
+  }).join(" ");
 
   return (
     <section aria-label={`${outcomeName(outcome)} price history`} className="rounded-md border border-line px-3 pt-3 sm:px-4">
@@ -135,13 +142,19 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
                 </text>
               </g>
             ))}
-            {path && <path d={path} fill="none" stroke={MID} strokeWidth={2} strokeLinejoin="round" />}
+            {path && <path d={path} fill="none" stroke={series === "trade" ? TRADE : MID} strokeWidth={2} strokeLinejoin="round" />}
             {pts.map((p, i) => p.kind === "trade" && (
               <g key={`t${p.x}`}>
                 {p.quantity !== undefined && maxQty > 0n && <rect x={sx(i) - 2} y={H - PAD.b - Number(p.quantity * 18n / maxQty)} width={4} height={Number(p.quantity * 18n / maxQty)} fill={TRADE} opacity={0.25} />}
-                <circle cx={sx(i)} cy={sy(p.priceBps)} r={4.5} fill={TRADE} stroke="#fff" strokeWidth={2} />
+                {pts.length <= 30 && <circle cx={sx(i)} cy={sy(p.priceBps)} r={3} fill={TRADE} />}
               </g>
             ))}
+            {series === "trade" && last && (
+              <>
+                <LatestFill key={outcome} point={last} y={sy(last.priceBps)} />
+                <text x={W - PAD.r} y={H - 7} textAnchor="end" fontSize={11} fill="#777">Latest fill</text>
+              </>
+            )}
             {hover && hoverIndex !== null && (
               <line x1={sx(hoverIndex)} x2={sx(hoverIndex)} y1={PAD.t} y2={H - PAD.b} stroke="#d4d3cf" strokeWidth={1} />
             )}

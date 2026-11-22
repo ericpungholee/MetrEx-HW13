@@ -4,11 +4,17 @@
 
 import { PublicKey, Transaction, type Keypair, type TransactionInstruction } from "@solana/web3.js";
 import {
-  CATALOG,
   Outcome,
   OrderSide,
   adaptiveParams,
+  anchorLadder,
   catalogByProperty,
+  homeMarket,
+  isHomeProperty,
+  isListing,
+  makerCapitalFor,
+  openingBidBps,
+  type CatalogMarket,
   diffFills,
   findOrderPda,
   initAdaptive,
@@ -130,6 +136,8 @@ export class ExchangeBotWorker {
   /** Adaptive pricing per catalog market: the previous order read and the current state. */
   private readonly prevOrders = new Map<string, OrderAccount[]>();
   private readonly pricers = new Map<string, AdaptiveState>();
+  /** Homeowner markets: the opening-bid anchor, fixed once seen (docs/spec-multiperil.md §7.7). */
+  private readonly homeAnchors = new Map<string, number>();
 
   constructor(private readonly o: V2WorkerOptions) {
     this.log = o.log ?? ((l) => console.log(`${new Date().toISOString()} ${l}`));
@@ -189,28 +197,31 @@ export class ExchangeBotWorker {
     for (const snap of state.snapshots) {
       const m = snap.market;
       if (isClosureHeld(snap.round.address)) continue;
-      if (snap.tradingOpen && !catalogByProperty(m.propertyId) && !this.o.legacyRehearsal) continue;
+      const entry = this.entryOf(snap, botKeys);
+      if (snap.tradingOpen && !entry && !this.o.legacyRehearsal) continue;
       if (!snap.tradingOpen && snap.orders.length && keeperSweeps) continue;
       // Skew is off on every catalog market (one featured market per hazard, docs/spec-multiperil.md §6)
       // and on the legacy featured property of the latest round (spec-v2 §8.3).
       const featured =
-        catalogByProperty(m.propertyId) !== undefined ||
+        entry !== undefined ||
         (m.propertyId === this.o.featuredPropertyId && m.round.equals(config.latestRound));
       if (snap.tradingOpen) {
         const depth = (outcome: number, side: number) => snap.book
           .filter((o) => o.outcome === outcome && o.side === side)
           .reduce((sum, o) => sum + o.remaining, 0n);
-        const key = catalogByProperty(m.propertyId)?.hazard ?? m.address.toBase58();
+        const hazard = entry?.hazard;
+        const listing = isListing(m.propertyId) || isHomeProperty(m.propertyId);
+        const key = hazard ? (listing ? `${hazard}_${m.propertyId}` : hazard) : m.address.toBase58();
         const sizes = [
           depth(Outcome.Yes, OrderSide.Buy), depth(Outcome.Yes, OrderSide.Sell),
           depth(Outcome.No, OrderSide.Buy), depth(Outcome.No, OrderSide.Sell),
         ];
         capitalStatus[`depth_${key}`] = sizes.join("/");
-        if (sizes[1]! < 25_000n || sizes.some((q) => q === 0n)) thinBooks.push(key);
+        if ((!listing && sizes[1]! < 25_000n) || sizes.some((q) => q === 0n)) thinBooks.push(key);
       }
       // The post-only clamp needs opposing orders that are still being discovered by the loader.
       if (snap.tradingOpen && state.orderDiscoveryPending.has(m.address.toBase58())) continue;
-      planned.push(...this.planMarket(snap, featured, botKeys, balances, liquid, loadStarted, capitalStatus, this.updatePricer(snap)));
+      planned.push(...this.planMarket(snap, featured, botKeys, balances, liquid, loadStarted, capitalStatus, this.updatePricer(snap, entry), entry));
     }
     // Group by bot and market: a split goes out together with the asks it funds (see executeGroup).
     const groups = new Map<string, Planned[]>();
@@ -261,8 +272,7 @@ export class ExchangeBotWorker {
    * `remaining_qty` decreases since the previous read. Starts from maker A's resting mid after a
    * restart, else from the catalog.
    */
-  private updatePricer(snap: MarketBookSnapshot): AdaptiveState | undefined {
-    const entry = catalogByProperty(snap.market.propertyId);
+  private updatePricer(snap: MarketBookSnapshot, entry: CatalogMarket | undefined): AdaptiveState | undefined {
     if (this.o.adaptive === false || !entry || !snap.tradingOpen) return undefined;
     const mk = snap.market.address.toBase58();
     const now = Date.now();
@@ -281,6 +291,35 @@ export class ExchangeBotWorker {
     return s;
   }
 
+  /**
+   * Maker entry for one market: its catalog or listing entry, or for a homeowner market
+   * (docs/spec-multiperil.md §7.7) the hazard's ladder re-centred on the homeowner's opening YES bid.
+   * A homeowner market is not quoted until that bid exists. After a restart the bid may be gone, and
+   * maker A's own resting mid keeps the anchor. Undefined means the makers stay out.
+   */
+  private entryOf(snap: MarketBookSnapshot, botKeys: Set<string>): CatalogMarket | undefined {
+    const m = snap.market;
+    const fixed = catalogByProperty(m.propertyId);
+    if (fixed || !isHomeProperty(m.propertyId)) return fixed;
+    const base = homeMarket(m.propertyId, m.scenarioId, `Property ${m.propertyId}`);
+    if (!base) return undefined;
+    const mk = m.address.toBase58();
+    let anchor = this.homeAnchors.get(mk);
+    if (anchor === undefined) {
+      anchor = openingBidBps(snap.book, (k) => botKeys.has(k));
+      const a = base.ladder[0];
+      const botA = a ? this.o.bots.find((b) => b.params.name === a.name)?.keypair.publicKey.toBase58() : undefined;
+      if (anchor === undefined && botA) {
+        const mid = restingMid(snap.orders, botA);
+        if (mid !== undefined) anchor = Math.round(mid);
+      }
+      if (anchor === undefined) return undefined;
+      this.homeAnchors.set(mk, anchor);
+      this.log(`[bots] homeowner market ${mk.slice(0, 6)}: quoting around the opening bid ${anchor} bps`);
+    }
+    return { ...base, ladder: anchorLadder(base.ladder, anchor) };
+  }
+
   /** Waits for every in-flight group (shutdown). */
   async drain(): Promise<void> {
     while (this.busy.size) await Promise.all([...this.busy.values()]);
@@ -288,7 +327,7 @@ export class ExchangeBotWorker {
 
   private planMarket(
     snap: MarketBookSnapshot, featured: boolean, botKeys: Set<string>, bal: Balances, liquid: Map<V2Bot, bigint>,
-    loadStarted: number, capitalStatus: Record<string, string>, pricer?: AdaptiveState,
+    loadStarted: number, capitalStatus: Record<string, string>, pricer?: AdaptiveState, entry?: CatalogMarket,
   ): Planned[] {
     const phase = phaseOf(snap);
     const m = snap.market;
@@ -305,11 +344,12 @@ export class ExchangeBotWorker {
       const yes = bal.token(m.yesMint, me);
       const no = bal.token(m.noMint, me);
       const key = `${bot.params.name}:${mk}`;
-      const entry = catalogByProperty(m.propertyId);
       const balances = { musd: budget > 0n ? budget : 0n, yes, no };
-      const marketCapital = entry ? MAKER_CAPITAL / BigInt(CATALOG.length) : undefined;
+      // Featured markets share four fifths of a maker's capital and listings the rest (spec-multiperil §7.7).
+      const marketCapital = makerCapitalFor(m.propertyId, MAKER_CAPITAL);
       if (snap.tradingOpen && entry) {
-        capitalStatus[`committed_${bot.params.name}_${entry.hazard}`] = committedCapital(balances, own).toString();
+        const tag = isListing(m.propertyId) || isHomeProperty(m.propertyId) ? `${entry.hazard}_${m.propertyId}` : entry.hazard;
+        capitalStatus[`committed_${bot.params.name}_${tag}`] = committedCapital(balances, own).toString();
       }
       if (this.busy.has(key) || (this.settledAt.get(key) ?? 0) >= loadStarted) continue;
       if (phase !== "trading" && own.length === 0 && yes === 0n && no === 0n) continue;

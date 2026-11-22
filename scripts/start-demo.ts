@@ -74,12 +74,12 @@ function stop(): void {
 
 async function main(): Promise<void> {
   if (process.env.NEXT_PUBLIC_USE_FIXTURES === "1") throw new Error("Unset fixture mode before starting the demo");
-  if (!process.env.METREX_ORACLE_DATA_DIR || !process.env.DEMO_PASSWORD) throw new Error("Set METREX_ORACLE_DATA_DIR and DEMO_PASSWORD");
+  if (!process.env.METREX_ORACLE_DATA_DIR) throw new Error("Set METREX_ORACLE_DATA_DIR");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid METREX_PORT");
   const unlock = await lockWorker(exchangeProgramId(), [loadKeypair("controller").publicKey]);
   const appEnv = { ...process.env, METREX_APP_ORIGIN: origin };
   const workerEnv = { ...process.env };
-  for (const name of ["METREX_ORACLE_DATA_DIR", "DEMO_PASSWORD", "ORACLE_KEYPAIR", "CONTROLLER_KEYPAIR", "ADMIN_KEYPAIR", "MINT_AUTHORITY_KEYPAIR", "FAUCET_KEYPAIR"]) {
+  for (const name of ["METREX_ORACLE_DATA_DIR", "ORACLE_KEYPAIR", "CONTROLLER_KEYPAIR", "ADMIN_KEYPAIR", "MINT_AUTHORITY_KEYPAIR", "FAUCET_KEYPAIR"]) {
     delete workerEnv[name];
   }
   process.once("SIGINT", stop);

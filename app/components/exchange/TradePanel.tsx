@@ -6,7 +6,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { OrderSide, Outcome, PAYOUT_PER_SHARE, INVALID_PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
+import { OrderSide, Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import {
   bookOrders,
   buildTrade,
@@ -21,7 +21,6 @@ import { formatPrice, formatShares, outcomeName, parsePriceToBps } from "@/lib/e
 import { formatMusd } from "@/lib/format";
 import { useWalletSigner } from "@/lib/useWalletSigner";
 import { useTx } from "@/components/TxProvider";
-import { InvalidDisclosure } from "./Labels";
 
 function Toggle<T extends string | number>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
@@ -35,21 +34,19 @@ function Toggle<T extends string | number>({ value, options, onChange }: { value
   );
 }
 
+const MARKET_TOLERANCE_BPS = 500;
+
 export interface TradePick {
   priceBps: number;
   side: OrderSideCode;
   at: number;
 }
 
-export type TradeMode = "coverage" | "shares";
-
 export function TradePanel({
   market,
   book,
   outcome,
   onOutcome,
-  mode,
-  onMode,
   have,
   tradingOpen,
   pick,
@@ -59,8 +56,6 @@ export function TradePanel({
   book: BookInfo | undefined;
   outcome: OutcomeCode;
   onOutcome: (o: OutcomeCode) => void;
-  mode: TradeMode;
-  onMode: (mode: TradeMode) => void;
   have: { musd: bigint; yes: bigint; no: bigint } | null;
   tradingOpen: boolean;
   pick: TradePick | null;
@@ -70,13 +65,10 @@ export function TradePanel({
   const { setVisible } = useWalletModal();
   const signer = useWalletSigner();
   const { run } = useTx();
-  const [coverText, setCoverText] = useState("100000");
-  const [sideRaw, setSide] = useState<OrderSideCode>(OrderSide.Buy);
-  const [kindRaw, setKind] = useState<"market" | "limit">("market");
+  const [side, setSide] = useState<OrderSideCode>(OrderSide.Buy);
+  const [kind, setKind] = useState<"market" | "limit">("market");
   const [qtyText, setQtyText] = useState("100");
   const [priceText, setPriceText] = useState("");
-  const [coverageTolerance, setCoverageTolerance] = useState("10");
-  const [sharesTolerance, setSharesTolerance] = useState("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,21 +80,11 @@ export function TradePanel({
     setPriceText(formatPrice(pick.priceBps));
   }, [pick]);
 
-  const coverage = mode === "coverage";
-  const slipText = coverage ? coverageTolerance : sharesTolerance;
-  const side = coverage ? OrderSide.Buy : sideRaw;
-  const kind = coverage ? "market" : kindRaw;
-  const coverDigits = coverText.replace(/[$,\s]/g, "");
-  const qty = coverage
-    ? /^\d{1,7}$/.test(coverDigits)
-      ? BigInt(coverDigits)
-      : 0n
-    : /^\d{1,7}$/.test(qtyText.trim())
-      ? BigInt(qtyText.trim())
-      : 0n;
+  const qtyDigits = qtyText.replace(/[,\s]/g, "");
+  const qty = /^\d{1,7}$/.test(qtyDigits) ? BigInt(qtyDigits) : 0n;
   const priceBps = parsePriceToBps(priceText);
-  const validSlippage = /^\d{1,2}(?:\.\d{1,2})?$/.test(slipText.trim());
-  const slippage = validSlippage ? Math.round(Number(slipText.trim()) * 100) : 0;
+  // Market orders accept up to 5% from the best executable price (spec-multiperil §7.4).
+  const slippage = MARKET_TOLERANCE_BPS;
   const me = publicKey?.toBase58() ?? "";
   const rows = useMemo(() => (book ? bookOrders(book) : []), [book]);
   const intent: TradeIntent = { outcome, side, kind, quantity: qty, priceBps: priceBps ?? undefined, slippageBps: slippage };
@@ -113,11 +95,10 @@ export function TradePanel({
   const preview = book ? previewTrade(rows, intent, me, balances) : null;
   const problems = [
     ...(kind === "limit" && priceBps === null ? ["Enter a limit price in cents, for example 0.86."] : []),
-    ...(kind === "market" && !validSlippage ? ["Enter a price tolerance from 0% to 99.99%."] : []),
     ...(preview?.problems ?? []),
   ];
 
-  useEffect(() => setError(null), [side, kind, qtyText, priceText, slipText, outcome, mode, coverText]);
+  useEffect(() => setError(null), [side, kind, qtyText, priceText, outcome]);
   async function submit() {
     if (!publicKey || !signer || !preview || !book) return;
     setBusy(true);
@@ -130,9 +111,7 @@ export function TradePanel({
         return;
       }
       const built = await buildTrade(publicKey, market, rows, preview);
-      const label = coverage
-        ? `Buy $${formatShares(preview.filledQty)} of coverage (${formatShares(preview.filledQty)} YES)`
-        : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${formatShares(kind === "market" ? built.preview.filledQty : qty)} ${outcomeName(outcome)}${kind === "limit" ? ` @ ${formatPrice(preview.limitPriceBps)}` : " at market"}`;
+      const label = `${side === OrderSide.Buy ? "Buy" : "Sell"} ${formatShares(kind === "market" ? built.preview.filledQty : qty)} ${outcomeName(outcome)}${kind === "limit" ? ` @ ${formatPrice(preview.limitPriceBps)}` : " at market"}`;
       const res = await run(label, (opts) => sendTrade(signer, built.ixs, opts));
       if (res) onDone();
     } catch (e) {
@@ -145,48 +124,19 @@ export function TradePanel({
   const o = outcomeName(outcome);
   const positionQty = kind === "limit" ? qty : (preview?.filledQty ?? 0n);
   const cost = kind === "limit" ? preview?.escrow.musd : preview?.filledQuote;
-  const averagePriceBps = preview && preview.filledQty > 0n
-    ? Number((preview.filledQuote * 10n) / preview.filledQty) / 1_000
-    : null;
   const hasQuote = preview && qty > 0n && (kind === "market" || priceBps !== null);
-  const action = coverage ? "Buy coverage" : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${o}`;
+  const action = `${side === OrderSide.Buy ? "Buy" : "Sell"} ${o}`;
 
   return (
     <div className="space-y-3">
-      <Toggle value={mode} options={[["coverage", "Buy coverage"], ["shares", "Trade shares"]]} onChange={onMode} />
-      {coverage ? (
-        <>
-          <label className="block">
-            <span className="text-sm font-medium">Coverage amount ($)</span>
-            <input className="input num mt-1 w-full" inputMode="numeric" value={coverText} onChange={(e) => setCoverText(e.target.value)} />
-          </label>
-          <div className="grid grid-cols-4 gap-1.5">
-            {["25000", "50000", "100000", "250000"].map((v) => (
-              <button key={v} type="button" aria-pressed={coverDigits === v} onClick={() => setCoverText(v)} className={`rounded border px-1 py-2 text-xs ${coverDigits === v ? "border-ink text-ink" : "border-line text-dim hover:text-ink"}`}>
-                {"$"}{Number(v) / 1000}k
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <Toggle value={side} options={[[OrderSide.Buy, "Buy"], [OrderSide.Sell, "Sell"]]} onChange={setSide} />
-          <Toggle value={outcome} options={[[Outcome.Yes, "YES"], [Outcome.No, "NO"]]} onChange={onOutcome} />
-          <div className="grid grid-cols-2 gap-3">
-            <label>
-              <span className="text-sm font-medium">Order type</span>
-              <select className="input mt-1 w-full" value={kindRaw} onChange={(e) => setKind(e.target.value === "limit" ? "limit" : "market")}>
-                <option value="market">Market</option>
-                <option value="limit">Limit</option>
-              </select>
-            </label>
-            <label>
-              <span className="text-sm font-medium">Shares</span>
-              <input className="input num mt-1 w-full" inputMode="numeric" value={qtyText} onChange={(e) => setQtyText(e.target.value)} />
-            </label>
-          </div>
-        </>
-      )}
+      <Toggle value={side} options={[[OrderSide.Buy, "Buy"], [OrderSide.Sell, "Sell"]]} onChange={setSide} />
+      <Toggle value={outcome} options={[[Outcome.Yes, "YES"], [Outcome.No, "NO"]]} onChange={onOutcome} />
+      <Toggle value={kind} options={[["market", "Market"], ["limit", "Limit"]]} onChange={setKind} />
+      <label className="block">
+        <span className="text-sm font-medium">Shares</span>
+        <input className="input num mt-1 w-full" inputMode="numeric" value={qtyText} onChange={(e) => setQtyText(e.target.value)} />
+        <span className="mt-1 block text-xs text-dim">Each share pays 1 mUSD if {o} wins.</span>
+      </label>
 
       {kind === "limit" && (
         <label className="block">
@@ -196,7 +146,7 @@ export function TradePanel({
       )}
       {tradingOpen && hasQuote && (
         <dl className="space-y-2 border-t border-line pt-3 text-sm">
-          <QuoteLine label={coverage ? "Estimated monthly cost" : side === OrderSide.Sell ? "Estimated proceeds now" : kind === "limit" ? "Maximum cost / escrow" : "Estimated cost"}>
+          <QuoteLine label={side === OrderSide.Sell ? "Estimated proceeds now" : kind === "limit" ? "Maximum cost / escrow" : "Estimated cost"}>
             {formatMusd(side === OrderSide.Buy ? (cost ?? 0n) : preview.filledQuote)} mUSD
           </QuoteLine>
           <QuoteLine label={side === OrderSide.Buy ? "Potential payout" : `Payout given up if ${o} wins`}>
@@ -206,7 +156,7 @@ export function TradePanel({
       )}
       {tradingOpen && preview && qty > 0n && kind === "market" && preview.filledQty < qty && (
         <p className="text-xs text-warn">
-          {coverage ? `$${formatShares(preview.filledQty)} of $${formatShares(qty)} can fill.` : `${formatShares(preview.filledQty)} of ${formatShares(qty)} shares can fill.`} The remainder stays unsubmitted.
+          {formatShares(preview.filledQty)} of {formatShares(qty)} shares can fill. The remainder stays unsubmitted.
         </p>
       )}
       {tradingOpen && qty > 0n && problems.length > 0 && <p className="text-xs text-warn">{problems[0]}</p>}
@@ -221,38 +171,6 @@ export function TradePanel({
       >
         {!tradingOpen ? "Trading closed" : !publicKey ? "Connect wallet" : busy ? "Checking…" : action}
       </button>
-      <InvalidDisclosure />
-
-      {tradingOpen && (
-        <details className="border-t border-line pt-2 text-xs text-dim">
-          <summary className="cursor-pointer py-1 font-medium text-ink-secondary">Execution details</summary>
-          <div className="mt-2 space-y-2">
-            {kind === "market" && (
-              <label className="block">
-                <span>Price tolerance (% from best price)</span>
-                <input className="input num mt-1 w-full" inputMode="decimal" value={slipText} onChange={(e) => (coverage ? setCoverageTolerance : setSharesTolerance)(e.target.value)} />
-              </label>
-            )}
-            {hasQuote && (
-              <>
-                <p>{formatShares(preview.filledQty)} shares estimated to fill now{averagePriceBps !== null ? ` at ${formatPrice(averagePriceBps)} average` : ""}.</p>
-                {kind === "market" ? (
-                  <p>
-                    Worst accepted price {formatPrice(preview.limitPriceBps)}.
-                    {side === OrderSide.Buy && ` Maximum cost ${formatMusd(preview.maxSpend)} mUSD.`}
-                  </p>
-                ) : (
-                  <>
-                    <p>{formatShares(preview.restQty)} shares estimated to rest at {formatPrice(preview.limitPriceBps)}.</p>
-                    {side === OrderSide.Sell && <p>Escrow {formatShares(preview.escrow.shares)} {o} shares.</p>}
-                  </>
-                )}
-                {side === OrderSide.Buy && <p>Payout if Invalid {formatMusd(positionQty * INVALID_PAYOUT_PER_SHARE)} mUSD.</p>}
-              </>
-            )}
-          </div>
-        </details>
-      )}
     </div>
   );
 }

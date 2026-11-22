@@ -6,11 +6,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { PublicKey } from "@solana/web3.js";
-import { CATALOG, catalogByScenario, findRoundPda, marketAddresses, type CatalogMarket } from "@metrex/exchange";
+import { CATALOG, LISTINGS, catalogByScenario, findRoundPda, marketAddresses, type CatalogMarket } from "@metrex/exchange";
 import { encodeLabel, type ScenarioRegistry } from "@metrex/shared";
-import { chainNow, fetchExchangeConfig, fetchExchangeMarket, fetchMarketsOfRound, fetchRound, type MarketView, type RoundView } from "../exchange/accounts";
+import { chainNow, fetchExchangeConfig, fetchExchangeMarket, fetchMarketsOfRound, fetchProperty, fetchRound, type MarketView, type RoundView } from "../exchange/accounts";
 import { ExchangeStateLoader } from "../exchange/book";
-import { closeRoundIx, createMarketIx, createRoundIx, resolveExchangeMarketIx } from "../exchange/ix";
+import { closeRoundIx, createMarketIx, createRoundIx, registerExchangePropertyIx, resolveExchangeMarketIx } from "../exchange/ix";
+import { homeById } from "./homes";
 import { getExchangeProgram } from "../exchange/program";
 import { sendExchangeTx } from "../exchange";
 import { dataDir, loadKeypair } from "../env";
@@ -147,4 +148,62 @@ export async function featuredRounds(): Promise<Map<number, RoundView>> {
     if (r) out.set(c.scenarioId, r);
   }
   return out;
+}
+
+export interface ListedMarket {
+  round: PublicKey;
+  market: PublicKey;
+  signature: string | null;
+}
+
+/**
+ * New market (docs/spec-multiperil.md §7.7): the round controller lists a listing property, or a
+ * homeowner's house from the pinned home pool, in its hazard's current catalog round. A home is
+ * registered by the admin in the same transaction the first time it is listed. The round must be
+ * open with time left, and the program still enforces one market per (round, property).
+ * Idempotent: an existing market is returned without a transaction.
+ */
+export async function listMarket(propertyId: number, currentRound: (scenarioId: number) => Promise<PublicKey | null>): Promise<ListedMarket> {
+  const listing = LISTINGS.find((l) => l.propertyId === propertyId);
+  const home = listing ? undefined : homeById(propertyId);
+  if (!listing && !home) throw notFound("Not an available address");
+  const scenarioId = listing?.scenarioId ?? home!.scenario_id;
+  const label = listing?.address ?? home!.label;
+  return createLock.with(`list-${propertyId}`, async () => {
+    const rpc = getRpc();
+    const p = getExchangeProgram(rpc.connection);
+    const roundAddress = await currentRound(scenarioId);
+    if (!roundAddress) throw conflict("This hazard has no round");
+    const round = await rpc.run((c) => fetchRound(getExchangeProgram(c), roundAddress, "confirmed"));
+    if (!round) throw notFound("Round not found");
+    const { market } = marketAddresses(p.programId, round.address, propertyId);
+    if (await rpc.run((c) => c.getAccountInfo(market, "confirmed"))) return { round: round.address, market, signature: null };
+    const now = await rpc.run((c) => chainNow(c, "confirmed"));
+    if (round.status !== "open" || now >= round.tradingEndsAt) throw conflict("Trading has ended for this hazard");
+    const controller = loadKeypair("controller");
+    const config = await rpc.run((c) => fetchExchangeConfig(getExchangeProgram(c), "confirmed"));
+    if (!config || !config.roundController.equals(controller.publicKey)) throw conflict("Local controller key does not match Config");
+    loadCommittedDataset(round); // the oracle must hold the committed dataset before trading starts
+    const ixs = [];
+    const signers = [controller];
+    const property = await rpc.run((c) => fetchProperty(getExchangeProgram(c), propertyId));
+    if (property) {
+      const same = property.scenarioId === scenarioId && property.label === label &&
+        (!home || (property.latE6 === home.lat_e6 && property.lonE6 === home.lon_e6 && property.triggerDistanceM === home.trigger_distance_m));
+      if (!same) throw conflict("Property is registered with different data");
+    } else if (home) {
+      const admin = loadKeypair("admin");
+      if (!config.admin.equals(admin.publicKey)) throw conflict("Local admin key does not match Config");
+      ixs.push(await registerExchangePropertyIx(p, admin.publicKey, {
+        propertyId, label: encodeLabel(home.label), latE6: home.lat_e6, lonE6: home.lon_e6,
+        scenarioId: home.scenario_id, triggerDistanceM: home.trigger_distance_m,
+      }));
+      signers.push(admin);
+    } else {
+      throw conflict("Property is not registered for this hazard");
+    }
+    ixs.push(await createMarketIx(p, { roundController: controller.publicKey, round: round.address, propertyId, collateralMint: config.collateralMint }));
+    const signature = await sendExchangeTx(rpc.connection, ixs, signers, { commitment: "confirmed" });
+    return { round: round.address, market, signature };
+  });
 }

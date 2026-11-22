@@ -6,22 +6,20 @@ import { getEvidence, getSettledPerimeter, type EvidenceDeps } from "../oracle/e
 import { resolveMarket } from "../oracle/resolve";
 import { closeMarket } from "./close";
 import { badRequest, unavailable } from "./errors";
-import { json, run, requirePassword, marketParam } from "./http";
+import { json, run, marketParam } from "./http";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
 /** POST /api/demo/close/:market */
-export function handleClose(req: Request, market: string | undefined): Promise<Response> {
+export function handleClose(_req: Request, market: string | undefined): Promise<Response> {
   return run(async () => {
-    requirePassword(req);
     return json(await closeMarket(marketParam(market)));
   });
 }
 
 /** POST /api/oracle/resolve/:market */
-export function handleResolve(req: Request, market: string | undefined): Promise<Response> {
+export function handleResolve(_req: Request, market: string | undefined): Promise<Response> {
   return run(async () => {
-    requirePassword(req);
     const key = marketParam(market);
     try {
       return json(await resolveMarket(key));

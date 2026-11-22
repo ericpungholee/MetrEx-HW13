@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 METREX_ORACLE_DATA_DIR="$HOME/.config/metrex/oracle-data" pnpm demo
 ```
 
-The launcher verifies Devnet, configuration and service balances, reuses open rounds, creates missing rounds, and starts the market makers, keeper, indexer and production app. Open [the local exchange](http://127.0.0.1:3015/) after the readiness message. `/operator` requires the operator password for lifecycle actions. See the [operations guide](docs/operations.md) for funding, restart, settlement and recovery.
+The launcher verifies Devnet, configuration and service balances, reuses open rounds, creates missing rounds, and starts the market makers, keeper, indexer and production app. Open [the local exchange](http://127.0.0.1:3015/) after the readiness message. See the [operations guide](docs/operations.md) for funding, restart, settlement and recovery.
 
 ## Verification
 

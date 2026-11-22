@@ -74,11 +74,11 @@ Four catalog markets (one per hazard). No market-creation flow, no extra propert
 - **Restarts never move deadlines.** The launcher runs `prepare-multiperil --keep-settled`: it reuses the newest round of each scenario whatever its state, never rotates, and creates a round only when a scenario has none.
 - **Natural deadline.** Trading stops on-chain at `trading_ends_at`. The launcher's supervisor then runs the normal oracle settlement (`settleRound`) for that round only and opens nothing new.
 - **Settled markets stay featured** with their result until the operator resets them (§10).
-- The market page and `/operator` show the remaining time to the on-chain deadline.
+- The market page shows the remaining time to the on-chain deadline.
 
 ## 7. Fast-forward to settlement (operator)
 
-`/operator` (password-protected, CLAUDE.md) offers **Fast-forward to settlement** for the selected catalog round, as one `POST /api/operator/settle-round { action: "fast_forward", round }`:
+**Fast-forward to settlement** runs for one catalog round as one `POST /api/operator/settle-round { action: "fast_forward", round }`. The market page Settle market button sends it (§7.1):
 
 1. Hold local workers off the round. Build the evidence from the dataset whose hash the round committed (a mismatch or missing coverage refuses, and nothing is sent).
 2. Send `close_round` (controller) and `resolve_market` (oracle) **in one transaction**, confirmed. This stops trading on that market only, because each catalog market has its own round, and makes winning shares redeemable within seconds. The evidence never depends on `closed_at`, so it is the same record the step-by-step path publishes.
@@ -86,7 +86,16 @@ Four catalog markets (one per hazard). No market-creation flow, no extra propert
 4. Release the hold. `settleRound` verifies the finalized settlement, publishes the evidence and sweeps every resting order (escrow and rent back to makers).
 5. Makers and simulated traders redeem on their next tick. Phantom users redeem manually.
 
-The button advances the lifecycle. **It never chooses the outcome.** The step-by-step buttons remain available.
+The button advances the lifecycle. **It never chooses the outcome.** The step-by-step actions remain available through the same endpoint.
+
+### 7.1 Settle and Reset on the market page
+
+Owner decision (2026-11-21): the app has no authentication other than the Phantom wallet. Every market page shows **Settle market** and **Reset market** side by side under the trade ticket, to everyone, before and after settlement. There is no operator sign-in or settings panel on the market page. Each button asks for confirmation. Neither has logic of its own:
+
+- **Settle market** sends `fast_forward` with this market to `POST /api/operator/settle-round`, which runs the §7 fast-forward. The server refuses unless the market is the **only** member of its round (each catalog market has its own round), so `close_round` touches no other market. The per-round lock rejects a duplicate while one runs.
+- **Reset market** sends `reset_market` for this market's round to `POST /api/operator/demo` (§9), before or after settlement. The page follows the journaled operation. When it completes, the page resumes the simulated traders if they were paused and navigates to the replacement market. The replaced market disappears from the portfolio, including any shares or unredeemed winnings in it (owner decision, 2026-11-21). Those tokens stay on-chain and the program still honours them, but the app no longer shows or lists them (there is no past-rounds page). Human wallets and the other markets are untouched.
+
+Status, outcome, risk map, evidence and the claimable payout update from the normal polls. Winners redeem from the Position panel through Phantom. The protocol is unchanged.
 
 ## 8. Trade and settlement ledger
 
@@ -98,13 +107,13 @@ The button advances the lifecycle. **It never chooses the outcome.** The step-by
 
 ## 9. Operator demo controls
 
-`/operator` (password-protected) adds, through `GET/POST /api/operator/demo`:
+There is no `/operator` page (removed 2026-11-21). These controls remain as `GET/POST /api/operator/demo`, with Reset Market on every market page (§7.1) and Reset Demo in `scripts/reset-demo.ts`:
 
 - **Start / Pause simulation.** Pausing stops new simulated trades only. Makers keep quoting, closed markets still unwind, and on-chain deadlines never change.
 - **Reset Market** (one catalog market). Settle its round through the oracle if needed (as §7), keeping its history and every claim, then open a fresh round and market for the same property and scenario with the full 168-hour window. Makers quote it on their next tick. Simulated traders keep their wallets and remaining capital (nothing is minted) and start fresh strategy state for the new market. The other markets are untouched.
 - **Reset Demo.** Hold the simulator and makers (they acknowledge and drain in-flight transactions), settle and archive every featured round through the oracle, sweep, redeem the simulated traders' and makers' winning shares, then restore each simulated trader to its seeded capital and each maker to `MAKER_CAPITAL` with explicit Devnet `mint_to` or `burn` transactions (exact amounts, journaled), restore SOL floats only where a wallet fell below two thirds of its float, and open four fresh 168-hour rounds. Workers resume and the simulator resets its strategy state.
-- Human wallets (Phantom, judges, the homeowner demo wallet) are never read for restoration, signed for or changed. Their claims in archived rounds stay redeemable from those markets' pages.
-- One operation at a time, journaled in `operation.json` (phase, log, signatures). `DemoTransactions` records signed bytes before broadcasting, so a resume after a crash never double-mints. A stopped operation shows **Resume**. Conflicting buttons are disabled while one runs; fast-forward refuses during a reset. `scripts/reset-demo.ts [--resume]` runs the same operation from a terminal.
+- Human wallets (Phantom, judges, the homeowner demo wallet) are never read for restoration, signed for or changed. After a reset their positions in the replaced rounds no longer appear in the portfolio; the tokens and the program's redemption rules are unchanged on-chain.
+- One operation at a time, journaled in `operation.json` (phase, log, signatures). `DemoTransactions` records signed bytes before broadcasting, so a resume after a crash never double-mints. A stopped Reset Market resumes when Reset market is pressed again, and `resume_operation` resumes any stopped operation. Conflicting operations are refused while one runs; fast-forward refuses during a reset. `scripts/reset-demo.ts [--resume]` runs the same operation from a terminal.
 - Health: makers, keeper and simulator heartbeats, simulator fills per minute and failures, RPC, and every operator wallet's SOL and mUSD with low-balance flags.
 
 ## 10. Out of scope

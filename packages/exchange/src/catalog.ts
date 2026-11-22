@@ -10,7 +10,12 @@
 // damage to a home: each pays on hazard proximity or intensity only.
 
 import type { BotParams } from "./ladder";
+import type { BookOrder } from "./book";
 import {
+  MAX_PRICE_BPS,
+  MIN_PRICE_BPS,
+  OrderSide,
+  Outcome,
   SCENARIO_HURRICANES_2017_09,
   SCENARIO_IOWA_TORNADOES_2024_05,
   SCENARIO_PALISADES_2025,
@@ -44,7 +49,7 @@ export interface CatalogMarket {
   /** Round label written on-chain (≤ 32 UTF-8 bytes). */
   roundLabel: string;
   /** Illustrative photo under app/public/markets (§7.3). */
-  photo: { src: string; alt: string; credit: string; creditUrl: string };
+  photo: { src: string; alt: string; credit: string; creditUrl?: string };
   /** Starting bot quotes for this market (§6). */
   ladder: readonly BotParams[];
   /** Pairs a bot splits when its share inventory runs below one top size. */
@@ -169,8 +174,152 @@ export const CATALOG: readonly CatalogMarket[] = [
   },
 ];
 
+// Listings (docs/spec-multiperil.md §7.7): more real addresses per hazard that anyone can list in
+// that hazard's open round with "New market". Selected by scripts/find-real-properties.ts under the
+// same margins as the featured property (data/listing-properties.json). Each property has its own
+// illustration, and bots quote listings with a smaller ladder than the featured market.
+
+interface ListingSeed {
+  propertyId: number;
+  scenarioId: number;
+  address: string;
+  place: string;
+  photo: CatalogMarket["photo"];
+}
+
+const listingHouse = (asset: string, description: string): CatalogMarket["photo"] => ({
+  src: `/markets/listing-houses/${asset}.webp`,
+  alt: `Illustration of ${description}`,
+  credit: "OpenAI ImageGen",
+});
+
+const LISTING_SEEDS: readonly ListingSeed[] = [
+  {
+    propertyId: 10, scenarioId: SCENARIO_PALISADES_2025, address: "17058 Avenida de Santa Ynez", place: "Pacific Palisades, California",
+    photo: listingHouse("wildfire-01", "a contemporary stucco and cedar home on a California hillside"),
+  },
+  {
+    propertyId: 12, scenarioId: SCENARIO_HURRICANES_2017_09, address: "1433 Mendavia Avenue", place: "Coral Gables, Florida",
+    photo: listingHouse("hurricane-01", "a Mediterranean-style bungalow with an arched entry and palm trees"),
+  },
+  {
+    propertyId: 13, scenarioId: SCENARIO_HURRICANES_2017_09, address: "5363 Orduna Drive", place: "Coral Gables, Florida",
+    photo: listingHouse("hurricane-02", "a seafoam-green ranch house in a subtropical garden"),
+  },
+  {
+    propertyId: 14, scenarioId: SCENARIO_SOUTH_NAPA_2014_08, address: "308 Vine Row Court", place: "Napa, California",
+    photo: listingHouse("earthquake-01", "a sage-green Craftsman bungalow with a gabled porch"),
+  },
+  {
+    propertyId: 15, scenarioId: SCENARIO_SOUTH_NAPA_2014_08, address: "112 Vintners Court", place: "Napa, California",
+    photo: listingHouse("earthquake-02", "a white farmhouse with a covered porch in wine country"),
+  },
+  {
+    propertyId: 16, scenarioId: SCENARIO_IOWA_TORNADOES_2024_05, address: "9293 Northwest 70th Avenue", place: "Johnston, Iowa",
+    photo: listingHouse("tornado-01", "a blue-gray two-story house with a front porch and open lawn"),
+  },
+  {
+    propertyId: 17, scenarioId: SCENARIO_IOWA_TORNADOES_2024_05, address: "6911 Northwest 93rd Street", place: "Johnston, Iowa",
+    photo: listingHouse("tornado-02", "a single-story red brick ranch with a large shade tree"),
+  },
+];
+
+const QUESTION: Record<Hazard, (address: string) => string> = {
+  wildfire: (a) => `Will the Palisades Fire come within 500 m of ${a}?`,
+  hurricane: (a) => `Will ${a} experience hurricane-force winds this September?`,
+  earthquake: (a) => `Will the South Napa earthquake reach MMI VIII at ${a}?`,
+  tornado: (a) => `Will ${a} be affected by a tornado this May?`,
+};
+
+/** Listing ladder: the featured references with a quarter of the size. */
+const listingLadder = (featured: readonly BotParams[]): BotParams[] =>
+  featured.map((b) => ({ ...b, topSize: b.topSize / 4n, toleranceShares: b.toleranceShares / 4n }));
+
+export const LISTINGS: readonly CatalogMarket[] = LISTING_SEEDS.map((l) => {
+  const featured = CATALOG.find((c) => c.scenarioId === l.scenarioId);
+  if (!featured) throw new Error(`listing ${l.propertyId}: no featured market for scenario ${l.scenarioId}`);
+  return {
+    ...featured,
+    ...l,
+    question: QUESTION[featured.hazard](l.address),
+    ladder: listingLadder(featured.ladder),
+    splitPairs: featured.splitPairs / 4n,
+  };
+});
+
+export const isListing = (propertyId: number): boolean => LISTINGS.some((l) => l.propertyId === propertyId);
+
+/** Listings of one hazard (the "New market" choices). */
+export const listingsOf = (hazard: Hazard): CatalogMarket[] => LISTINGS.filter((l) => l.hazard === hazard);
+
+/** Featured entry or listing for a property. */
 export const catalogByProperty = (propertyId: number): CatalogMarket | undefined =>
-  CATALOG.find((c) => c.propertyId === propertyId);
+  CATALOG.find((c) => c.propertyId === propertyId) ?? LISTINGS.find((c) => c.propertyId === propertyId);
+
+// Homeowner markets (docs/spec-multiperil.md §7.7): a homeowner lists their own house from the
+// pinned home pool (data/home-addresses.json, ids from HOME_PROPERTY_BASE) and opens the book with
+// a YES bid, the premium they offer. Everything but the address comes from the hazard's featured
+// entry; makers anchor their quotes on that opening bid.
+
+export const HOME_PROPERTY_BASE = 1000;
+export const isHomeProperty = (propertyId: number): boolean => propertyId >= HOME_PROPERTY_BASE;
+
+/** Display and maker entry for a homeowner market; undefined for an unknown scenario. */
+export function homeMarket(propertyId: number, scenarioId: number, address: string, place?: string): CatalogMarket | undefined {
+  const featured = CATALOG.find((c) => c.scenarioId === scenarioId);
+  if (!featured || !isHomeProperty(propertyId)) return undefined;
+  return {
+    ...featured,
+    propertyId,
+    address,
+    place: place ?? featured.place,
+    question: QUESTION[featured.hazard](address),
+    ladder: listingLadder(featured.ladder),
+    splitPairs: featured.splitPairs / 4n,
+  };
+}
+
+/** Featured entry, listing or homeowner market for an on-chain market. */
+export const entryFor = (propertyId: number, scenarioId: number, label?: string | null): CatalogMarket | undefined =>
+  catalogByProperty(propertyId) ?? (label ? homeMarket(propertyId, scenarioId, label) : undefined);
+
+/**
+ * The homeowner's opening bid: the oldest non-maker YES bid on the book, or undefined. Makers wait
+ * for it before quoting a homeowner market, then centre their ladder on its price.
+ */
+export function openingBidBps(book: readonly Pick<BookOrder, "maker" | "outcome" | "side" | "priceBps" | "seq">[], isMaker: (maker: string) => boolean): number | undefined {
+  const bids = book.filter((o) => o.outcome === Outcome.Yes && o.side === OrderSide.Buy && !isMaker(o.maker));
+  if (!bids.length) return undefined;
+  return bids.reduce((a, b) => (b.seq < a.seq ? b : a)).priceBps;
+}
+
+/**
+ * The ladder re-centred so maker A's reference is `anchorBps`: every reference and half-spread
+ * scales by the same ratio (at least 1 bps), clamped inside 1–9,999. Pure.
+ */
+export function anchorLadder(ladder: readonly BotParams[], anchorBps: number): BotParams[] {
+  const a = ladder[0];
+  if (!a) return [...ladder];
+  const r = anchorBps / a.refBps;
+  return ladder.map((b) => {
+    let half = Math.max(1, Math.round(b.halfSpreadBps * r));
+    let ref = Math.round(b.refBps * r);
+    ref = Math.min(MAX_PRICE_BPS - 1, Math.max(MIN_PRICE_BPS + 1, ref));
+    half = Math.min(half, ref - MIN_PRICE_BPS, MAX_PRICE_BPS - ref);
+    return { ...b, refBps: ref, halfSpreadBps: half };
+  });
+}
+
+/**
+ * Maker capital cap for one market (spec-simulation §3 policy): featured markets share four fifths
+ * of `total`. Listings share the rest, and each homeowner market gets a fortieth. Pure.
+ */
+export function makerCapitalFor(propertyId: number, total: bigint): bigint | undefined {
+  if (CATALOG.some((c) => c.propertyId === propertyId)) return (total * 4n) / 5n / BigInt(CATALOG.length);
+  if (isListing(propertyId)) return total / 5n / BigInt(LISTINGS.length);
+  if (isHomeProperty(propertyId)) return total / 40n;
+  return undefined;
+}
 
 /** The catalog entry for a scenario (one featured market per hazard). */
 export const catalogByScenario = (scenarioId: number): CatalogMarket | undefined =>

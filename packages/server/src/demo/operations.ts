@@ -141,10 +141,10 @@ async function runResetMarket(op: DemoOperationStatus): Promise<void> {
   const entry = catalogByScenario(old.scenarioId);
   if (!entry) throw conflict("Only catalog rounds can be reset");
   op.phase = "settle";
-  save(op);
+  note(op, old.status === "open" ? "Closing trading and settling through the oracle" : "Confirming the settlement and sweeping orders");
   await settle(op, roundAddress);
   op.phase = "open";
-  save(op);
+  note(op, `Opening a fresh ${entry.hazard} market`);
   const opened = await openCatalogRound(entry, durationOf(op), old.roundId);
   for (const s of opened.signatures) note(op, `Round #${opened.round.roundId}: created`, s);
   op.replacements[roundAddress.toBase58()] = opened.market.toBase58();

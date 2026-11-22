@@ -65,7 +65,7 @@ Napa uses OSM node 11686888530 at 214 Auberge Path. Napa County’s parcel query
 `raw/napa-residential-parcels.json` pins the county query, SHA-256 `3eeebc23a5109c8587c9b78724134dce17a51d8867b39808a9790b6d0d6f3bda`. The query requested only parcel IDs, situs and use fields, and dwelling counts. It selected positive dwelling counts in the Napa OSM bounding box using `inSR=4326`. The selector joins canonicalized street addresses and independently checks the ShakeMap threshold.
 
 - **Source:** the OpenStreetMap Overpass API, `nwr["addr:housenumber"]["addr:street"](bbox); out tags center;`, retrieved 2026-11-21. Map data © OpenStreetMap contributors, under the Open Database License (ODbL).
-- **Selection:** `scripts/find-real-properties.ts` (rules in [docs/spec-multiperil.md](../docs/spec-multiperil.md) §3), output to `data/market-properties.json`.
+- **Selection:** `scripts/find-real-properties.ts` (rules in [docs/spec-multiperil.md](../docs/spec-multiperil.md) §3), output to `data/market-properties.json` (featured) and `data/listing-properties.json` (listing addresses, §7.7) and `data/home-addresses.json` (the List your home pool, §7.7).
 - **Rerunning:** `pnpm tsx scripts/find-real-properties.ts` repeats the selection offline from these files. `--fetch --refetch` downloads again; OSM changes over time, so new bytes need new pins.
 
 | Raw file (`data/raw/osm-addresses/`) | Bounding box (S, W, N, E) | SHA-256 |

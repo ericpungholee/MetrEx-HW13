@@ -70,6 +70,18 @@ Rounds of different hazards may be Open at the same time, each with its own `tra
 
 The residential audit retired properties 4 and 5 from the featured catalog. The University of Miami identifies 1111 Memorial Drive as a classroom building. Napa County parcel GIS maps the 909 Stanly Way OSM point to a vacant parcel. New property IDs 8 and 9 preserve the old accounts and positions. The pinned raw parcel export contains location and land-use fields only. See [source records](../data/DATASET-hazards.md#real-property-addresses-openstreetmap).
 
+**Listing properties (§7.7).** The same script picks up to two more addresses per window after the featured one, under the same rules and margins, each at least 120 m from every earlier pick. They go to `data/listing-properties.json` and `scripts/prepare-multiperil.ts` registers them. Earthquake listings also accept NO at MMI ≤ 7.4, though none qualify in the pinned data. Wildfire has one qualifying address, so ID 11 is unused.
+
+| ID | Address (on-chain label) | Place | OSM element | Scenario | Outcome margin |
+|---|---|---|---|---|---|
+| 10 | 17058 Avenida de Santa Ynez | Pacific Palisades, California | way/414612749 | 1 | inside the final footprint |
+| 12 | 1433 Mendavia Avenue | Coral Gables, Florida | way/637745186 | 2 | 18,229 m outside the nearest 64-kt swath |
+| 13 | 5363 Orduna Drive | Coral Gables, Florida | way/637379550 | 2 | 19,603 m outside |
+| 14 | 308 Vine Row Court | Napa, California | node/11686888520 | 3 | MMI 8.1, node 427 m away |
+| 15 | 112 Vintners Court | Napa, California | node/11686888515 | 3 | MMI 8.1, node 382 m away |
+| 16 | 9293 Northwest 70th Avenue | Johnston, Iowa | way/1098704007 | 4 | 104 m from an EF2+ centerline |
+| 17 | 6911 Northwest 93rd Street | Johnston, Iowa | way/1229199332 | 4 | 4 m from an EF2+ centerline |
+
 Every market pays on hazard proximity or measured intensity. Map data © OpenStreetMap contributors, under the ODbL. Historical properties 1–5 stay registered for recovery and verification.
 
 ## 4. Hazard datasets and oracle adapters
@@ -131,9 +143,9 @@ At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) 
 Every market page shows the contract details in plain text:
 
 - its payout rule. The wildfire and earthquake rules name their specific events. The remaining rules name their dataset scope and threshold;
-- the historical coverage month, the separate Devnet trading deadline, the settlement source and the invalid-outcome terms beside the ticket.
+- the historical coverage month, the separate Devnet trading deadline and the settlement source.
 
-This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution and each photo carries its credit.
+This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution. Owner decision (2026-11-21): the page shows no invalid-outcome disclaimer under the ticket, no photo credits and no risk-map jump link. Three photos are CC BY-SA, whose license asks for credit where they are shown; the owner accepted that.
 
 ### 7.2 Homepage
 
@@ -143,27 +155,39 @@ The market detail page shows the live asks, with labelled midpoint or last-trade
 
 ### 7.3 Imagery
 
-Cards and market headers label their images as area photos and link to their source and license. The images show the surrounding regions. [Photo credits](market-photo-credits.md) lists the local WebP assets, authors and licenses.
+Featured cards and market headers show area photos without on-page credits (owner decision, 2026-11-21, see §7.1). Each listing address has its own local illustration of a fictional house inspired by the region. The address picker, homepage card and market header show the same illustration and label it as illustrative. The property keeps its assigned image when listed in a new round. [Photo credits](market-photo-credits.md) lists the sources and the listing image bank.
 
-### 7.4 Coverage mode
+### 7.4 Trade ticket
 
-The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. Tolerance is relative to the best executable price, with defaults of 10% for coverage and 5% for share orders. The planner rounds the tolerance down to a whole price tick. Each signed take carries the specific resting price, sequence and quantity. The maximum mUSD spend is the sum of the signed buy amounts.
+Homeowners and traders use one trade ticket, and there is no separate coverage purchase path. Buying YES is the protection: one winning share pays 1 mUSD, so the share quantity is the gross coverage amount. The ticket selects **Buy / Sell**, **YES / NO** and **Market / Limit** and takes a share quantity. It displays the estimated cost (proceeds on a sale, maximum escrow on a limit buy), the potential payout (payout given up on a sale) and any partial-fill warning. There is no execution-details section. A market order accepts up to a fixed 5% from the best executable price. The planner rounds the tolerance down to a whole price tick. Each signed take carries the specific resting price, sequence and quantity. The maximum mUSD spend is the sum of the signed buy amounts.
 
 If 100,000 YES shares fill at a weighted average of 0.25¢ (25 bps), they cost 250 mUSD upfront. The other 99,750 mUSD is the complementary share of the paired collateral. The winning YES payout is 100,000 mUSD. If there is less executable depth, the preview and transaction cover the actual fill quantity.
 
 ### 7.5 Portfolio
 
-The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio discovers all rounds, with historical holdings and order escrows visible.
+The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio shows only the current round of each catalog market (the homepage rule, §7.2). A round replaced by Reset market disappears from it, holdings and claims included (owner decision, 2026-11-21; spec-simulation §9).
 
 ### 7.6 Operator
 
-`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
+There is no `/operator` page (removed 2026-11-21). Each market page settles its own round with Settle market (spec-simulation §7.1). The step-by-step close → reject proof → resolve → sweep → status sequence stays available as `POST /api/operator/settle-round` on one round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
+
+### 7.7 List your home
+
+`/new` lets a homeowner in one of the replay areas open a market on their own house. The homepage links to it with a **List your home** button. The homeowner picks a hazard, then their address from a dropdown, then the coverage and the price per share they offer. No free-form location is offered. Flood would need a new scenario ID, which `register_property` rejects (frozen interface), so it is out of scope.
+
+- **Home pool.** `scripts/find-real-properties.ts` also writes `data/home-addresses.json`: every residential OSM candidate in each hazard window that the hazard dataset covers, minus the featured and listing picks, deduplicated by label. It has 2,150 homes: Palisades 9, Miami 1,767, Napa 21 and Johnston 353. IDs start at 1000 (`HOME_PROPERTY_BASE`). No outcome margin is applied, because the homeowner chooses the address and the selection must not be steered by outcome. Damage tags and DINS are never read, as for every property.
+- `GET /api/homes?hazard=` returns the hazard's current catalog round (§7.2), its trigger and month, the suggested price (the hazard's first ladder reference) and each home with its market in that round or null. `GET /api/listings` still serves the seven listing addresses (§3).
+- `POST /api/operator/create-market { propertyId }` is unauthenticated like the other operator routes. For a home without a `Property` account, the server's admin signs `register_property` and the round controller signs `create_market` in the same transaction. The user signs neither. An existing property must match the pool row. The request is refused unless the round is Open before `trading_ends_at` and its committed dataset loads. An existing market is returned without a transaction. The program enforces one market per (round, property).
+- **Opening bid.** The homeowner's wallet then places a YES limit buy for the coverage at the chosen price: the premium, fully escrowed (§5.2). If the wallet declines, the market exists without a bid and can be bid on from its page.
+- **Makers.** Makers do not quote a home market until a non-maker YES bid rests on it. They then quote the hazard ladder scaled so its first reference equals the oldest such bid (`openingBidBps`, `anchorLadder`), at a quarter of the size. After a restart they fall back to their own resting mid. Each home's capital cap is one fortieth of a maker's capital (`makerCapitalFor`).
+- **Underwriters.** Simulated traders value a home at the hazard's starting reference, not at the homeowner's bid. When the best YES bid is above a risk investor's belief by more than its edge, it splits pairs, sells YES into the bid and keeps NO ("underwrite"). Other archetypes trade home markets like listings.
+- Listed and home markets appear on the homepage as normal market cards while their round is open, and use the normal market page. Their payout rule, month and source are the hazard's. Settle market and Reset market act on the whole hazard round. A reset opens the next round with only the featured market, and a home can be listed again there.
 
 ## 8. Tests
 
 - Anchor: a "multi-peril" block covers registration conventions, three concurrent rounds of different scenarios, scenario binding, a 1 bps quote, and closing one round while the others keep trading. The old "second Open round is rejected" test was removed, because the rule is now policy (§2.2). On 2026-11-21: 149 passing (v1 and v2).
 - `packages/geo`: dataset rules and hashes, the three demo properties' margins, refusal of uncovered points, evidence v3 determinism.
-- `packages/exchange`: catalog ladders (12 levels, no crosses, no complement arbitrage, labels ≤ 32 bytes) and `ladderFor` fallback.
+- `packages/exchange`: catalog ladders (12 levels, no crosses, no complement arbitrage, labels ≤ 32 bytes), `ladderFor` fallback, listing properties (unique IDs, hazard rules, smaller ladders) and maker capital caps.
 - `scripts/normalize-hazards.ts --check` rebuilds all three files from pinned raw bytes and compares hashes.
 
 ## 9. Out of scope
