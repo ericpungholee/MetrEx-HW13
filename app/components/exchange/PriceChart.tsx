@@ -3,7 +3,7 @@
 // §7.3 chart: "Quoted midpoint" (best bid/ask midpoint after every event that moved it) and
 // "Trades" (one point per fill at its execution price). Both come from finalized events; nothing is
 // interpolated. The midpoint is drawn as steps because it only changes at events.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutcomeCode } from "@metrex/exchange";
 import type { ChartInfo } from "@/lib/exchange-client";
 import { formatPrice, formatShares, outcomeName } from "@/lib/exchange-format";
@@ -25,6 +25,28 @@ interface Pt {
 }
 
 const RANGES = [["1H", 3_600], ["24H", 86_400], ["All", null]] as const;
+
+function LatestFill({ point, y }: { point: Pt; y: number }) {
+  const ring = useRef<SVGCircleElement>(null);
+  const previous = useRef(point.signature);
+  useEffect(() => {
+    const changed = previous.current !== point.signature;
+    previous.current = point.signature;
+    if (!changed || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const pulse = ring.current?.animate(
+      [{ transform: "scale(1)", opacity: 0.6 }, { transform: "scale(3)", opacity: 0 }],
+      { duration: 850, easing: "ease-out" },
+    );
+    return () => pulse?.cancel();
+  }, [point.signature]);
+  return (
+    <g transform={`translate(${PAD.l} ${y})`} fill={TRADE}>
+      <title>Latest finalized trade</title>
+      <circle ref={ring} r={4} opacity={0} />
+      <circle r={4} />
+    </g>
+  );
+}
 
 export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo | undefined; outcome: OutcomeCode; unavailable?: boolean }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -53,13 +75,15 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
   const maxQty = pts.reduce((max, p) => p.quantity !== undefined && p.quantity > max ? p.quantity : max, 0n);
 
   // Even spacing by event order: chain order is what matters, gaps in time are not data.
-  const xs = pts.map((_, i) => i);
   let lo = pts.reduce((min, p) => Math.min(min, p.priceBps), pts.length ? 10_000 : 0);
   let hi = pts.reduce((max, p) => Math.max(max, p.priceBps), pts.length ? 0 : 10_000);
   const padBps = Math.max(20, Math.round((hi - lo) * 0.15));
   lo = Math.max(0, lo - padBps);
   hi = Math.min(10_000, hi + padBps);
-  const sx = (i: number) => PAD.l + (xs.length === 1 ? (W - PAD.l - PAD.r) / 2 : (i / (xs.length - 1)) * (W - PAD.l - PAD.r));
+  const sx = (i: number) => {
+    const offset = series === "trade" ? pts.length - 1 - i : i;
+    return PAD.l + offset / Math.max(1, pts.length - 1) * (W - PAD.l - PAD.r);
+  };
   const sy = (bps: number) => PAD.t + (1 - (bps - lo) / (hi - lo || 1)) * (H - PAD.t - PAD.b);
   const ticks = [lo, Math.round((lo + hi) / 2), hi];
 
@@ -138,6 +162,12 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
                 {pts.length <= 30 && <circle cx={sx(i)} cy={sy(p.priceBps)} r={3} fill={TRADE} />}
               </g>
             ))}
+            {series === "trade" && last && (
+              <>
+                <LatestFill key={outcome} point={last} y={sy(last.priceBps)} />
+                <text x={PAD.l} y={H - 7} fontSize={11} fill="#777">Latest fill</text>
+              </>
+            )}
             {hover && hoverIndex !== null && (
               <line x1={sx(hoverIndex)} x2={sx(hoverIndex)} y1={PAD.t} y2={H - PAD.b} stroke="#d4d3cf" strokeWidth={1} />
             )}
