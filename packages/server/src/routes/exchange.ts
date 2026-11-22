@@ -6,7 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BN } from "@anchor-lang/core";
-import { CATALOG, buildLedger, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
+import { CATALOG, buildLedger, catalogByScenario, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
 import { keyDir, loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { getRpc } from "../rpc";
 import {
@@ -197,6 +197,23 @@ export const handleLatestRound = (): Promise<Response> =>
     if (!r) throw notFound("Round not found");
     return roundBody(r);
   });
+
+/**
+ * The current round of a catalog scenario from the shared state cache (refreshed every
+ * STATE_TTL_MS, accepted up to 30 s old): the same newest-round rule as the homepage. Reset Market uses it to reject a
+ * replaced round in milliseconds instead of reloading 16 rounds from RPC; a briefly stale answer is
+ * harmless because openCatalogRound adopts an existing newer round instead of opening another.
+ */
+export async function cachedCatalogRound(scenarioId: number): Promise<PublicKey | null> {
+  const c = catalogByScenario(scenarioId);
+  // A resolved copy up to 30 s old is good enough here; only a colder cache waits for a reload.
+  const state = stateCache && stateCache.at !== Infinity && Date.now() - stateCache.at < 30_000 ? await stateCache.value : await liveState();
+  if (!c || !state) return null;
+  const newest = [...state.rounds]
+    .filter((r) => r.scenarioId === scenarioId && state.snapshots.some((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId))
+    .sort((a, b) => (a.roundId < b.roundId ? 1 : -1))[0];
+  return newest?.address ?? null;
+}
 
 /**
  * GET /api/featured — the homepage (docs/spec-multiperil.md §7.2): for each catalog market, its

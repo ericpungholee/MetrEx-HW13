@@ -17,6 +17,7 @@ import { getRpc } from "../rpc";
 import { musdMint } from "../token";
 import { currentOperation, operationRunning, startOperation } from "../demo/operations";
 import { featuredRounds } from "../demo/lifecycle";
+import { cachedCatalogRound } from "./exchange";
 import { badRequest, conflict, HttpError, notFound } from "./errors";
 import { json } from "./http";
 
@@ -99,9 +100,18 @@ async function demoStatus() {
   };
 }
 
-export function handleDemoStatus(): Promise<Response> {
+/** The running or last operation and the simulation switch only: a local file read with no RPC, so
+ * the market page can follow a reset every couple of seconds without slowing it down. */
+export function demoOperationStatus() {
+  const op = currentOperation();
+  return { simulationPaused: simulationPaused(), operation: op ? { ...op, running: operationRunning() } : null };
+}
+
+/** GET /api/operator/demo, or `?operation=1` for {@link demoOperationStatus}. */
+export function handleDemoStatus(req?: Request): Promise<Response> {
   return (async () => {
     try {
+      if (req && new URL(req.url).searchParams.get("operation") === "1") return json(demoOperationStatus());
       return json(await demoStatus());
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
@@ -142,8 +152,7 @@ export function handleDemoAction(req: Request): Promise<Response> {
       }
       const round = await getRpc().run((c) => fetchRound(getExchangeProgram(c), address, "confirmed"));
       if (!round) throw notFound("Round not found");
-      const featured = await featuredRounds();
-      if (!featured.get(round.scenarioId)?.address.equals(round.address)) throw conflict("Only the current catalog round of a hazard can be reset");
+      if (!(await cachedCatalogRound(round.scenarioId))?.equals(round.address)) throw conflict("Only the current catalog round of a hazard can be reset");
       // Rehearsal only (accelerated natural expiry): a shorter window, never from the operator page.
       let durationS: bigint | undefined;
       if (body.durationS !== undefined) {

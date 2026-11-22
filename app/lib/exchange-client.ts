@@ -1092,6 +1092,12 @@ export async function fetchDemoStatus(): Promise<DemoStatus> {
   return (await getJson("/api/operator/demo")) as unknown as DemoStatus;
 }
 
+/** The running or last demo operation only: a local read on the server with no RPC. */
+export async function fetchDemoOperation(): Promise<Pick<DemoStatus, "simulationPaused" | "operation">> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  return (await getJson("/api/operator/demo?operation=1")) as unknown as Pick<DemoStatus, "simulationPaused" | "operation">;
+}
+
 export async function demoAction(action: DemoAction, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const res = await fetch("/api/operator/demo", {

@@ -11,7 +11,7 @@
 // The buttons advance the lifecycle only; the oracle decides every outcome from the committed dataset.
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { demoAction, fetchDemoStatus, operatorStep, USE_FIXTURES, type MarketInfo } from "@/lib/exchange-client";
+import { demoAction, fetchDemoOperation, operatorStep, USE_FIXTURES, type MarketInfo } from "@/lib/exchange-client";
 
 type Body = Record<string, unknown>;
 type Result = { ok: boolean; text: string; links: { label: string; href: string }[] };
@@ -89,7 +89,7 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
     setProgress("Starting reset…");
     try {
       // A reset of this market that stopped part-way resumes from its journaled phase.
-      const prev = (await fetchDemoStatus().catch(() => null))?.operation;
+      const prev = (await fetchDemoOperation().catch(() => null))?.operation;
       const resume = !!prev && !prev.completed && !prev.running && prev.action === "reset_market" && prev.rounds[0] === r.address;
       const res = resume ? await demoAction("resume_operation") : await demoAction("reset_market", r.address);
       if (!res.ok) {
@@ -99,8 +99,8 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
       const opId = String((res.body.operation as Body | undefined)?.id ?? "");
       const deadline = Date.now() + RESET_TIMEOUT_MS;
       while (alive.current && Date.now() < deadline) {
-        await new Promise((ok) => setTimeout(ok, 2_000));
-        const st = await fetchDemoStatus().catch(() => null);
+        await new Promise((ok) => setTimeout(ok, 1_000));
+        const st = await fetchDemoOperation().catch(() => null);
         const op = st?.operation;
         if (!st || !op || op.id !== opId) continue;
         const last = op.log[op.log.length - 1]?.text;

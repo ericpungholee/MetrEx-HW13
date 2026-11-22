@@ -5,8 +5,8 @@ import { handleDemoAction, handleDemoStatus } from "@metrex/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET(): Promise<Response> {
-  return handleDemoStatus();
+export function GET(req: Request): Promise<Response> {
+  return handleDemoStatus(req);
 }
 
 export function POST(req: Request): Promise<Response> {
