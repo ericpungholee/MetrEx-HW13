@@ -35,6 +35,13 @@ export interface BotConfig {
    * (docs/spec-simulation.md §3).
    */
   inventoryMult: bigint;
+  /**
+   * Skip a quote smaller than topSize / this. A dust order at the best price hides the deeper
+   * book behind the fixed 5% market-order tolerance (spec-multiperil §7.4), so a 10-share market
+   * buy fills 1 share. A maker that cannot fund a real size leaves the level to the next maker
+   * (docs/spec-simulation.md §3).
+   */
+  minQuoteFraction: bigint;
 }
 
 export const DEFAULT_BOT_CONFIG: BotConfig = {
@@ -43,6 +50,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   cooldownMs: 1_500,
   maxOrders: 4,
   inventoryMult: 2n,
+  minQuoteFraction: 10n,
 };
 
 export interface Balances {
@@ -178,7 +186,7 @@ export function desiredQuotes(i: BotMarketInput): Quote[] {
       size = min(size, (musdLeft + returned) / per);
       musdLeft -= positive(size * per - returned);
     }
-    if (size <= 0n) continue;
+    if (size <= 0n || size * i.config.minQuoteFraction < i.params.topSize) continue;
     out.push({ ...q, size });
   }
   return out.slice(0, i.config.maxOrders);
