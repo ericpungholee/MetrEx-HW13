@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     exitWith(0);
   }
   if (solNeed > 0n && faucetSol < solNeed + 10_000_000n) {
-    log.fail(`faucet wallet has ${sol(faucetSol)}; run scripts/fund-bots.ts first`);
+    log.fail(`faucet wallet has ${sol(faucetSol)}; replenish its Devnet SOL before funding wallets`);
     exitWith(1);
   }
   if (solNeed > 0n) log.todo(`+${sol(solNeed)}`);

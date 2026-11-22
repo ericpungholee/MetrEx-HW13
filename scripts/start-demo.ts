@@ -126,6 +126,7 @@ async function main(): Promise<void> {
       const bots = Object.fromEntries((["A", "B", "C"] as const).map((b) => [wallet[`bot${b}`].toBase58(), b]));
       const deadline = Date.now() + 120_000;
       let lastProblems: string[] = [];
+      let operational = false;
       while (!stopping && Date.now() < deadline) {
         const [health, live] = await Promise.all([
           fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()).catch(() => null),
@@ -133,6 +134,7 @@ async function main(): Promise<void> {
         ]);
         const freshWorkers = Date.parse(health?.bots?.heartbeat?.at ?? "") >= launchedAt &&
           Date.parse(health?.keeper?.heartbeat?.at ?? "") >= launchedAt;
+        operational = Boolean(health?.rpc?.ok && health.matching === "running" && health.bots?.alive && freshWorkers && live);
         const problems: string[] = [];
         if (!health?.rpc?.ok || health.matching !== "running" || !health.bots?.alive || !freshWorkers) problems.push("workers not healthy yet");
         if (!live) problems.push("chain state unavailable");
@@ -154,12 +156,16 @@ async function main(): Promise<void> {
         }
         await delay(2_000);
       }
-      if (!stopping) throw new Error(`The demo did not reach readiness within 120 seconds: ${lastProblems.join("; ")}`);
+      if (stopping) return;
+      const details = lastProblems.join("; ");
+      if (!operational) throw new Error(`The demo services did not become healthy within 120 seconds: ${details}`);
+      console.warn(`[demo] worker services are healthy, but market readiness is degraded: ${details}`);
     };
     await Promise.race([workers, ready()]);
     void settleAtDeadlines();
     if (simEnabled && !stopping) {
-      // Simulated traders start once the makers quote every book, so their first trades meet real depth.
+      // Start after the readiness pass. If liquidity is temporarily thin, the simulator still
+      // plans only against executable orders on the markets that have depth.
       const sim = launch(process.execPath, ["--import", "tsx", "services/sim/src/index.ts"], workerEnv)
         .then(() => { if (!stopping) throw new Error("The simulation stopped"); });
       console.log(`[demo] simulated traders starting (SIM_TRADERS=${process.env.SIM_TRADERS ?? "20"})`);

@@ -109,6 +109,7 @@ export interface MarketInfo {
   headline: { yes: Headline; no: Headline };
   /** Finalized volume; null while the trade index is still backfilling (never shown as 0). */
   volume: bigint | null;
+  indexing: boolean;
   confirmingFills: number;
   bookFetchedAt: string;
   settlementDeadline: bigint | null;
@@ -140,6 +141,7 @@ export interface BookInfo {
 }
 
 export interface TradeInfo {
+  eventId: string;
   signature: string;
   slot: number;
   blockTime: number | null;
@@ -409,6 +411,7 @@ export async function fetchMarketInfo(market: string): Promise<MarketInfo | null
     tradingOpen: j.tradingOpen === true,
     headline: { yes: parseHeadline((h.yes as J) ?? {}), no: parseHeadline((h.no as J) ?? {}) },
     volume: j.volume === null || j.volume === undefined ? null : big(j.volume),
+    indexing: j.indexing === true,
     confirmingFills: num(j.confirmingFills),
     bookFetchedAt: str(j.bookFetchedAt),
     settlementDeadline: j.settlementDeadline == null ? null : big(j.settlementDeadline),
@@ -437,12 +440,13 @@ export class TradeIndexingError extends Error {
   }
 }
 
-export async function fetchTrades(market: string, wallet?: PublicKey): Promise<TradeInfo[]> {
+export async function fetchTrades(market: string, wallet?: PublicKey): Promise<{ trades: TradeInfo[]; indexing: boolean }> {
   const j = await getJson(`/api/markets/${market}/trades${wallet && !USE_FIXTURES ? `?wallet=${wallet.toBase58()}` : ""}`);
-  if (j.indexing === true) throw new TradeIndexingError();
-  return ((j.trades as J[]) ?? []).map((t) => {
+  const trades = ((j.trades as J[]) ?? []).map((t) => {
     const f = (t.fill as J) ?? {};
+    const pos = (f.pos as J) ?? {};
     return {
+      eventId: `${str(t.signature)}:${num(pos.ixIndex)}:${num(pos.eventIndex)}`,
       signature: str(t.signature),
       slot: num(t.slot),
       blockTime: t.blockTime === null || t.blockTime === undefined ? null : num(t.blockTime),
@@ -455,6 +459,7 @@ export async function fetchTrades(market: string, wallet?: PublicKey): Promise<T
       quoteAmount: big(f.quoteAmount),
     };
   });
+  return { trades, indexing: j.indexing === true };
 }
 
 export async function fetchChart(market: string): Promise<ChartInfo> {

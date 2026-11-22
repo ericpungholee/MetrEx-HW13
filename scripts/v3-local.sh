@@ -35,13 +35,17 @@ solana-test-validator --reset --quiet --ledger "$WORK/ledger" --rpc-port "$PORT"
   --upgradeable-program "$PROGRAM_ID" target/deploy/metrex_exchange.so "$ADMIN" >"$WORK/logs/validator.log" 2>&1 &
 PIDS+=($!)
 for _ in $(seq 1 60); do solana -u "$RPC_URL" cluster-version >/dev/null 2>&1 && break; sleep 1; done
-for k in admin deployer; do solana -u "$RPC_URL" airdrop 100 "$WORK/keys/$k.json" >/dev/null; done
+for k in admin deployer; do solana -u "$RPC_URL" airdrop 100 "$WORK/keys/$k.json" --commitment finalized >/dev/null; done
 
 step() { echo; echo "######## $*"; }
 step "setup-devnet-v2 --local"
 pnpm -s tsx scripts/setup-devnet-v2.ts --local --create-mint --timeout 120
 step "fund-bots"
-pnpm -s tsx scripts/fund-bots.ts
+pnpm -s tsx scripts/fund-bots.ts --local
+for k in controller oracle keeper faucet; do solana -u "$RPC_URL" airdrop 5 "$WORK/keys/$k.json" --commitment finalized >/dev/null; done
+for k in homeowner-demo judge-1; do
+  pnpm -s tsx scripts/fund-wallet.ts "$(solana-keygen pubkey "$WORK/keys/$k.json")"
+done
 step "start v2 bots and keeper"
 node --import tsx services/bots/src/v2/index.ts >"$WORK/logs/bots.log" 2>&1 &
 PIDS+=($!)

@@ -1,25 +1,22 @@
-// Trade and event index (spec-v2 §7.2): getSignaturesForAddress(program) paged newest-first, each
-// finalized transaction's events decoded once and deduplicated by (signature, instruction, event). Fills are
-// marked finalized or confirming. In memory only: a restart rebuilds the same index from chain.
-
-import type { Connection, PublicKey } from "@solana/web3.js";
-import {
-  buildChart,
-  compareEventPos,
-  dedupeEvents,
-  type ChartState,
-  type OrderFilledEvent,
-  type PositionedEvent,
-} from "@metrex/exchange";
+// Finalized trade indexing (spec-v2 §7.2). WebSocket notifications supply logs for live
+// transactions. Signature pagination orders them, gives them block times and catches any gaps.
+import type { PublicKey } from "@solana/web3.js";
+import type { OrderFilledEvent, PositionedEvent } from "@metrex/exchange";
 import { parseTxEvents } from "./events";
 import { getExchangeProgram } from "./program";
+import type { RpcPool } from "../rpc";
+import type { TradeStore } from "./trade-store";
 
 export interface SigRow {
   signature: string;
   slot: number;
   blockTime: number | null;
   failed: boolean;
-  finalized: boolean;
+}
+
+export interface PendingReceipt extends SigRow {
+  txOrder: number;
+  recent: boolean;
 }
 
 export interface TxRow {
@@ -27,61 +24,51 @@ export interface TxRow {
   slot: number;
   blockTime: number | null;
   logs: string[];
+  txOrder?: number;
 }
 
-/** RPC calls the index needs (injectable for tests). */
 export interface TradeSource {
-  /** Newest-first, like getSignaturesForAddress. */
   signatures(opts: { before?: string; until?: string; limit: number }): Promise<SigRow[]>;
-  /** Transactions at confirmed; null if not available yet. */
   transactions(sigs: string[]): Promise<(TxRow | null)[]>;
-  /** Which of `sigs` are finalized now. */
-  finalized(sigs: string[]): Promise<boolean[]>;
-  /** Decodes events of one transaction. */
-  decode(tx: TxRow & { txOrder: number }): PositionedEvent[];
 }
 
-/**
- * `address` is the program id for a program-wide index, or one market's address for a per-market
- * index: every instruction that emits a market event (split, merge, place, take, match, cancel,
- * sweep, resolve, redeem) passes that market's account, so its signature list is complete for it.
- */
-export function connectionTradeSource(getConn: () => Connection, address: PublicKey): TradeSource {
+const eventLogs = (logs: readonly string[]) => logs.filter((l) => /^Program (?:data: |\S+ (?:invoke |success$|failed:))/.test(l));
+
+export function connectionTradeSource(rpc: RpcPool, address: PublicKey): TradeSource {
+  let canBatch = true;
   return {
     async signatures(opts) {
-      const rows = await getConn().getSignaturesForAddress(address, opts, "finalized");
-      return rows.map((r) => ({
-        signature: r.signature,
-        slot: r.slot,
-        blockTime: r.blockTime ?? null,
-        failed: r.err !== null,
-        finalized: r.confirmationStatus === "finalized",
-      }));
+      const rows = await rpc.run((c) => c.getSignaturesForAddress(address, opts, "finalized"));
+      return rows.map((r) => ({ signature: r.signature, slot: r.slot, blockTime: r.blockTime ?? null, failed: r.err !== null }));
     },
     async transactions(sigs) {
-      const out: (TxRow | null)[] = [];
-      for (const signature of sigs) {
-        try {
-          const t = await getConn().getTransaction(signature, { commitment: "finalized", maxSupportedTransactionVersion: 0 });
-          out.push(t?.meta && !t.meta.err ? { signature, slot: t.slot, blockTime: t.blockTime ?? null, logs: t.meta.logMessages ?? [] } : null);
-        } catch {
-          out.push(null);
+      const opts = { commitment: "finalized", maxSupportedTransactionVersion: 0 } as const;
+      const load = async () => {
+        if (canBatch && sigs.length > 1) {
+          try {
+            return await rpc.run((c) => c.getTransactions(sigs, opts));
+          } catch (e) {
+            // Some RPC plans reject JSON-RPC batches. Keep their individual calls paced.
+            if (!/batch|invalid request|not supported/i.test(String(e))) throw e;
+            canBatch = false;
+          }
         }
-      }
-      return out;
-    },
-    async finalized(sigs) {
-      const out: boolean[] = [];
-      for (let i = 0; i < sigs.length; i += 256) {
-        const st = await getConn().getSignatureStatuses(sigs.slice(i, i + 256));
-        for (const s of st.value) out.push(s?.confirmationStatus === "finalized");
-      }
-      return out;
-    },
-    decode(tx) {
-      return parseTxEvents(getExchangeProgram(getConn()), tx);
+        return Promise.all(sigs.map((sig) => rpc.run((c) => c.getTransaction(sig, opts)).catch(() => null)));
+      };
+      const txs = await load();
+      const bySignature = new Map(txs.flatMap((tx) => tx ? [[tx.transaction.signatures[0], tx] as const] : []));
+      return sigs.map((signature) => {
+        const tx = bySignature.get(signature);
+        if (!tx?.meta?.logMessages || tx.meta.err || tx.meta.logMessages.includes("Log truncated")) return null;
+        return { signature, slot: tx.slot, blockTime: tx.blockTime ?? null, logs: eventLogs(tx.meta.logMessages ?? []) };
+      });
     },
   };
+}
+
+export function tradeDecoder(rpc: RpcPool): (tx: TxRow) => PositionedEvent[] {
+  const program = getExchangeProgram(rpc.connection);
+  return (tx) => parseTxEvents(program, tx);
 }
 
 export interface IndexedTrade {
@@ -89,108 +76,98 @@ export interface IndexedTrade {
   slot: number;
   blockTime: number | null;
   finalized: boolean;
-  fill: OrderFilledEvent;
-}
-
-interface Entry {
-  row: SigRow;
-  /** Position in signature paging order (older = smaller), used for same-slot ordering. */
-  order: number;
-  events: PositionedEvent[] | null;
-  lastAttempt: number;
+  fill: OrderFilledEvent & { pos: PositionedEvent["pos"] };
 }
 
 export class TradeIndex {
-  private readonly entries = new Map<string, Entry>();
-  private newest: string | undefined;
-  private nextOrder = 0;
-  private refreshCount = 0;
-  private inflight: Promise<void> | undefined;
+  private readonly notifications = new Map<string, { slot: number; logs: string[] }>();
+  private readonly attempts = new Map<string, number>();
   lastRefresh: number | undefined;
-  /** True once every transaction of the initial backfill has been decoded; stays true. */
-  backfilled = false;
+  streamed = 0;
+  fetched = 0;
+  discovered = 0;
+  private readonly pageSize = 200;
 
-  constructor(
-    private readonly source: TradeSource,
-    private readonly opts: { pageSize?: number; txPerRefresh?: number } = {},
-  ) {}
+  constructor(private readonly source: TradeSource, readonly store: TradeStore, private readonly batchSize = 12) {}
 
-  refresh(): Promise<void> {
-    this.inflight ??= this.doRefresh().finally(() => (this.inflight = undefined));
-    return this.inflight;
+  observe(signature: string, slot: number, logs: string[]): void {
+    if (this.store.known.has(signature) || logs.includes("Log truncated")) return;
+    this.notifications.set(signature, { slot, logs: eventLogs(logs) });
+    if (this.notifications.size > 2_000) this.notifications.delete(this.notifications.keys().next().value!);
   }
 
-  private async doRefresh(): Promise<void> {
-    const pageSize = this.opts.pageSize ?? 1_000;
-    const fresh: SigRow[] = [];
-    let before: string | undefined;
-    for (;;) {
-      const page = await this.source.signatures({ before, until: this.newest, limit: pageSize });
-      fresh.push(...page);
-      if (page.length < pageSize) break;
-      before = page[page.length - 1]?.signature;
-    }
-    // Oldest first so `order` grows with chain order.
-    for (const r of fresh.reverse()) {
-      const e = this.entries.get(r.signature);
-      if (e) {
-        e.row.finalized ||= r.finalized;
-        continue;
-      }
-      this.entries.set(r.signature, { row: r, order: this.nextOrder++, events: r.failed ? [] : null, lastAttempt: 0 });
-    }
-    if (fresh.length) this.newest = fresh[fresh.length - 1]?.signature;
-
-    // Try unseen receipts first. A missing receipt must not starve later work.
-    const missing = [...this.entries.values()]
-      .filter((e) => e.events === null)
-      .sort((a, b) => a.lastAttempt - b.lastAttempt || b.order - a.order)
-      .slice(0, this.opts.txPerRefresh ?? 200);
-    const txs = await this.source.transactions(missing.map((e) => e.row.signature));
-    this.refreshCount++;
-    missing.forEach((e, i) => {
-      e.lastAttempt = this.refreshCount;
-      const t = txs[i];
-      if (t) e.events = this.source.decode({ ...t, txOrder: e.order });
+  async refresh(): Promise<void> {
+    await this.discoverRecent();
+    const pending = [...this.store.pending.values()];
+    const streamed = pending.flatMap((r) => {
+      const entry = this.notifications.get(r.signature);
+      if (!entry || entry.slot !== r.slot) return [];
+      return [{ ...r, logs: entry.logs }];
     });
-    const pending = [...this.entries.values()].filter((e) => !e.row.finalized && !e.row.failed);
-    if (pending.length) {
-      const fin = await this.source.finalized(pending.map((e) => e.row.signature));
-      pending.forEach((e, i) => (e.row.finalized ||= fin[i] ?? false));
+    this.saveReceipts(streamed);
+    this.streamed += streamed.length;
+    // Recover recent gaps first. Keep an older slot in every batch that can spare it,
+    // so an incomplete old receipt or sustained live flow does not block backfill.
+    await this.discoverOlder();
+    const available = [...this.store.pending.values()].filter((r) => (this.attempts.get(r.signature) ?? 0) <= Date.now());
+    const recent = available.filter((r) => r.recent).reverse();
+    const older = available.filter((r) => !r.recent);
+    const selected = [...recent.slice(0, this.batchSize), ...older].slice(0, this.batchSize);
+    if (older.length && selected.length === this.batchSize && selected.every((r) => r.recent) && this.batchSize > 1) {
+      selected[selected.length - 1] = older[0]!;
     }
-    if (!this.backfilled && ![...this.entries.values()].some((e) => e.events === null)) this.backfilled = true;
+    if (selected.length) {
+      const results = await this.source.transactions(selected.map((r) => r.signature));
+      const receipts = selected.flatMap((row, i) => {
+        const receipt = results[i];
+        if (receipt?.slot === row.slot) return [{ ...receipt, blockTime: row.blockTime ?? receipt.blockTime, txOrder: row.txOrder }];
+        this.attempts.set(row.signature, Date.now() + 5_000);
+        return [];
+      });
+      this.saveReceipts(receipts);
+      this.fetched += receipts.length;
+    }
     this.lastRefresh = Date.now();
   }
 
-  /** All decoded events in chain order, deduplicated. `finalizedOnly` keeps finalized transactions. */
-  events(filter: { market?: string; finalizedOnly?: boolean } = {}): PositionedEvent[] {
-    const all: PositionedEvent[] = [];
-    for (const e of this.entries.values()) {
-      if (!e.events || (filter.finalizedOnly && !e.row.finalized)) continue;
-      for (const ev of e.events) if (!filter.market || ("market" in ev && ev.market === filter.market)) all.push(ev);
+  private saveReceipts(receipts: TxRow[]): void {
+    if (!receipts.length) return;
+    this.store.append({ receipts });
+    for (const receipt of receipts) {
+      this.notifications.delete(receipt.signature);
+      this.attempts.delete(receipt.signature);
     }
-    return dedupeEvents(all.sort((a, b) => compareEventPos(a.pos, b.pos)));
   }
 
-  /** Fills of a market, newest last, each marked finalized or confirming (§7.2). */
-  trades(market: string): IndexedTrade[] {
-    return this.events({ market })
-      .filter((e): e is OrderFilledEvent & { pos: PositionedEvent["pos"] } => e.name === "OrderFilled")
-      .map((e) => ({
-        signature: e.pos.signature,
-        slot: e.pos.slot,
-        blockTime: e.pos.blockTime,
-        finalized: this.entries.get(e.pos.signature)?.row.finalized ?? false,
-        fill: e,
-      }));
+  private async discoverRecent(): Promise<void> {
+    const head = this.store.head;
+    const newest: SigRow[] = [];
+    let before: string | undefined;
+    for (;;) {
+      const page = await this.source.signatures({ before, until: head?.signature, limit: this.pageSize });
+      if (!page.length) break;
+      newest.push(...page);
+      if (!head || page.length < this.pageSize) break;
+      before = page.at(-1)!.signature;
+    }
+    const fresh = [...new Map(newest.map((r) => [r.signature, r])).values()].filter((r) => r.signature !== head?.signature);
+    if (!fresh.length) return;
+    let order = head?.order ?? 0;
+    const discovered = fresh.reverse().map((r) => ({ ...r, recent: true, txOrder: ++order }));
+    this.store.append({
+      discovered,
+      head: { signature: discovered.at(-1)!.signature, order },
+      ...(!head ? { history: { before: discovered[0]!.signature, order: 1 } } : {}),
+    });
+    this.discovered += discovered.length;
   }
 
-  /** §7.3 from finalized events only. */
-  chart(market: string): ChartState {
-    return buildChart(this.events({ market, finalizedOnly: true }));
-  }
-
-  get size(): number {
-    return this.entries.size;
+  private async discoverOlder(): Promise<void> {
+    const history = this.store.history;
+    if (!history?.before || [...this.store.pending.values()].filter((r) => !r.recent).length >= this.pageSize) return;
+    const page = await this.source.signatures({ before: history.before, limit: this.pageSize });
+    let order = history.order;
+    const discovered = page.map((r) => ({ ...r, recent: false, txOrder: --order }));
+    this.store.append({ discovered, history: { before: page.length === this.pageSize ? page.at(-1)!.signature : null, order } });
   }
 }

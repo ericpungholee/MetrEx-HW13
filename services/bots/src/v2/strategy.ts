@@ -70,6 +70,8 @@ export interface BotMarketInput {
   nowMs: number;
   lastRequoteMs: number | undefined;
   strictPostOnly?: boolean;
+  /** Limit on booked bids plus inventory valued at full payout, in mUSD base units. */
+  marketCapital?: bigint;
 }
 
 export type BotAction =
@@ -82,6 +84,8 @@ export type BotAction =
 
 const slotKey = (outcome: number, side: number) => `${outcome}:${side}`;
 const min = (a: bigint, b: bigint) => (a < b ? a : b);
+const positive = (amount: bigint) => amount > 0n ? amount : 0n;
+const bidValue = (priceBps: number, size: bigint) => size * BigInt(priceBps) * QUOTE_PER_SHARE_BPS;
 
 /** YES and NO held, including shares escrowed in this bot's SELL orders. */
 export function inventory(b: Balances, own: readonly OrderAccount[]) {
@@ -93,10 +97,35 @@ export function inventory(b: Balances, own: readonly OrderAccount[]) {
       if (o.outcome === Outcome.Yes) yes += o.remainingQty;
       else no += o.remainingQty;
     } else {
-      musd += o.remainingQty * BigInt(o.priceBps) * QUOTE_PER_SHARE_BPS;
+      musd += bidValue(o.priceBps, o.remainingQty);
     }
   }
   return { yes, no, musd, netYes: yes - no };
+}
+
+/** Booked bid collateral plus a conservative full-payout value of outcome inventory. */
+export function committedCapital(balances: Balances, own: readonly OrderAccount[]): bigint {
+  const inv = inventory(balances, own);
+  const largestPosition = inv.yes > inv.no ? inv.yes : inv.no;
+  return inv.musd - balances.musd + largestPosition * PAYOUT_PER_SHARE;
+}
+
+/** Cash this group can debit before any independent cancellation or merge confirms. */
+export function collateralSpend(actions: readonly BotAction[]): bigint {
+  let spend = 0n;
+  for (const action of actions) {
+    if (action.kind === "split") spend += action.quantity * PAYOUT_PER_SHARE;
+    if (action.kind !== "requote" || action.place?.side !== OrderSide.Buy) continue;
+    const returned = action.cancel ? bidValue(action.cancel.priceBps, action.cancel.remainingQty) : 0n;
+    spend += positive(bidValue(action.place.priceBps, action.place.size) - returned);
+  }
+  return spend;
+}
+
+function freeToCommit(i: BotMarketInput, reserve: bigint): bigint {
+  const liquid = positive(i.balances.musd - reserve);
+  if (i.marketCapital === undefined) return liquid;
+  return min(liquid, positive(i.marketCapital - committedCapital(i.balances, i.own)));
 }
 
 /**
@@ -130,7 +159,7 @@ export function desiredQuotes(i: BotMarketInput): Quote[] {
     skewEnabled: !i.featured,
     ...(i.strictPostOnly ? { respectMinQty: 1n, respectBandBps: BPS_DENOMINATOR } : {}),
   });
-  let musdLeft = inv.musd;
+  let musdLeft = freeToCommit(i, i.marketCapital === undefined ? 0n : i.config.musdReserve);
   const out: Quote[] = [];
   for (const q of clamped) {
     if (!inventoryAllows(q, inv.netYes, i.params.toleranceShares)) continue;
@@ -142,8 +171,12 @@ export function desiredQuotes(i: BotMarketInput): Quote[] {
       size = min(size, q.outcome === Outcome.Yes ? inv.yes : inv.no);
     } else {
       const per = BigInt(q.priceBps) * QUOTE_PER_SHARE_BPS;
-      size = min(size, musdLeft / per);
-      musdLeft -= size * per;
+      // Only the oldest order in this slot can fund its own atomic replacement.
+      const ownBid = i.own.reduce<OrderAccount | undefined>((oldest, o) =>
+        o.outcome === q.outcome && o.side === q.side && (!oldest || o.seq < oldest.seq) ? o : oldest, undefined);
+      const returned = ownBid ? bidValue(ownBid.priceBps, ownBid.remainingQty) : 0n;
+      size = min(size, (musdLeft + returned) / per);
+      musdLeft -= positive(size * per - returned);
     }
     if (size <= 0n) continue;
     out.push({ ...q, size });
@@ -155,7 +188,7 @@ export function desiredQuotes(i: BotMarketInput): Quote[] {
 export function splitNeeded(i: BotMarketInput): bigint {
   const inv = inventory(i.balances, i.own);
   if (inv.yes >= i.params.topSize && inv.no >= i.params.topSize) return 0n;
-  const free = i.balances.musd > i.config.musdReserve ? i.balances.musd - i.config.musdReserve : 0n;
+  const free = freeToCommit(i, i.config.musdReserve);
   const held = inv.yes > inv.no ? inv.yes : inv.no;
   const limit = (i.params.topSize + i.config.splitPairs) * i.config.inventoryMult;
   if (held >= limit) return 0n;
@@ -184,6 +217,18 @@ export function planBotMarket(i: BotMarketInput): BotAction[] {
       redeem(Outcome.No, i.balances.no);
     }
     return actions;
+  }
+
+  // Retain one top size plus half a split batch, including resting asks. This leaves
+  // room for a normal refill without immediately triggering a merge.
+  if (i.marketCapital !== undefined && (i.lastRequoteMs === undefined || i.nowMs - i.lastRequoteMs >= i.config.cooldownMs)) {
+    const inv = inventory(i.balances, live);
+    const paired = min(inv.yes, inv.no);
+    const keep = i.params.topSize + i.config.splitPairs / 2n;
+    const merge = min(min(i.balances.yes, i.balances.no), positive(paired - keep));
+    if (merge > 0n && merge * 2n >= i.config.splitPairs) {
+      return [{ kind: "merge", quantity: merge }];
+    }
   }
 
   const split = splitNeeded(i);

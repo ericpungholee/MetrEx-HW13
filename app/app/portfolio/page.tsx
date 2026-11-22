@@ -17,7 +17,6 @@ import {
   previewTrade,
   redemptionValue,
   reservedOf,
-  TradeIndexingError,
 } from "@/lib/exchange-client";
 import { formatPrice, formatShares, marketState, marketTitle, outcomeName, sideName } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
@@ -58,16 +57,13 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
       const trades = await Promise.all(
         markets.filter((m) => active.has(m.round) || ordered.has(m.address) ||
           (holdings.yes.get(m.address) ?? 0n) > 0n || (holdings.no.get(m.address) ?? 0n) > 0n).map((m) =>
-          fetchTrades(m.address, publicKey)
-            .then((t) => t.map((x) => ({ ...x, market: m })))
-            .catch((e: unknown) => {
-              if (e instanceof TradeIndexingError) return null;
-              throw e;
-            }),
+          fetchTrades(m.address, publicKey).then((feed) => ({
+            indexing: feed.indexing, trades: feed.trades.map((x) => ({ ...x, market: m })),
+          })),
         ),
       );
-      const indexing = trades.some((t) => t === null);
-      const mine = trades.flatMap((t) => t ?? []).filter((t) => t.buyer === me || t.seller === me);
+      const indexing = trades.some((t) => t.indexing);
+      const mine = trades.flatMap((t) => t.trades).filter((t) => t.buyer === me || t.seller === me);
       const premium = new Map<string, bigint>();
       const buys = new Map<string, { quantity: bigint; quote: bigint }>();
       for (const t of mine) {
@@ -271,7 +267,7 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
           <div className="overflow-x-auto"><table className="w-full min-w-[28rem] text-sm">
             <tbody>
               {fills.map((t) => (
-                <tr key={`${t.signature}-${t.quantity}-${t.priceBps}`} className="border-t border-line">
+                <tr key={t.eventId} className="border-t border-line">
                   <td className="py-2.5">
                     {t.buyer === me ? "Bought" : "Sold"} {formatShares(t.quantity)} {outcomeName(t.outcome)} · {marketTitle(t.market)}
                   </td>

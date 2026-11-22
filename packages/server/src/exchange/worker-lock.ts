@@ -3,9 +3,9 @@ import { createServer, type Server } from "node:net";
 import type { PublicKey } from "@solana/web3.js";
 
 /** An exclusive, host-local lease released by the OS on exit, including after a crash. */
-export async function lockWorker(prog: PublicKey, identities: readonly PublicKey[]): Promise<() => void> {
+export async function lockWorker(prog: PublicKey, identities: readonly (PublicKey | string)[]): Promise<() => void> {
   const ports = new Set(identities.map((key) => {
-    const hash = createHash("sha256").update(prog.toBuffer()).update(key.toBuffer()).digest();
+    const hash = createHash("sha256").update(prog.toBuffer()).update(typeof key === "string" ? key : key.toBuffer()).digest();
     return 20_000 + hash.readUInt32BE() % 30_000;
   }));
   const sockets: Server[] = [];

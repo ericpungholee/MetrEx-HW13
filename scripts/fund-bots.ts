@@ -1,147 +1,110 @@
-// fund-bots.ts (spec §9.4, §14): top up SOL and mUSD for bots, the faucet wallet, the demo
-// homeowner, judges, and the oracle/controller fee payers. Idempotent: only the shortfall
-// to each target is sent; balances are checked first.
-//   pnpm tsx scripts/fund-bots.ts [--dry-run] [--minimum] [--from deployer|admin]
-
-import { createMintToInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { SystemProgram, type PublicKey, type TransactionInstruction } from "@solana/web3.js";
+// Seed fresh market makers once and restore their SOL float when low (spec-simulation §3, §9).
+//   node --env-file=app/.env.local --import tsx scripts/fund-bots.ts [--dry-run] [--minimum] [--from deployer|admin]
+import { existsSync } from "node:fs";
+import { createMintToInstruction } from "@solana/spl-token";
+import { SystemProgram } from "@solana/web3.js";
 import {
-  createAtaIdempotentIx,
-  formatMusd,
-  getMusdBalance,
-  getRpc,
-  getSolLamports,
-  loadKeypair,
-  musd,
-  musdAta,
-  musdMint,
-  sendTx,
-  solToLamports,
-  type KeypairName,
-} from "@metrex/server";
-import { args, banner, DRY_RUN, exitWith, flagValue, log, sol } from "./lib/common";
+  DEVNET_GENESIS, DemoTransactions, MAKER_CAPITAL, MAKER_SOL_FLOAT, ataOf, createAtaIdempotentIx,
+  explorerTx, fetchExchangeConfig, formatMusd, getExchangeProgram, getRpc, loadKeypair, lockWorker, musdMint,
+  readDemoFile, solToLamports,
+} from "@metrex/server/exchange";
+import { keypairPath } from "@metrex/server";
+import { args, banner, DRY_RUN, flagValue, log, sol } from "./lib/common";
 
-interface Target {
-  name: KeypairName;
-  sol: bigint;
-  musd: bigint;
-}
-
-/**
- * Priority order: if the funder runs short, earlier wallets are funded first. Bots hold 600k mUSD:
- * the four catalog markets commit about 480k (A), 400k (B) and 360k (C) at zero inventory
- * (docs/spec-multiperil.md §6; scripts/prepare-multiperil.ts prints the exact figure).
- */
-export const TARGETS: readonly Target[] = [
-  { name: "botA", sol: solToLamports("1.5"), musd: musd(600_000n) },
-  { name: "botB", sol: solToLamports("1.5"), musd: musd(600_000n) },
-  { name: "botC", sol: solToLamports("1.5"), musd: musd(600_000n) },
-  { name: "homeownerDemo", sol: solToLamports("0.5"), musd: musd(100_000n) },
-  { name: "oracle", sol: solToLamports("0.05"), musd: 0n },
-  { name: "controller", sol: solToLamports("0.05"), musd: 0n },
-  { name: "faucet", sol: solToLamports("5"), musd: 0n },
-  /** v2 keeper (spec-v2 §7.4): match and sweep fees only. */
-  { name: "keeper", sol: solToLamports("0.5"), musd: 0n },
-  { name: "judge1", sol: solToLamports("0.1"), musd: musd(25_000n) },
-  { name: "judge2", sol: solToLamports("0.1"), musd: musd(25_000n) },
-  { name: "judge3", sol: solToLamports("0.1"), musd: musd(25_000n) },
-];
-
-/** Enough SOL to start the first live runs. Re-run without --minimum for demo-day balances. */
-const MINIMUM_SOL: Partial<Record<KeypairName, string>> = {
-  botA: "0.03", botB: "0.03", botC: "0.03",
-  homeownerDemo: "0.04", oracle: "0.02", controller: "0.02",
-  faucet: "0.06", keeper: "0.05", judge1: "0.02", judge2: "0.02", judge3: "0.02",
-};
-
-/** Keep this much in the funder for fees and ATA rent. */
-const FUNDER_RESERVE = solToLamports("0.1");
+const MAKERS = ["botA", "botB", "botC"] as const;
+const PROTECTED = ["homeownerDemo", "judge1", "judge2", "judge3"] as const;
+const JOURNAL = "fund-bots-transactions.json";
 
 async function main(): Promise<void> {
   banner("fund-bots");
-  const fromName = (flagValue("--from") ?? "deployer") as KeypairName;
+  const fromName = flagValue("--from") ?? "deployer";
   if (fromName !== "deployer" && fromName !== "admin") throw new Error("--from must be deployer or admin");
-  const conn = getRpc().connection;
-  const funder = loadKeypair(fromName);
-  const mintAuthority = loadKeypair("mintAuthority");
+
+  const rpc = getRpc();
+  const genesis = await rpc.run((c) => c.getGenesisHash());
+  const hostname = new URL(rpc.connection.rpcEndpoint).hostname;
+  if (genesis !== DEVNET_GENESIS && !(args.includes("--local") && ["127.0.0.1", "localhost", "[::1]"].includes(hostname))) {
+    throw new Error("Use Devnet or an explicit --local validator");
+  }
   const mint = musdMint();
-  let problems = 0;
-
-  let funderSol = await getSolLamports(conn, funder.publicKey);
-  console.log(`  funder  ${fromName} ${funder.publicKey.toBase58()} (${sol(funderSol)})`);
-  console.log(`  mint    ${mint.toBase58()}`);
-
-  const minimum = args.includes("--minimum");
-  const wallets = TARGETS.map((target) => {
-    const lowerTarget = minimum ? MINIMUM_SOL[target.name] : undefined;
-    return {
-      ...target,
-      sol: lowerTarget ? solToLamports(lowerTarget) : target.sol,
-      pk: loadKeypair(target.name).publicKey,
-    };
-  });
-
-  // ---------- SOL ----------
-  log.step("SOL top-ups");
-  const solIxs: TransactionInstruction[] = [];
-  for (const w of wallets) {
-    if (w.pk.equals(funder.publicKey)) continue;
-    const bal = await getSolLamports(conn, w.pk);
-    const need = w.sol > bal ? w.sol - bal : 0n;
-    if (need === 0n) {
-      log.ok(`${w.name} ${sol(bal)} ≥ ${sol(w.sol)}`);
-      continue;
-    }
-    if (funderSol - need < FUNDER_RESERVE) {
-      log.fail(`${w.name} needs ${sol(need)} but ${fromName} has ${sol(funderSol)} (reserve ${sol(FUNDER_RESERVE)})`);
-      problems++;
-      continue;
-    }
-    funderSol -= need;
-    log.todo(`${w.name}: +${sol(need)} → ${sol(w.sol)}`);
-    solIxs.push(SystemProgram.transfer({ fromPubkey: funder.publicKey, toPubkey: w.pk, lamports: need }));
-  }
-  if (!DRY_RUN) {
-    for (let i = 0; i < solIxs.length; i += 8) {
-      log.tx("SOL transfers", await sendTx(conn, solIxs.slice(i, i + 8), [funder]));
-    }
+  const config = await rpc.run((c) => fetchExchangeConfig(getExchangeProgram(c), genesis === DEVNET_GENESIS ? "finalized" : "confirmed"));
+  if (!config?.collateralMint.equals(mint)) throw new Error("mUSD mint does not match the initialized exchange");
+  const funder = loadKeypair(fromName);
+  const authority = loadKeypair("mintAuthority");
+  const protectedKeys = PROTECTED.filter((name) => existsSync(keypairPath(name))).map((name) => loadKeypair(name).publicKey);
+  const makers = MAKERS.map((name) => ({ name, owner: loadKeypair(name).publicKey }));
+  const recipients = makers.map(({ owner }) => owner.toBase58());
+  if (new Set(recipients).size !== MAKERS.length ||
+    [...makers.map(({ owner }) => owner), funder.publicKey, authority.publicKey].some((key) => protectedKeys.some((p) => p.equals(key))) ||
+    makers.some(({ owner }) => owner.equals(funder.publicKey) || owner.equals(authority.publicKey))) {
+    throw new Error("Maker, funding and human wallet identities must be distinct");
   }
 
-  // ---------- mUSD ----------
-  log.step("mUSD top-ups (minted by mint-authority; funder pays fees and ATA rent)");
-  if (funderSol < FUNDER_RESERVE) {
-    log.fail(`${fromName} has ${sol(funderSol)}; needs ≥ ${sol(FUNDER_RESERVE)} for mint fees and ATA rent`);
-    problems++;
-  }
-  const mintIxs: TransactionInstruction[][] = [];
-  for (const w of wallets) {
-    if (w.musd === 0n) continue;
-    const bal = await getMusdBalance(conn, w.pk, mint);
-    const need = w.musd > bal ? w.musd - bal : 0n;
-    if (need === 0n) {
-      log.ok(`${w.name} ${formatMusd(bal)} mUSD ≥ ${formatMusd(w.musd)}`);
-      continue;
-    }
-    log.todo(`${w.name}: mint ${formatMusd(need)} mUSD → ${formatMusd(w.musd)}`);
-    mintIxs.push(mintTo(funder.publicKey, mintAuthority.publicKey, mint, w.pk, need));
-  }
-  if (!DRY_RUN) {
-    for (let i = 0; i < mintIxs.length; i += 4) {
-      const ixs = mintIxs.slice(i, i + 4).flat();
-      log.tx("mUSD mints", await sendTx(conn, ixs, [funder, mintAuthority]));
-    }
-  }
-  exitWith(problems);
-}
+  // Serialize seed writes per mint across invocations. Reset Demo has its own explicit
+  // restoration workflow. Live maker inventory and spend never determine a new mint here.
+  const unlock = DRY_RUN ? undefined : await lockWorker(mint, [mint]);
+  try {
+    const journal = new DemoTransactions(rpc, JOURNAL);
+    if (!DRY_RUN) await journal.recover();
+    const records = readDemoFile<Record<string, { signature?: string; pending?: unknown }>>(JOURNAL) ?? {};
+    const targetSol = args.includes("--minimum") ? solToLamports("0.03") : MAKER_SOL_FLOAT;
+    const { context, value: infos } = await rpc.run((c) =>
+      c.getMultipleAccountsInfoAndContext([funder.publicKey, ...makers.map(({ owner }) => owner)], "finalized"));
+    let funderSol = BigInt(infos[0]?.lamports ?? 0);
+    for (const [index, { name, owner }] of makers.entries()) {
+      const have = BigInt(infos[index + 1]?.lamports ?? 0);
+      if (have * 3n < targetSol * 2n) {
+        const need = targetSol - have;
+        if (funderSol - need < solToLamports("0.1")) throw new Error(`Insufficient funder SOL for ${name}`);
+        funderSol -= need;
+        log.todo(`${name} SOL ${sol(have)} → ${sol(targetSol)}`);
+        if (!DRY_RUN) {
+          const signature = await journal.send(`SOL ${genesis} ${owner} ${context.slot}`, async () => ({
+            instructions: [SystemProgram.transfer({ fromPubkey: funder.publicKey, toPubkey: owner, lamports: need })],
+            signers: [funder],
+          }));
+          if (signature) log.tx(`${name} SOL`, signature);
+        }
+      } else {
+        log.ok(`${name}: ${sol(have)}`);
+      }
 
-function mintTo(payer: PublicKey, authority: PublicKey, mint: PublicKey, owner: PublicKey, amount: bigint) {
-  return [
-    createAtaIdempotentIx(payer, owner, mint),
-    createMintToInstruction(mint, musdAta(owner, mint), authority, amount, [], TOKEN_PROGRAM_ID),
-  ];
+      const ata = ataOf(mint, owner);
+      const key = `seed ${genesis} ${mint} ${owner}`;
+      const seeded = records[key]?.signature;
+      if (seeded) {
+        log.ok(`${name}: existing seed ${explorerTx(seeded)}`);
+        continue;
+      }
+      if (records[key]?.pending) {
+        log.warn(`${name} has a pending seed. A funding run will recover that transaction.`);
+        continue;
+      }
+      // A used ATA can have zero free collateral or even have been closed. Treat it as
+      // previously provisioned, including makers seeded by the original V7 migration.
+      const existing = await rpc.run((c) => c.getAccountInfo(ata, "finalized"));
+      if (existing || (await rpc.run((c) => c.getSignaturesForAddress(ata, { limit: 1 }, "finalized"))).length) {
+        log.ok(`${name}: existing mUSD account history, seed skipped`);
+        continue;
+      }
+      log.todo(`${name}: seed ${formatMusd(MAKER_CAPITAL)} mUSD`);
+      if (!DRY_RUN) {
+        const signature = await journal.send(key, async () => ({
+          instructions: [
+            createAtaIdempotentIx(funder.publicKey, owner, mint),
+            createMintToInstruction(mint, ata, authority.publicKey, MAKER_CAPITAL),
+          ],
+          signers: [funder, authority],
+        }));
+        if (signature) log.tx(`${name} mUSD seed`, signature);
+      }
+    }
+  } finally {
+    unlock?.();
+  }
 }
 
 main().catch((e: unknown) => {
   console.error(`fund-bots failed: ${(e as Error).message}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

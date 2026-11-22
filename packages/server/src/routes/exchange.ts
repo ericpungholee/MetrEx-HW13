@@ -1,6 +1,6 @@
 // §7.5 read API for the v2 exchange, framework-agnostic (standard Request/Response). Reads the chain
-// directly with a short in-memory cache and never depends on the keeper process. When the chain
-// can't be read, the response says "unavailable"; cached data is never presented as live.
+// directly with a short in-memory cache for books, and reads finalized receipts from the shared
+// local trade journal.
 
 import { PublicKey } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
@@ -26,8 +26,9 @@ import {
 } from "../exchange/accounts";
 import { BookCache, ExchangeStateLoader, type ExchangeState, type MarketBookSnapshot } from "../exchange/book";
 import { readHeartbeat } from "../exchange/heartbeat";
-import { getExchangeProgram } from "../exchange/program";
-import { connectionTradeSource, TradeIndex } from "../exchange/trades";
+import { exchangeProgramId, getExchangeProgram } from "../exchange/program";
+import { TradeStore, tradeStorePath } from "../exchange/trade-store";
+import { tradeDecoder } from "../exchange/trades";
 import { badRequest, HttpError, notFound, unavailable } from "./errors";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
@@ -100,43 +101,11 @@ async function snapshotFor(mk: PublicKey): Promise<MarketBookSnapshot | null> {
   return (await bookCache()).get(mk);
 }
 
-const tradeIndexes = new Map<string, TradeIndex>();
-const backfilling = new Map<string, Promise<void>>();
-/**
- * One trade index per market (signatures for the market's address, a few hundred at most),
- * refreshed at most every 2 s. Until its initial backfill is fully decoded it is returned as
- * `null` after a short wait instead of holding the request: callers then report "indexing", never
- * a made-up volume or an empty history presented as complete. The backfill keeps going in the
- * background without waiting for the next request.
- */
-async function tradeIndex(mk: PublicKey, waitMs = 1_500): Promise<TradeIndex | null> {
-  const key = mk.toBase58();
-  let idx = tradeIndexes.get(key);
-  if (!idx) {
-    idx = new TradeIndex(connectionTradeSource(() => getRpc().connection, mk), { pageSize: 200, txPerRefresh: 25 });
-    tradeIndexes.set(key, idx);
-  }
-  const index = idx;
-  if (index.lastRefresh === undefined || Date.now() - index.lastRefresh > 2_000) {
-    const backfill = async () => {
-      do {
-        try {
-          await index.refresh();
-        } catch (e: unknown) {
-          console.error(`[api] trade index ${key.slice(0, 8)} refresh failed:`, e instanceof Error ? e.message : String(e));
-          await new Promise((r) => setTimeout(r, 2_000));
-        }
-      } while (!index.backfilled);
-    };
-    let refreshing: Promise<void>;
-    if (index.backfilled) refreshing = index.refresh().catch(() => undefined);
-    else {
-      refreshing = backfilling.get(key) ?? backfill().finally(() => backfilling.delete(key));
-      backfilling.set(key, refreshing);
-    }
-    if (!index.backfilled) await Promise.race([refreshing, new Promise((r) => setTimeout(r, waitMs))]);
-  }
-  return index.backfilled ? index : null;
+let tradeStore: TradeStore | undefined;
+function tradeIndex(): TradeStore {
+  tradeStore ??= new TradeStore(tradeStorePath(exchangeProgramId().toBase58()), tradeDecoder(getRpc()));
+  tradeStore.reload();
+  return tradeStore;
 }
 
 /** Properties never change once registered. */
@@ -304,19 +273,18 @@ export const handleMarket = (id: string | undefined): Promise<Response> =>
     const mk = key(id, "market address");
     const snap = await snapshotFor(mk);
     if (!snap) throw notFound("Market not found");
-    const idx = await tradeIndex(mk);
-    const fills = idx ? idx.trades(mk.toBase58()) : [];
-    const finalized = fills.filter((t) => t.finalized);
-    const last = (o: number) => [...finalized].reverse().find((t) => t.fill.outcome === o)?.fill.priceBps ?? null;
+    const idx = tradeIndex();
+    const fills = idx.trades(mk.toBase58());
+    const last = (o: number) => [...fills].reverse().find((t) => t.fill.outcome === o)?.fill.priceBps ?? null;
     const { yes, no } = marketBooks(snap.book);
     return {
       market: await marketSummary(snap.market),
       round: { ...snap.round, state: roundState(snap.round, Date.now()) },
       tradingOpen: snap.tradingOpen,
       headline: { yes: headlinePrice(yes, last(Outcome.Yes)), no: headlinePrice(no, last(Outcome.No)) },
-      volume: idx ? finalized.reduce((a, t) => a + t.fill.quoteAmount, 0n) : null,
-      indexing: !idx,
-      confirmingFills: fills.length - finalized.length,
+      volume: fills.length || idx.backfilled ? fills.reduce((a, t) => a + t.fill.quoteAmount, 0n) : null,
+      indexing: !idx.backfilled,
+      confirmingFills: 0,
       bookFetchedAt: new Date(snap.fetchedAt).toISOString(),
       settlementDeadline: snap.round.closedAt > 0n ? snap.round.closedAt + (await config()).resolutionTimeoutS : null,
     };
@@ -341,21 +309,22 @@ export const handleBook = (req: Request, id: string | undefined): Promise<Respon
 export const handleTrades = (id: string | undefined, req?: Request): Promise<Response> =>
   run(async () => {
     const mk = key(id, "market address");
-    const idx = await tradeIndex(mk);
+    const idx = tradeIndex();
     const wallet = req && new URL(req.url).searchParams.get("wallet");
-    const rows = idx?.trades(mk.toBase58()).reverse() ?? [];
+    const rows = idx.trades(mk.toBase58()).reverse();
     const trades = wallet ? rows.filter((t) => t.fill.buyer === wallet || t.fill.seller === wallet) : rows.slice(0, 200);
-    return { market: mk, indexing: !idx, trades };
+    return { market: mk, indexing: !idx.backfilled, trades };
   });
 
 /** GET /api/markets/:id/chart — "Trades" and "Quoted midpoint" from finalized events (§7.3). */
 export const handleChart = (id: string | undefined): Promise<Response> =>
   run(async () => {
     const mk = key(id, "market address");
-    const idx = await tradeIndex(mk);
-    if (!idx) return { market: mk, indexing: true, trades: [], quotes: [], empty: false };
+    const idx = tradeIndex();
     const c = idx.chart(mk.toBase58());
-    return { market: mk, indexing: false, trades: c.trades, quotes: c.quotes, empty: c.trades.length === 0 && c.quotes.length === 0 };
+    // An incomplete order-event stream cannot reconstruct historical quote levels.
+    const quotes = idx.backfilled ? c.quotes : [];
+    return { market: mk, indexing: !idx.backfilled, trades: c.trades, quotes, empty: idx.backfilled && !c.trades.length && !quotes.length };
   });
 
 /**
@@ -438,10 +407,10 @@ export const handleLedger = (id: string | undefined): Promise<Response> =>
     const rpc = getRpc();
     const market = await rpc.run((c) => fetchExchangeMarket(getExchangeProgram(c), mk, "finalized"));
     if (!market) throw notFound("Market not found");
-    const idx = await tradeIndex(mk, 4_000);
-    if (!idx) return { market: mk, indexing: true };
+    const idx = tradeIndex();
+    if (!idx.backfilled) return { market: mk, indexing: true };
     const events: LedgerEvent[] = [];
-    for (const e of idx.events({ market: mk.toBase58(), finalizedOnly: true })) {
+    for (const e of idx.events(mk.toBase58())) {
       const at = { signature: e.pos.signature, blockTime: e.pos.blockTime };
       if (e.name === "OrderFilled") {
         events.push({ ...at, kind: "fill", outcome: e.outcome, buyer: e.buyer, seller: e.seller, quantity: e.quantity, priceBps: e.priceBps, quoteAmount: e.quoteAmount });

@@ -137,7 +137,7 @@ export function WalletPanel({
           <table className="w-full text-sm">
             <tbody>
               {fills.map((t) => (
-                <tr key={`${t.signature}-${t.priceBps}-${t.quantity}`} className="border-t border-line">
+                <tr key={t.eventId} className="border-t border-line">
                   <td className="py-2">
                     {t.buyer === me ? "Bought" : "Sold"} {formatShares(t.quantity)} {outcomeName(t.outcome)}
                   </td>

@@ -79,7 +79,7 @@ export class RpcPool {
   readonly scanPacer: RequestPacer;
   private active = 0;
 
-  constructor(urls: readonly string[], commitment: Commitment = DEFAULT_COMMITMENT, opts: { maxRps?: number; maxScanRps?: number } = {}) {
+  constructor(urls: readonly string[], commitment: Commitment = DEFAULT_COMMITMENT, opts: { maxRps?: number; maxScanRps?: number; disableRetryOnRateLimit?: boolean } = {}) {
     if (urls.length === 0) throw new Error("RpcPool needs at least one URL");
     const pacer = new RequestPacer(opts.maxRps);
     const scanPacer = new RequestPacer(opts.maxScanRps);
@@ -89,6 +89,7 @@ export class RpcPool {
       (u) =>
         new Connection(u, {
           commitment,
+          disableRetryOnRateLimit: opts.disableRetryOnRateLimit,
           fetchMiddleware: (info, init, fetch) => {
             const isScan = pacer.record(init?.body) === "getProgramAccounts";
             const wait = Math.max(pacer.reserve(), isScan ? scanPacer.reserve() : 0);

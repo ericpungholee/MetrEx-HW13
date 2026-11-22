@@ -14,6 +14,7 @@ export * from "./ix";
 export * from "./keeper";
 export * from "./program";
 export * from "./trades";
+export * from "./trade-store";
 
 export { envOrUndefined, expandHome, keyDir, loadKeypair, loadKeypairFile, parsePublicKey, repoRoot, type KeypairName } from "../env";
 export { explorerAddress, explorerTx } from "../explorer";

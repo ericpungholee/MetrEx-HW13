@@ -8,13 +8,10 @@ export const SIM_SOL_FLOAT = 15_000_000n;
 export const SPONSOR_SOL_FLOAT = 2_000_000_000n;
 export const MAKER_SOL_FLOAT = 1_500_000_000n;
 /**
- * Seeded mUSD per maker (docs/spec-simulation.md §3, §9). Each maker escrows about one top size of
- * YES-ask collateral and one of NO bids per catalog market, plus split inventory up to
- * (topSize + splitPairs) × 2, so four markets need about 1.44M (A), 1.12M (B) and 0.96M (C).
+ * Seeded mUSD per maker (docs/spec-simulation.md §3, §9). The maker worker divides this
+ * across the four catalog markets to budget inventory and bid escrow.
  */
 export const MAKER_CAPITAL = 1_500_000_000_000n;
-/** The original seed, raised to MAKER_CAPITAL by scripts/fund-makers.ts. */
-export const MAKER_CAPITAL_V7_SEED = 600_000_000_000n;
 
 export function readDemoFile<T>(name: string): T | undefined {
   try {
