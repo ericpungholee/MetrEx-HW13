@@ -40,7 +40,7 @@ function LatestFill({ point, y }: { point: Pt; y: number }) {
     return () => pulse?.cancel();
   }, [point.signature]);
   return (
-    <g transform={`translate(${PAD.l} ${y})`} fill={TRADE}>
+    <g transform={`translate(${W - PAD.r} ${y})`} fill={TRADE}>
       <title>Latest finalized trade</title>
       <circle ref={ring} r={4} opacity={0} />
       <circle r={4} />
@@ -80,10 +80,7 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
   const padBps = Math.max(20, Math.round((hi - lo) * 0.15));
   lo = Math.max(0, lo - padBps);
   hi = Math.min(10_000, hi + padBps);
-  const sx = (i: number) => {
-    const offset = series === "trade" ? pts.length - 1 - i : i;
-    return PAD.l + offset / Math.max(1, pts.length - 1) * (W - PAD.l - PAD.r);
-  };
+  const sx = (i: number) => pts.length === 1 ? W - PAD.r : PAD.l + i / (pts.length - 1) * (W - PAD.l - PAD.r);
   const sy = (bps: number) => PAD.t + (1 - (bps - lo) / (hi - lo || 1)) * (H - PAD.t - PAD.b);
   const ticks = [lo, Math.round((lo + hi) / 2), hi];
 
@@ -165,7 +162,7 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
             {series === "trade" && last && (
               <>
                 <LatestFill key={outcome} point={last} y={sy(last.priceBps)} />
-                <text x={PAD.l} y={H - 7} fontSize={11} fill="#777">Latest fill</text>
+                <text x={W - PAD.r} y={H - 7} textAnchor="end" fontSize={11} fill="#777">Latest fill</text>
               </>
             )}
             {hover && hoverIndex !== null && (
