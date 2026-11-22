@@ -1,7 +1,7 @@
 // Display helpers for the v2 exchange. Integer math only on amounts; prices are bps (1–9,999) of the
 // 1 mUSD payout, shown in cents per share: 1 bps = 0.01¢, 80 bps = 0.80¢, 430 bps = 4.30¢
 // (docs/spec-multiperil.md §5: fractional-cent prices are native to the on-chain bps).
-import { CATALOG, catalogByProperty, OrderSide, Outcome, type MarketOutcomeName, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
+import { CATALOG, catalogByProperty, catalogByScenario, entryFor, OrderSide, Outcome, type MarketOutcomeName, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import type { MarketSummary, RoundInfo } from "./exchange-client";
 
 /** §10.1 required text (plain text, no pills). The wildfire sentence; other hazards use `payoutRule`. */
@@ -55,8 +55,8 @@ export const marketTitle = (m: Pick<MarketSummary, "label" | "propertyId">): str
   catalogByProperty(m.propertyId)?.address ?? m.label ?? `Property ${m.propertyId}`;
 
 /** The forward-looking catalog question, else the original wildfire question. */
-export const question = (m: Pick<MarketSummary, "label" | "propertyId" | "triggerDistanceM">): string =>
-  catalogByProperty(m.propertyId)?.question ??
+export const question = (m: Pick<MarketSummary, "label" | "propertyId" | "scenarioId" | "triggerDistanceM">): string =>
+  entryFor(m.propertyId, m.scenarioId, m.label)?.question ??
   `Did the Palisades Fire's final mapped footprint come within ${m.triggerDistanceM} m of ${m.label ?? `Property ${m.propertyId}`}?`;
 
 /**
@@ -65,7 +65,7 @@ export const question = (m: Pick<MarketSummary, "label" | "propertyId" | "trigge
  */
 export function payoutRule(m: Pick<MarketSummary, "propertyId" | "scenarioId">): string {
   if (m.scenarioId === 1) return TRIGGER_SENTENCE;
-  return catalogByProperty(m.propertyId)?.payoutRule ?? TRIGGER_SENTENCE;
+  return (catalogByProperty(m.propertyId) ?? catalogByScenario(m.scenarioId))?.payoutRule ?? TRIGGER_SENTENCE;
 }
 
 /** Whole dollars of coverage → shares: one share pays 1 mUSD. */

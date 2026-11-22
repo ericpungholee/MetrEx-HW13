@@ -7,7 +7,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { catalogByProperty, OrderSide, Outcome, PAYOUT_PER_SHARE } from "@metrex/exchange";
+import { entryFor, OrderSide, Outcome, PAYOUT_PER_SHARE } from "@metrex/exchange";
 import {
   bookOrders,
   fetchBook,
@@ -157,7 +157,7 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
             <tbody>
               {coverage
                 .map(({ r, m, yes, res }) => {
-                  const c = catalogByProperty(m.propertyId);
+                  const c = entryFor(m.propertyId, m.scenarioId, m.label);
                   const shares = yes + res.yes;
                   const paid = premium.get(m.address);
                   return (
@@ -207,7 +207,7 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
                     <Link className="font-medium hover:underline" href={`/market/${m.address}`}>
                       {marketTitle(m)}
                     </Link>
-                    {catalogByProperty(m.propertyId) && <div className="text-xs text-dim">{catalogByProperty(m.propertyId)?.month}</div>}
+                    {entryFor(m.propertyId, m.scenarioId, m.label) && <div className="text-xs text-dim">{entryFor(m.propertyId, m.scenarioId, m.label)?.month}</div>}
                   </td>
                   <td className="py-2.5">
                     <StateLabel state={marketState(m.outcome, r)} />

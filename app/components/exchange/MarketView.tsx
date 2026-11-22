@@ -6,7 +6,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { catalogByProperty, HAZARD_LABEL, Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
+import { entryFor, HAZARD_LABEL, isListing, Outcome, PAYOUT_PER_SHARE, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import {
   fetchBook,
   fetchChart,
@@ -182,7 +182,7 @@ export function MarketView({ market, initialOutcome }: {
   const state = marketState(m.outcome, r);
   const closed = !info.data.tradingOpen || m.outcome !== "unresolved";
   const siblings = related.data?.address === m.round ? related.data.markets.filter((x) => x.address !== m.address) : [];
-  const c = catalogByProperty(m.propertyId);
+  const c = entryFor(m.propertyId, m.scenarioId, m.label);
   const walletData = wallet.data?.owner === me ? wallet.data : null;
   const activeBook = !closed && !book.error && book.data?.tradingOpen ? book.data : undefined;
   const deadlines = r.tradingEndsAt > 0n ? new Intl.DateTimeFormat("en-US", {
@@ -209,9 +209,10 @@ export function MarketView({ market, initialOutcome }: {
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             {c && (
-              <div className="order-1 shrink-0 sm:order-none sm:w-32">
+              <figure className="order-1 shrink-0 sm:order-none sm:w-32">
                 <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 128px, 80px" className="h-12 w-20 rounded-md sm:h-20 sm:w-full" />
-              </div>
+                {isListing(c.propertyId) && <figcaption className="mt-1 text-xs text-dim">Illustrative image</figcaption>}
+              </figure>
             )}
             <div className="min-w-0 space-y-2">
               {c && (

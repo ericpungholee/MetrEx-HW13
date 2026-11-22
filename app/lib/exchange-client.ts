@@ -32,6 +32,7 @@ import {
   randomNonce,
   type BookOrder,
   type Fill,
+  type Hazard,
   type MarketOutcomeName,
   type OrderSideCode,
   type OutcomeCode,
@@ -295,7 +296,7 @@ function parseBookSide(b: J, outcome: OutcomeCode): BookSide {
 // API reads
 // ---------------------------------------------------------------------------
 
-/** "unavailable" is shown as such; cached data is never presented as live (§7.5). */
+/** "unavailable" is shown as such; cached data is never presented as live (spec-multiperil §7.7). */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -1112,4 +1113,113 @@ export async function demoAction(action: DemoAction, round?: string): Promise<{ 
     /* non-JSON */
   }
   return { ok: res.ok, status: res.status, body };
+}
+
+/** One listing address and its market in the hazard's current round (docs/spec-multiperil.md §7.7). */
+export interface Listing {
+  propertyId: number;
+  address: string;
+  place: string;
+  question: string;
+  market: { address: string; outcome: string; yesBestAskBps: number | null; noBestAskBps: number | null } | null;
+}
+
+export interface HazardListings {
+  hazard: Hazard;
+  label: string;
+  trigger: string;
+  month: string;
+  round: { address: string; roundId: bigint; state: RoundState; tradingEndsAt: bigint } | null;
+  listings: Listing[];
+}
+
+export async function fetchListings(): Promise<HazardListings[]> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const body = await getJson("/api/listings");
+  return ((body.hazards as J[]) ?? []).map((h) => {
+    const r = h.round as J | null;
+    return {
+      hazard: str(h.hazard) as Hazard,
+      label: str(h.label),
+      trigger: str(h.trigger),
+      month: str(h.month),
+      round: r ? { address: str(r.address), roundId: big(r.roundId), state: str(r.state) as RoundState, tradingEndsAt: big(r.tradingEndsAt) } : null,
+      listings: ((h.listings as J[]) ?? []).map((l) => {
+        const m = l.market as J | null;
+        return {
+          propertyId: num(l.propertyId),
+          address: str(l.address),
+          place: str(l.place),
+          question: str(l.question),
+          market: m ? { address: str(m.address), outcome: str(m.outcome), yesBestAskBps: optNum(m.yesBestAskBps), noBestAskBps: optNum(m.noBestAskBps) } : null,
+        };
+      }),
+    };
+  });
+}
+
+/** Lists one listing property in its hazard's open round; returns the market address. */
+export async function createListedMarket(propertyId: number): Promise<{ market: string; signature: string | null }> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const res = await fetch("/api/operator/create-market", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ propertyId }),
+  });
+  const body = (await res.json().catch(() => ({}))) as J;
+  if (!res.ok) throw new ApiError(res.status, typeof body.error === "string" ? body.error : "Could not create the market.");
+  return { market: str(body.market), signature: typeof body.signature === "string" ? body.signature : null };
+}
+
+/** One home in a hazard's pool and its market in the current round, if listed (spec-multiperil §7.7). */
+export interface HomeOption {
+  propertyId: number;
+  address: string;
+  place: string;
+  market: string | null;
+}
+
+export interface HazardHomes {
+  hazard: Hazard;
+  label: string;
+  trigger: string;
+  month: string;
+  /** Maker A's starting reference for the hazard, a suggested opening premium. */
+  suggestedBps: number | null;
+  round: { address: string; roundId: bigint; state: RoundState; tradingEndsAt: bigint } | null;
+  homes: HomeOption[];
+}
+
+export async function fetchHomes(hazard: Hazard): Promise<HazardHomes> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const h = await getJson(`/api/homes?hazard=${encodeURIComponent(hazard)}`);
+  const r = h.round as J | null;
+  return {
+    hazard: str(h.hazard) as Hazard,
+    label: str(h.label),
+    trigger: str(h.trigger),
+    month: str(h.month),
+    suggestedBps: optNum(h.suggestedBps),
+    round: r ? { address: str(r.address), roundId: big(r.roundId), state: str(r.state) as RoundState, tradingEndsAt: big(r.tradingEndsAt) } : null,
+    homes: ((h.homes as J[]) ?? []).map((x) => ({ propertyId: num(x.propertyId), address: str(x.address), place: str(x.place), market: x.market ? str(x.market) : null })),
+  };
+}
+
+/**
+ * The homeowner's opening bid (spec-multiperil §7.7): a resting YES limit buy that escrows the
+ * premium, quantity × price. Built from the live book so a crossing ask fills first.
+ */
+export async function buildOpeningBid(wallet: PublicKey, market: string, quantity: bigint, priceBps: number): Promise<{ ixs: TransactionInstruction[]; summary: MarketSummary }> {
+  let info: MarketInfo | null = null;
+  for (let i = 0; i < 8 && !info; i++) {
+    info = await fetchMarketInfo(market).catch(() => null);
+    if (!info) await new Promise((r) => setTimeout(r, 1_000));
+  }
+  if (!info) throw new ExchangeTxError("The new market is not visible yet. Open it and place the bid there.");
+  const book = bookOrders(await fetchBook(market));
+  const intent: TradeIntent = { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "limit", quantity, priceBps, slippageBps: 0 };
+  const preview = previewTrade(book, intent, wallet.toBase58(), { musd: 2n ** 63n, shares: 0n });
+  if (preview.problems.length) throw new ExchangeTxError(preview.problems[0]!);
+  const built = await buildTrade(wallet, info.market, book, preview);
+  return { ixs: built.ixs, summary: info.market };
 }
