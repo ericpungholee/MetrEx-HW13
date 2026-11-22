@@ -5,11 +5,20 @@
 import { PublicKey, Transaction, type Keypair, type TransactionInstruction } from "@solana/web3.js";
 import {
   OrderSide,
+  adaptiveParams,
   catalogByProperty,
+  diffFills,
   findOrderPda,
+  initAdaptive,
   randomNonce,
+  restingMid,
+  stepAdaptive,
+  DEFAULT_ADAPTIVE,
+  type AdaptiveConfig,
+  type AdaptiveState,
   type BotParams,
   type BookOrder,
+  type OrderAccount,
   type Quote,
 } from "@metrex/exchange";
 import {
@@ -29,6 +38,7 @@ import {
   type MarketBookSnapshot,
   type MarketView,
   type RpcPool,
+  fullResetHeld,
   isClosureHeld,
   readHeartbeat,
 } from "@metrex/server/exchange";
@@ -51,6 +61,9 @@ export interface V2WorkerOptions {
   legacyRehearsal?: boolean;
   heartbeat?: boolean;
   log?: (line: string) => void;
+  /** Adaptive references on catalog markets (docs/spec-simulation.md §3). Default on. */
+  adaptive?: boolean;
+  adaptiveConfig?: AdaptiveConfig;
 }
 
 /** Solana's packet limit for a serialized transaction. */
@@ -109,6 +122,9 @@ export class ExchangeBotWorker {
   /** bot:market groups with transactions in flight, and when each group last settled. */
   private readonly busy = new Map<string, Promise<void>>();
   private readonly settledAt = new Map<string, number>();
+  /** Adaptive pricing per catalog market: the previous order read and the current state. */
+  private readonly prevOrders = new Map<string, OrderAccount[]>();
+  private readonly pricers = new Map<string, AdaptiveState>();
 
   constructor(private readonly o: V2WorkerOptions) {
     this.log = o.log ?? ((l) => console.log(`${new Date().toISOString()} ${l}`));
@@ -120,6 +136,11 @@ export class ExchangeBotWorker {
 
   async tick(): Promise<void> {
     this.ticks++;
+    // An operator Reset Demo signs for the makers itself (docs/spec-simulation.md §9): stand aside.
+    if (fullResetHeld()) {
+      this.beat({ state: "reset_hold", inFlight: 0 });
+      return;
+    }
     const rpc = this.o.rpc;
     const loadStarted = Date.now();
     // One batched read per tick: every book of the recent rounds plus each bot's SOL, mUSD, YES and
@@ -161,7 +182,7 @@ export class ExchangeBotWorker {
       const featured =
         catalogByProperty(m.propertyId) !== undefined ||
         (m.propertyId === this.o.featuredPropertyId && m.round.equals(config.latestRound));
-      planned.push(...this.planMarket(snap, featured, botKeys, balances));
+      planned.push(...this.planMarket(snap, featured, botKeys, balances, this.updatePricer(snap)));
     }
     // Group by bot and market: a split goes out together with the asks it funds (see executeGroup).
     const groups = new Map<string, Planned[]>();
@@ -194,7 +215,33 @@ export class ExchangeBotWorker {
       launched,
       inFlight: this.busy.size,
       rpcRequests: rpc.pacer.total,
+      ...Object.fromEntries([...this.pricers].map(([k, p]) => [`mid_${k.slice(0, 6)}`, Math.round(p.publishedBps * 100) / 100])),
     });
+  }
+
+  /**
+   * Adaptive reference of a trading catalog market (docs/spec-simulation.md §3): fills are the
+   * `remaining_qty` decreases since the previous read. Starts from maker A's resting mid after a
+   * restart, else from the catalog.
+   */
+  private updatePricer(snap: MarketBookSnapshot): AdaptiveState | undefined {
+    const entry = catalogByProperty(snap.market.propertyId);
+    if (this.o.adaptive === false || !entry || !snap.tradingOpen) return undefined;
+    const mk = snap.market.address.toBase58();
+    const now = Date.now();
+    const a = entry.ladder[0];
+    if (!a) return undefined;
+    const botA = this.o.bots.find((b) => b.params.name === a.name)?.keypair.publicKey.toBase58();
+    let s = this.pricers.get(mk) ?? initAdaptive(a.refBps, now, botA ? restingMid(snap.orders, botA) : undefined);
+    const prev = this.prevOrders.get(mk);
+    if (prev) {
+      const fills = diffFills(prev, snap.orders);
+      s = stepAdaptive(s, fills, now, a.topSize, this.o.adaptiveConfig ?? DEFAULT_ADAPTIVE);
+      if (fills.length) this.log(`[bots] ${mk.slice(0, 6)} ${fills.length} fills observed, mid ${s.midBps.toFixed(2)} (quoting ${s.publishedBps.toFixed(2)}) bps`);
+    }
+    this.prevOrders.set(mk, snap.orders);
+    this.pricers.set(mk, s);
+    return s;
   }
 
   /** Waits for every in-flight group (shutdown). */
@@ -202,7 +249,7 @@ export class ExchangeBotWorker {
     while (this.busy.size) await Promise.all([...this.busy.values()]);
   }
 
-  private planMarket(snap: MarketBookSnapshot, featured: boolean, botKeys: Set<string>, bal: Balances): Planned[] {
+  private planMarket(snap: MarketBookSnapshot, featured: boolean, botKeys: Set<string>, bal: Balances, pricer?: AdaptiveState): Planned[] {
     const phase = phaseOf(snap);
     const m = snap.market;
     const mk = m.address.toBase58();
@@ -226,12 +273,16 @@ export class ExchangeBotWorker {
       if (last !== undefined && now - last < this.o.config.cooldownMs) continue; // RPC catch-up and cooldown
       // Per-market starting quotes and split size (docs/spec-multiperil.md §6); legacy ladder otherwise.
       const entry = catalogByProperty(m.propertyId);
+      const base = entry?.ladder.find((p) => p.name === bot.params.name) ?? bot.params;
+      const refA = entry?.ladder[0]?.refBps;
+      // Adaptive markets quote around the moving mid with inventory skew on (docs/spec-simulation.md §3).
+      const params = pricer && refA ? adaptiveParams(base, refA, pricer, this.o.adaptiveConfig ?? DEFAULT_ADAPTIVE) : base;
       const actions = planBotMarket({
-        params: entry?.ladder.find((p) => p.name === bot.params.name) ?? bot.params,
+        params,
         config: entry ? { ...this.o.config, splitPairs: entry.splitPairs } : this.o.config,
         maker,
         phase,
-        featured,
+        featured: pricer ? false : featured,
         strictPostOnly: !this.o.legacyRehearsal,
         balances: { musd: musdBal, yes, no },
         own,

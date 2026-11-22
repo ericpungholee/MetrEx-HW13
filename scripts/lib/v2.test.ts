@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_BOTS, requoteRound, OrderSide, Outcome } from "@metrex/exchange";
-import { checkBotsQuoting, checkDepthGuarantee } from "./v2";
+import { checkBooksQuoted, checkBotsQuoting, checkDepthGuarantee } from "./v2";
 
 const bots = Object.fromEntries(DEMO_BOTS.map((p) => [`bot-${p.name}`, p.name]));
 const ladder = () => requoteRound(DEMO_BOTS, requoteRound(DEMO_BOTS, [], new Map(), { skewEnabled: false }), new Map(), { skewEnabled: false });
@@ -19,5 +19,11 @@ describe("prepare-demo-v2 checks (§8.3, §12 step 5)", () => {
   it("reports a missing bot level", () => {
     const b = ladder().filter((o) => !(o.maker === "bot-B" && o.outcome === Outcome.No && o.side === OrderSide.Sell));
     expect(checkBotsQuoting(b, bots)).toEqual(["bot B missing NO ask"]);
+  });
+  it("live readiness needs one maker per side, not every maker", () => {
+    const b = ladder().filter((o) => !(o.maker === "bot-B" && o.outcome === Outcome.Yes && o.side === OrderSide.Sell));
+    expect(checkBooksQuoted(b, bots)).toEqual([]);
+    const none = ladder().filter((o) => !(o.outcome === Outcome.Yes && o.side === OrderSide.Sell));
+    expect(checkBooksQuoted(none, bots)).toEqual(["no maker YES ask"]);
   });
 });

@@ -3,10 +3,12 @@
 //   BOTS_COOLDOWN_MS      per-bot, per-market requote cooldown (default 3000)
 //   BOTS_SPLIT_PAIRS      pairs split when a side runs low (default 2000)
 //   BOTS_FEATURED_PROPERTY featured property id, skew off there (default 1, §8.3)
+//   BOTS_ADAPTIVE         0 = fixed catalog ladder; default adaptive references (docs/spec-simulation.md §3)
+//   BOTS_ANCHOR_HALF_LIFE_MIN  reversion half-life toward the catalog reference (default 45)
 //   RPC_MAX_RPS           client-side request cap for this process (unset = no cap); see docs/v2-build-log.md (V4, RPC rate limits)
 
-import { DEMO_BOTS } from "@metrex/exchange";
-import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, lockWorker, redactUrl, type KeypairName } from "@metrex/server/exchange";
+import { DEFAULT_ADAPTIVE, DEMO_BOTS } from "@metrex/exchange";
+import { envOrUndefined, exchangeProgramId, getRpc, loadKeypair, lockWorker, redactUrl, surviveTransientRpcErrors, type KeypairName } from "@metrex/server/exchange";
 import { assertNoOracleData } from "./guard";
 import { DEFAULT_BOT_CONFIG } from "./strategy";
 import { ExchangeBotWorker, type V2Bot } from "./worker";
@@ -23,11 +25,14 @@ const KEYS: Record<string, KeypairName> = { A: "botA", B: "botB", C: "botC" };
 
 async function main(): Promise<void> {
   assertNoOracleData(); // §8.4: exit before touching anything else
+  surviveTransientRpcErrors("bots");
   const pollMs = intEnv("BOTS_POLL_MS", 2_000);
   const config = {
     ...DEFAULT_BOT_CONFIG,
     cooldownMs: intEnv("BOTS_COOLDOWN_MS", 3_000),
     splitPairs: BigInt(intEnv("BOTS_SPLIT_PAIRS", Number(DEFAULT_BOT_CONFIG.splitPairs))),
+    // docs/spec-simulation.md §3: four catalog markets with MAKER_CAPITAL per maker.
+    inventoryMult: BigInt(intEnv("BOTS_INVENTORY_MULT", 4)),
   };
   const featuredPropertyId = intEnv("BOTS_FEATURED_PROPERTY", 1);
   const rpc = getRpc();
@@ -45,7 +50,10 @@ async function main(): Promise<void> {
   if (legacyRehearsal && !["127.0.0.1", "localhost", "[::1]"].includes(new URL(rpc.connection.rpcEndpoint).hostname)) {
     throw new Error("The legacy ladder is for local validator rehearsals only");
   }
-  const worker = new ExchangeBotWorker({ rpc, bots, config, featuredPropertyId, legacyRehearsal });
+  const adaptive = envOrUndefined("BOTS_ADAPTIVE") !== "0";
+  const adaptiveConfig = { ...DEFAULT_ADAPTIVE, anchorHalfLifeMin: intEnv("BOTS_ANCHOR_HALF_LIFE_MIN", DEFAULT_ADAPTIVE.anchorHalfLifeMin) };
+  console.log(`[bots v2] ${adaptive ? `adaptive references, anchor half-life ${adaptiveConfig.anchorHalfLifeMin} min` : "fixed catalog ladder"}`);
+  const worker = new ExchangeBotWorker({ rpc, bots, config, featuredPropertyId, legacyRehearsal, adaptive, adaptiveConfig });
   let stopping = false;
   let wake: (() => void) | undefined;
   const stop = (sig: string) => {

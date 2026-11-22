@@ -29,6 +29,12 @@ export interface BotConfig {
   cooldownMs: number;
   /** §8.1: at most this many orders per market (one per book and side). */
   maxOrders: number;
+  /**
+   * Stop splitting once either side holds (topSize + splitPairs) × this. Free mUSD bounds splits
+   * too, so a larger multiple only lets a funded maker keep offering YES through one-sided flow
+   * (docs/spec-simulation.md §3).
+   */
+  inventoryMult: bigint;
 }
 
 export const DEFAULT_BOT_CONFIG: BotConfig = {
@@ -36,6 +42,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   musdReserve: 1_000n * PAYOUT_PER_SHARE,
   cooldownMs: 1_500,
   maxOrders: 4,
+  inventoryMult: 2n,
 };
 
 export interface Balances {
@@ -150,7 +157,7 @@ export function splitNeeded(i: BotMarketInput): bigint {
   if (inv.yes >= i.params.topSize && inv.no >= i.params.topSize) return 0n;
   const free = i.balances.musd > i.config.musdReserve ? i.balances.musd - i.config.musdReserve : 0n;
   const held = inv.yes > inv.no ? inv.yes : inv.no;
-  const limit = (i.params.topSize + i.config.splitPairs) * 2n;
+  const limit = (i.params.topSize + i.config.splitPairs) * i.config.inventoryMult;
   if (held >= limit) return 0n;
   return min(min(i.config.splitPairs, limit - held), free / PAYOUT_PER_SHARE);
 }

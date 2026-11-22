@@ -3,8 +3,11 @@
 // can't be read, the response says "unavailable"; cached data is never presented as live.
 
 import { PublicKey } from "@solana/web3.js";
-import { CATALOG, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type OutcomeBook } from "@metrex/exchange";
-import { loadKeypair, parsePublicKey, type KeypairName } from "../env";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { BN } from "@anchor-lang/core";
+import { CATALOG, buildLedger, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
+import { keyDir, loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { getRpc } from "../rpc";
 import {
   decodeMarketAccount,
@@ -15,6 +18,7 @@ import {
   fetchOrders,
   fetchProperty,
   fetchRound,
+  tokenBalance,
   type ConfigView,
   type MarketView,
   type PropertyView,
@@ -402,6 +406,65 @@ function marketMakers(): { name: string; address: string }[] {
   return makersCache;
 }
 
+/**
+ * Public records of the simulated traders (docs/spec-simulation.md §2), for the "Simulated trader"
+ * labels. Wallets and archetypes only; written by scripts/provision-sim.ts. Re-read every minute.
+ */
+let simCache: { at: number; rows: { address: string; id: string; archetype: string }[] } | undefined;
+function simulatedTraders(): { address: string; id: string; archetype: string }[] {
+  if (!simCache || Date.now() - simCache.at > 60_000) {
+    let rows: { address: string; id: string; archetype: string }[] = [];
+    try {
+      const raw = JSON.parse(readFileSync(join(keyDir(), "sim", "population.json"), "utf8")) as Array<Record<string, unknown>>;
+      rows = raw.map((r) => ({ address: String(r.address), id: String(r.id), archetype: String(r.archetype) }));
+    } catch {
+      /* no simulation on this host */
+    }
+    simCache = { at: Date.now(), rows };
+  }
+  return simCache.rows;
+}
+
+const pk = (v: unknown): string => (v as PublicKey).toBase58();
+const big = (v: unknown): bigint => BigInt((v as BN).toString());
+
+/**
+ * GET /api/markets/:id/ledger — trade and settlement ledger rebuilt from the market's finalized
+ * program events and its vault balance (docs/spec-simulation.md §8). Never from the simulator.
+ */
+export const handleLedger = (id: string | undefined): Promise<Response> =>
+  run(async () => {
+    const mk = key(id, "market address");
+    const rpc = getRpc();
+    const market = await rpc.run((c) => fetchExchangeMarket(getExchangeProgram(c), mk, "finalized"));
+    if (!market) throw notFound("Market not found");
+    const idx = await tradeIndex(mk, 4_000);
+    if (!idx) return { market: mk, indexing: true };
+    const events: LedgerEvent[] = [];
+    for (const e of idx.events({ market: mk.toBase58(), finalizedOnly: true })) {
+      const at = { signature: e.pos.signature, blockTime: e.pos.blockTime };
+      if (e.name === "OrderFilled") {
+        events.push({ ...at, kind: "fill", outcome: e.outcome, buyer: e.buyer, seller: e.seller, quantity: e.quantity, priceBps: e.priceBps, quoteAmount: e.quoteAmount });
+      } else if (e.name === "SharesSplit" || e.name === "SharesMerged") {
+        events.push({ ...at, kind: e.name === "SharesSplit" ? "split" : "merge", holder: pk(e.data.holder), quantity: big(e.data.quantity), amount: big(e.data.amount) });
+      } else if (e.name === "SharesRedeemed") {
+        events.push({ ...at, kind: "redeem", holder: pk(e.data.holder), outcome: Number(e.data.outcome), quantity: big(e.data.quantity), payout: big(e.data.payout) });
+      }
+    }
+    const vaultBalance = await rpc.run((c) => tokenBalance(c, market.vault, "finalized"));
+    const ledger = buildLedger(events, { outcome: market.outcome, pairsOutstanding: market.pairsOutstanding, vaultBalance });
+    return {
+      market: mk,
+      indexing: false,
+      propertyId: market.propertyId,
+      vault: market.vault,
+      resolvedAt: market.resolvedAt,
+      makers: marketMakers(),
+      simulatedTraders: simulatedTraders(),
+      ...ledger,
+    };
+  });
+
 /** GET /api/health — keeper and bot heartbeats, RPC. */
 export const handleHealth = (): Promise<Response> =>
   run(async () => {
@@ -412,7 +475,7 @@ export const handleHealth = (): Promise<Response> =>
       /* reported as not ok */
     }
     const keeper = readHeartbeat("keeper");
-    return { rpc, keeper, bots: readHeartbeat("bots"), matching: keeper.alive && keeper.heartbeat?.status.matching === true ? "running" : "paused", marketMakers: marketMakers() };
+    return { rpc, keeper, bots: readHeartbeat("bots"), sim: readHeartbeat("sim"), matching: keeper.alive && keeper.heartbeat?.status.matching === true ? "running" : "paused", marketMakers: marketMakers(), simulatedTraders: simulatedTraders() };
   });
 
 /** Lookup helper for scripts and the operator page. */

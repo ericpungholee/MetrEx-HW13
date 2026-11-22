@@ -12,11 +12,17 @@ import {
 /** address → "A" | "B" | "C" for the MetrEx-operated market makers (§8.4). */
 export const MakersContext = createContext<Map<string, string>>(new Map());
 
-/** "MetrEx market maker A", "You", or a short Explorer link. */
+/** Display name for a known wallet: "MetrEx market maker A" or "Simulated trader T042" (docs/spec-simulation.md §1.4). */
+export function knownName(tag: string | undefined, short?: boolean): string | undefined {
+  if (!tag) return undefined;
+  if (tag.startsWith("sim:")) return short ? `Sim ${tag.slice(4)}` : `Simulated trader ${tag.slice(4)}`;
+  return short ? `Maker ${tag}` : `MetrEx market maker ${tag}`;
+}
+
+/** "MetrEx market maker A", "Simulated trader T042", "You", or a short Explorer link. */
 export function MakerLabel({ address, me, short }: { address: string; me?: string | null; short?: boolean }) {
   const makers = useContext(MakersContext);
-  const bot = makers.get(address);
-  const text = me && me === address ? "You" : bot ? (short ? `Maker ${bot}` : `MetrEx market maker ${bot}`) : shortKey(address, 4);
+  const text = me && me === address ? "You" : knownName(makers.get(address), short) ?? shortKey(address, 4);
   return (
     <a className="text-ink-secondary underline-offset-2 hover:text-ink hover:underline" href={explorerAddress(address)} target="_blank" rel="noreferrer" title={address}>
       {text}

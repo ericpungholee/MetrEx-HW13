@@ -8,8 +8,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { HAZARD_LABEL, catalogByScenario } from "@metrex/exchange";
-import { fetchAllRounds, fetchFeatured, fetchHealth, fetchMarketInfo, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundInfo, type RoundWithMarkets } from "@/lib/exchange-client";
-import { marketState, marketTitle } from "@/lib/exchange-format";
+import { demoAction, fetchAllRounds, fetchDemoStatus, fetchFeatured, fetchHealth, fetchMarketInfo, fetchRound, operatorStep, USE_FIXTURES, type OperatorAction, type RoundInfo, type RoundWithMarkets } from "@/lib/exchange-client";
+import { formatRemaining, marketState, marketTitle } from "@/lib/exchange-format";
+import { DemoControls } from "@/components/operator/DemoControls";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat } from "@/components/ui";
 import { StateLabel, Unavailable } from "@/components/exchange/Labels";
@@ -43,6 +44,21 @@ function describe(action: OperatorAction, ok: boolean, body: Body): LogLine {
     };
   }
   const steps = (body.steps as Body[]) ?? [];
+  if (action === "fast_forward") {
+    const proof = body.proof as Body | null;
+    const st = body.status as Body | null;
+    const links = steps.filter((s) => typeof s.explorer === "string").map((s) => ({ label: `${String(s.step)} ${String(s.target).slice(0, 6)}`, href: String(s.explorer) }));
+    if (proof && typeof proof.explorer === "string") links.splice(1, 0, { label: "Closure rejection", href: proof.explorer });
+    for (const m of ((st?.markets as Body[]) ?? [])) links.push({ label: "Settlement ledger", href: `/market/${String(m.address)}/ledger` });
+    const outcomes = ((st?.markets as Body[]) ?? []).map((m) => String(m.outcome).toUpperCase()).join(", ");
+    const t = (body.timings as Record<string, number> | undefined) ?? {};
+    return {
+      action,
+      ok: st?.complete === true,
+      text: `${steps.map((s) => String(s.step)).join(" → ")}. Oracle outcome: ${outcomes || "pending"}.${t.redeemableMs ? ` Redeemable after ${(t.redeemableMs / 1000).toFixed(1)} s; finalized, proven and swept after ${((t.totalMs ?? 0) / 1000).toFixed(0)} s.` : ""}${proof ? " A finalized trade after closure was rejected with balances unchanged." : body.proofNote ? ` Closure proof skipped: ${String(body.proofNote)}` : ""} Simulated traders redeem automatically.`,
+      links,
+    };
+  }
   return {
     action,
     ok: true,
@@ -57,6 +73,7 @@ const LABELS: Record<OperatorAction, string> = {
   resolve: "Resolve markets",
   sweep: "Sweep orders",
   status: "Check settlement",
+  fast_forward: "Fast-forward to settlement",
 };
 
 async function fetchRecentRounds(): Promise<RoundWithMarkets[]> {
@@ -70,13 +87,16 @@ const hazardOf = (r: Pick<RoundInfo, "scenarioId">): string => {
 
 export default function OperatorPage() {
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<OperatorAction | "all" | null>(null);
+  const [busy, setBusy] = useState<OperatorAction | "all" | "reset" | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const featured = usePoll(fetchFeatured, [], 5_000);
   const history = usePoll(() => showHistory ? fetchRecentRounds() : Promise.resolve(null), [showHistory], 20_000);
   const health = usePoll(() => fetchHealth(), [], 10_000);
+  const demo = usePoll(() => USE_FIXTURES ? Promise.resolve(null) : fetchDemoStatus(), [], 4_000);
+  const opRunning = demo.data?.operation?.running === true || demo.data?.fullResetHeld === true;
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
   const current = (featured.data ?? []).flatMap(({ round, market }) => round && market ? [{
     ...round, scenarioId: market.scenarioId, market: market.address, resolved: market.outcome !== "unresolved",
   }] : []);
@@ -118,6 +138,21 @@ export default function OperatorPage() {
     }
   }
 
+  async function resetMarket() {
+    if (!r || !window.confirm(`Reset the ${hazardOf(r)} market? Round #${r.roundId.toString()} is settled by the oracle and archived (its history and every claim stay), then a fresh 7-day market opens for the same property. The other markets keep trading.`)) return;
+    setBusy("reset");
+    setResetMsg(null);
+    try {
+      const res = await demoAction("reset_market", password, r.address);
+      setResetMsg(res.ok ? "Reset started. Progress appears in the Demo panel." : String(res.body.error ?? `Failed (${res.status})`));
+    } catch (e) {
+      setResetMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+      demo.refresh();
+    }
+  }
+
   async function runAll() {
     setBusy("all");
     try {
@@ -133,7 +168,15 @@ export default function OperatorPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Operator" description="Select a hazard round to manage its trading and settlement." />
+      <PageHeader title="Operator" description="Select a hazard round to manage its trading and settlement. Fast-forward advances the lifecycle; the oracle alone determines the outcome from the dataset committed on-chain." />
+
+      <label className="block max-w-sm">
+        <span className="text-xs font-medium tracking-wide text-faint uppercase">Operator password</span>
+        <input className="input mt-1 w-full" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </label>
+
+      <DemoControls password={password} status={demo.data ?? null} onChange={() => { demo.refresh(); featured.refresh(); }} />
+      {demo.error && <Unavailable>Demo status unavailable: {demo.error}</Unavailable>}
 
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-line p-4 sm:grid-cols-4">
         <Stat label="Devnet RPC">{health.data ? (health.data.rpc.ok ? "Connected" : "Unavailable") : "—"}</Stat>
@@ -161,8 +204,8 @@ export default function OperatorPage() {
                   <span className="text-xs text-dim">{x.label}</span>
                 </span>
                 <span className="shrink-0 text-right text-xs text-dim">
-                  <span className={x.state === "open" ? "block text-up" : "block"}>
-                    {x.state === "open" ? "Trading open" : "Trading closed"}
+                  <span className={x.state === "open" && formatRemaining(x.tradingEndsAt) ? "block text-up" : "block"}>
+                    {x.state === "open" ? (formatRemaining(x.tradingEndsAt) ? `Trading · ${formatRemaining(x.tradingEndsAt)} left` : "Deadline passed, settling") : "Trading closed"}
                   </span>
                   {x.resolved ? "Catalog market settled" : "Awaiting settlement"}
                 </span>
@@ -210,13 +253,15 @@ export default function OperatorPage() {
 
       <Panel title={r ? `Close and settle round #${r.roundId.toString()} (${hazardOf(r)} only)` : "Close and settle"}>
         <div className="space-y-5 rounded-lg border border-line p-4">
-          <label className="block max-w-sm">
-            <span className="text-xs font-medium tracking-wide text-faint uppercase">Operator password</span>
-            <input className="input mt-1 w-full" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </label>
           <div className="flex flex-wrap gap-3">
-            <button className="btn btn-primary" disabled={!password || !r || busy !== null || USE_FIXTURES} onClick={runAll}>
-              {busy === "all" ? "Running…" : "Close and settle"}
+            <button className="btn btn-primary" disabled={!password || !r || busy !== null || opRunning || USE_FIXTURES} onClick={() => runOne("fast_forward")}>
+              {busy === "fast_forward" ? "Closing, resolving, verifying…" : "Fast-forward to settlement"}
+            </button>
+            <button className="btn" disabled={!password || !selectedCatalog || busy !== null || opRunning || USE_FIXTURES} onClick={resetMarket}>
+              {busy === "reset" ? "Starting…" : "Reset market"}
+            </button>
+            <button className="btn" disabled={!password || !r || busy !== null || USE_FIXTURES} onClick={runAll}>
+              {busy === "all" ? "Running…" : "Step through"}
             </button>
             {(["close", "reject", "resolve", "sweep", "status"] as OperatorAction[]).map((a) => (
               <button key={a} className="btn btn-sm" disabled={!password || !r || busy !== null || USE_FIXTURES} onClick={() => runOne(a)}>
@@ -224,6 +269,7 @@ export default function OperatorPage() {
               </button>
             ))}
           </div>
+          {resetMsg && <p className="text-sm text-ink-secondary">{resetMsg}</p>}
           {log.length > 0 && (
             <ol aria-live="polite" className="space-y-2 text-sm">
               {log.map((l, i) => (
@@ -231,8 +277,8 @@ export default function OperatorPage() {
                   <div className="font-medium text-ink">{LABELS[l.action]}</div>
                   <div className={l.ok ? "text-ink-secondary" : "text-down"}>{l.text}</div>
                   {l.links.map((x) => (
-                    <a key={x.href} className="mr-3 text-xs text-info hover:underline" href={x.href} target="_blank" rel="noreferrer">
-                      {x.label} on Explorer
+                    <a key={x.href} className="mr-3 text-xs text-info hover:underline" href={x.href} target={x.href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
+                      {x.href.startsWith("/") ? x.label : `${x.label} on Explorer`}
                     </a>
                   ))}
                 </li>

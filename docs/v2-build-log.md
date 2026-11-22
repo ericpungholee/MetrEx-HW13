@@ -167,3 +167,43 @@ After the two fixes, all 198 workspace tests, TypeScript checks and the producti
 The RFQ runtime was retired and its on-chain program and recovery regressions preserved. A residential audit replaced the former hurricane and earthquake properties. The four market rehearsals used the existing Devnet deployment. Wildfire used Chrome and Phantom, and the other hazards used automated Devnet signers against the live operator API. A separate round verified both Invalid burns. [Market addresses, evidence hashes, exact wallet deltas and receipts](multiperil-verification.md).
 
 The final supervisor restart retained all four new market addresses and their orders. The maker lease refused a second process for the same identities. [Readiness status](STATUS.md).
+
+## V7 final integration and demo readiness — November 21, 2026
+
+Devnet only, existing `metrex_exchange` deployment, no program change. Spec: [spec-simulation.md](spec-simulation.md).
+
+- **Throughput ramp.** 20 traders: about 4 fills/min with no failures. 50 traders, 7.5 min: 86 fills (11.5/min average, 21/min peak), 40,593 mUSD. 100 traders: 25–33 confirmed transactions per minute. Restarts reused every round with unchanged deadlines.
+- **Fast-forward (wildfire round 19).** The homeowner demo key, standing in for Phantom, bought 40,000 YES for 405 mUSD and 1,000 NO for 991 mUSD.
+  - Timings: redeemable after 2,172 ms (2,305 ms observed independently), finalized after 2,670 ms, done after 20,231 ms including the closure proof and sweep.
+  - The oracle resolved YES. Redemption paid exactly +40,000 mUSD.
+  - Ledger: P&L sum 0, splits = payouts = 180,609 mUSD, booked collateral 0, vault 0.
+- **Reset Market.** Round 19 became round 23 in 24 s, with a fresh 168-hour deadline. Makers quoted and simulated traders traded the new book.
+- **Reset Demo #1** (workers stopped, `scripts/reset-demo.ts`), about 2 min.
+  - Rounds 20–23 were redeemable in about 4 s each, followed by 42 redemptions.
+  - 24 wallets were minted 451,711 mUSD and 10 were burned 413,070 mUSD.
+  - Rounds 24–27 opened.
+  - Afterwards the sims held exactly 3,132,034 mUSD and 0.8250 SOL, and the makers 600,000 each. The homeowner and judge wallets were untouched.
+- **Natural expiry.** Reset Market on hurricane round 25 with `durationS=180` created round 28. At the deadline the supervisor closed and resolved it (evidence `4a16ebc1…`), opened no replacement, and kept it featured as settled.
+- **Liquidity fix.** A first warm-up drained the makers' YES asks within minutes, for two reasons:
+  - Sim exposure was valued at mid, so sub-cent YES let traders demand millions of shares. Homeowners alone targeted about 4.2M shares.
+  - Four markets' NO bids and split collateral locked nearly all of each maker's 600k mUSD.
+
+  Fixes:
+  - Per-trader share-holding caps and homeowner coverage targets of 5k–40k shares.
+  - Risk investors lean NO.
+  - Maker inventory multiple 4.
+  - `MAKER_CAPITAL` 1.5M. The raise was one journaled 900k mint per maker: [A](https://explorer.solana.com/tx/AMRPszzbyuiAXjMQruWUSi9CJFkfnoxPXecirmTAfvrLfpJTQRzLf76CBJRYYD8JyeAJ35QJ4bHgCj4Yapy4sJN?cluster=devnet) · [B](https://explorer.solana.com/tx/34PNLNGj7DS2nDQT9PfvzcsjeCxcY7QhcmXWgPb7n8DoNgp9wzrPeJ6omdCfpwpgcwLoafgnMj1asaPAzhQJk73H?cluster=devnet) · [C](https://explorer.solana.com/tx/5Qfd3ajwi1FHkH2aUbLvKKMCf1rFoi8SHZEXWd2Ukof88q3ju5zroSXSuygc3bd5mDCJTZwRUTBtMey3wf6mVaWS?cluster=devnet). A rerun returned the same signatures and minted nothing.
+- **Resilience.** A Chainstack 503 escaped as an unhandled rejection and stopped one worker, and with it the supervisor. Workers now log and survive transient RPC errors. Other errors still exit.
+- **Reset Demo #2 (final, operator API, live workers), 200 s.**
+  - The hold was acknowledged in 4 s.
+  - Rounds 24, 26 and 27 were closed and resolved, redeemable after 4,806, 5,051 and 4,894 ms. Round 28 was already settled.
+  - The keeper swept 1 order. 66 redemption transactions finalized.
+  - Capital: 33 wallets already exact, 42 minted (944,551 mUSD), 28 burned (944,551 mUSD). The totals match because only sims and makers traded those rounds.
+  - SOL floats were already sufficient.
+  - Rounds 29 (wildfire), 30 (hurricane), 31 (earthquake) and 32 (tornado) were created, trading until 2026-11-28 23:07:25–23:08:03 UTC. [Round 29 create](https://explorer.solana.com/tx/5FPUvFJn8TCzSBTfg5mjpSPx9FHabLye1PPg6QmBNDpoNcWDSxXE34rBphF9LF5ykzq49DZEDKxmMoEcERGCZYPf?cluster=devnet)
+- **Warm-up on rounds 29–32 (100 traders), 23:47–00:47 UTC.**
+  - `SIM_RATE=1.6`, 30 min: 404 fills (about 22/min for the first 10 min, then about 10–14/min) and 442k mUSD.
+  - `SIM_RATE=2.5`, 15 min: 271 fills (about 18/min), 152k mUSD, 53 of 498 attempts preflight-rejected (10.6%) and 668 retried 429s. 7 transient RPC errors were survived, each of which would previously have stopped the demo.
+  - A 50k YES market buy was fillable in 58 of 60 one-minute book samples, at 55–1,527 mUSD.
+  - Restarts reused rounds 29–32 with unchanged deadlines every time.
+- **Tests.** `anchor test`: 149 passing. 240 workspace tests, all nine package type checks and the production build passed.

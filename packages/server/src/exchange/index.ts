@@ -33,3 +33,6 @@ export function sendExchangeTx(
 
 export { lockWorker } from "./worker-lock";
 export { isClosureHeld } from "./closure-hold";
+export * from "./demo-state";
+export { DemoTransactions } from "./demo-transaction";
+export { isTransientRpcError, surviveTransientRpcErrors } from "./transient";

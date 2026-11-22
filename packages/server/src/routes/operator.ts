@@ -14,11 +14,14 @@ import { sendExchangeTx } from "../exchange";
 import { loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { explorerTx } from "../explorer";
 import { settleRound, type SettleStep } from "../oracle/exchange-settle";
+import { closeAndResolve, waitFinalizedClosed } from "../demo/lifecycle";
+import { operationRunning } from "../demo/operations";
+import { fullResetHeld } from "../exchange/demo-state";
 import { getRpc } from "../rpc";
 import { badRequest, conflict, HttpError, KeyedLock, notFound, unavailable } from "./errors";
 import { json, requirePassword } from "./http";
 
-export const OPERATOR_ACTIONS = ["status", "close", "reject", "resolve", "sweep"] as const;
+export const OPERATOR_ACTIONS = ["status", "close", "reject", "resolve", "sweep", "fast_forward"] as const;
 export type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
 
 const BOT_KEYS: readonly KeypairName[] = ["botA", "botB", "botC"];
@@ -119,6 +122,60 @@ async function proveRejected(round: RoundView) {
   throw conflict("No resting sell order with a funded proof taker is available");
 }
 
+/**
+ * Demo fast-forward (docs/spec-simulation.md §7): one request runs the whole lifecycle for one
+ * round. It holds local workers off the round, then sends close_round and the oracle's
+ * resolve_market in one confirmed transaction, so winning shares are redeemable within seconds.
+ * Then it proves closure with a finalized rejected take, finalizes and publishes the evidence, and
+ * sweeps. It advances the lifecycle only: the oracle alone decides YES, NO or Invalid from the
+ * dataset whose hash the round committed. Makers and simulated traders redeem on their next tick.
+ */
+async function fastForward(round: RoundView) {
+  if (operationRunning() || fullResetHeld()) throw conflict("A demo reset is in progress");
+  const rpc = getRpc();
+  const t0 = Date.now();
+  const steps: SettleStep[] = [];
+  const timings: Record<string, number> = {};
+  let proof: Awaited<ReturnType<typeof proveRejected>> | null = null;
+  let proofNote: string | null = null;
+  if (round.status === "open") {
+    holdClosure(round.address);
+    try {
+      const r = await closeAndResolve(round.address);
+      timings.redeemableMs = Date.now() - t0;
+      steps.push({ step: "close", target: round.address.toBase58(), signature: r.signature, note: `with oracle resolution of ${r.resolved} market (confirmed)` });
+      const closed = await waitFinalizedClosed(round.address);
+      timings.finalizedMs = Date.now() - t0;
+      try {
+        proof = await proveRejected(closed);
+      } catch (e) {
+        // The program rejects trades on a Closed round regardless; the proof is a demonstration.
+        proofNote = e instanceof Error ? e.message : String(e);
+      }
+    } finally {
+      releaseClosure(round.address);
+    }
+  }
+  steps.push(
+    ...(await settleRound(round.address, {
+      rpc,
+      controller: loadKeypair("controller"),
+      oracle: loadKeypair("oracle"),
+      keeper: loadKeypair("keeper"),
+    })).filter((s) => !(s.step === "skip" && s.note === "already closed" && steps.some((x) => x.step === "close"))),
+  );
+  timings.totalMs = Date.now() - t0;
+  const after = await rpc.run((c) => fetchRound(getExchangeProgram(c), round.address, "finalized"));
+  return {
+    action: "fast_forward",
+    steps: withLinks(steps),
+    proof,
+    proofNote,
+    timings,
+    status: after ? await status(after) : null,
+  };
+}
+
 export function handleOperatorSettle(req: Request): Promise<Response> {
   return (async () => {
     try {
@@ -145,6 +202,7 @@ export function handleOperatorSettle(req: Request): Promise<Response> {
             });
             return { action, steps: withLinks([{ step: "close", target: round.address.toBase58(), signature: sig }]) };
           }
+          if (action === "fast_forward") return fastForward(round);
           if (round.status !== "closed") throw conflict("Close the round first");
           if (action === "reject") return proveRejected(round);
           const steps = await settleRound(round.address, {

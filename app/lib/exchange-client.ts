@@ -184,8 +184,9 @@ export interface HealthInfo {
   keeperAlive: boolean;
   botsAlive: boolean;
   matching: "running" | "paused";
-  /** address → "A" | "B" | "C" */
+  /** address → "A" | "B" | "C" for MetrEx makers, "sim:T042" for simulated traders (docs/spec-simulation.md §1.4). */
   marketMakers: Map<string, string>;
+  simAlive: boolean;
 }
 
 export interface WalletOrder {
@@ -491,7 +492,84 @@ export async function fetchHealth(): Promise<HealthInfo> {
     keeperAlive: ((j.keeper as J) ?? {}).alive === true,
     botsAlive: ((j.bots as J) ?? {}).alive === true,
     matching: j.matching === "running" ? "running" : "paused",
-    marketMakers: new Map(((j.marketMakers as J[]) ?? []).map((m) => [str(m.address), str(m.name)])),
+    marketMakers: new Map([
+      ...((j.simulatedTraders as J[]) ?? []).map((m): [string, string] => [str(m.address), `sim:${str(m.id)}`]),
+      ...((j.marketMakers as J[]) ?? []).map((m): [string, string] => [str(m.address), str(m.name)]),
+    ]),
+    simAlive: ((j.sim as J) ?? {}).alive === true,
+  };
+}
+
+export interface LedgerParticipant {
+  wallet: string;
+  yes: bigint;
+  no: bigint;
+  spent: bigint;
+  received: bigint;
+  redeemed: bigint;
+  claimable: bigint;
+  netPnl: bigint | null;
+  trades: number;
+  redemptions: string[];
+}
+
+export interface LedgerTrade {
+  signature: string;
+  blockTime: number | null;
+  outcome: "YES" | "NO";
+  buyer: string;
+  seller: string;
+  quantity: bigint;
+  priceBps: number;
+  quoteAmount: bigint;
+}
+
+export interface LedgerInfo {
+  market: string;
+  propertyId: number;
+  vault: string;
+  outcome: "unresolved" | "yes" | "no" | "invalid";
+  trades: LedgerTrade[];
+  participants: LedgerParticipant[];
+  totals: { volume: bigint; trades: number; participants: number; splits: bigint; merges: bigint; payouts: bigint; bookedCollateral: bigint; claimable: bigint; pnlSum: bigint | null };
+  reconciliation: { vaultBalance: bigint; pairsOutstanding: bigint; vaultCoversBooked: boolean; vaultCoversClaims: boolean; payoutsWithinDeposits: boolean; surplus: bigint };
+  labels: Map<string, string>;
+}
+
+/** Trade and settlement ledger from finalized events (docs/spec-simulation.md §8). */
+export async function fetchLedger(market: string): Promise<LedgerInfo> {
+  const j = await getJson(`/api/markets/${market}/ledger`);
+  if (j.indexing === true) throw new TradeIndexingError();
+  const nb = (v: unknown) => (v === null || v === undefined ? null : big(v));
+  const t = (j.totals as J) ?? {};
+  const r = (j.reconciliation as J) ?? {};
+  return {
+    market: str(j.market),
+    propertyId: num(j.propertyId),
+    vault: str(j.vault),
+    outcome: (str(j.outcome) || "unresolved") as LedgerInfo["outcome"],
+    trades: ((j.trades as J[]) ?? []).map((x) => ({
+      signature: str(x.signature), blockTime: x.blockTime === null || x.blockTime === undefined ? null : num(x.blockTime),
+      outcome: str(x.outcome) === "NO" ? "NO" : "YES", buyer: str(x.buyer), seller: str(x.seller),
+      quantity: big(x.quantity), priceBps: num(x.priceBps), quoteAmount: big(x.quoteAmount),
+    })),
+    participants: ((j.participants as J[]) ?? []).map((p) => ({
+      wallet: str(p.wallet), yes: big(p.yes), no: big(p.no), spent: big(p.spent), received: big(p.received),
+      redeemed: big(p.redeemed), claimable: big(p.claimable), netPnl: nb(p.netPnl), trades: num(p.trades),
+      redemptions: ((p.redemptions as unknown[]) ?? []).map(str),
+    })),
+    totals: {
+      volume: big(t.volume), trades: num(t.trades), participants: num(t.participants), splits: big(t.splits), merges: big(t.merges),
+      payouts: big(t.payouts), bookedCollateral: big(t.bookedCollateral), claimable: big(t.claimable), pnlSum: nb(t.pnlSum),
+    },
+    reconciliation: {
+      vaultBalance: big(r.vaultBalance), pairsOutstanding: big(r.pairsOutstanding), vaultCoversBooked: r.vaultCoversBooked === true,
+      vaultCoversClaims: r.vaultCoversClaims === true, payoutsWithinDeposits: r.payoutsWithinDeposits === true, surplus: big(r.surplus),
+    },
+    labels: new Map([
+      ...((j.simulatedTraders as J[]) ?? []).map((m): [string, string] => [str(m.address), `sim:${str(m.id)}`]),
+      ...((j.makers as J[]) ?? []).map((m): [string, string] => [str(m.address), str(m.name)]),
+    ]),
   };
 }
 
@@ -936,11 +1014,81 @@ export async function sendRedeem(wallet: WalletSigner, market: MarketSummary, op
 // Operator (password; keys stay on the server)
 // ---------------------------------------------------------------------------
 
-export type OperatorAction = "status" | "close" | "reject" | "resolve" | "sweep";
+export type OperatorAction = "status" | "close" | "reject" | "resolve" | "sweep" | "fast_forward";
 
 export async function operatorStep(action: OperatorAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const res = await fetch("/api/operator/settle-round", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-demo-password": password },
+    body: JSON.stringify({ action, round }),
+  });
+  let body: J = {};
+  try {
+    body = (await res.json()) as J;
+  } catch {
+    /* non-JSON */
+  }
+  return { ok: res.ok, status: res.status, body };
+}
+
+// ---------------------------------------------------------------------------
+// Demo operations (docs/spec-simulation.md §9): status, pause/resume, resets.
+// ---------------------------------------------------------------------------
+
+export type DemoAction = "pause_sim" | "resume_sim" | "reset_market" | "reset_demo" | "resume_operation";
+
+export interface DemoWorker {
+  alive: boolean;
+  ageMs: number | null;
+  status: Record<string, string | number | boolean | null> | null;
+}
+
+export interface DemoRound {
+  hazard: string;
+  scenarioId: number;
+  round: string | null;
+  roundId: string | null;
+  status: string | null;
+  tradingEndsAt: string | null;
+  remainingS: string | null;
+  resolvedCount: number | null;
+  marketCount: number | null;
+}
+
+export interface DemoOperationInfo {
+  id: string;
+  action: "reset_market" | "reset_demo" | "fast_forward";
+  rounds: string[];
+  phase: string;
+  completed: boolean;
+  failed?: boolean;
+  error?: string;
+  running: boolean;
+  startedAt: string;
+  updatedAt: string;
+  replacements: Record<string, string>;
+  log: Array<{ at: string; text: string; signature: string | null }>;
+  timings: Record<string, number>;
+}
+
+export interface DemoStatus {
+  simulationPaused: boolean;
+  fullResetHeld: boolean;
+  operation: DemoOperationInfo | null;
+  workers: { bots: DemoWorker; keeper: DemoWorker; sim: DemoWorker };
+  rounds: DemoRound[];
+  funding: { wallets: Array<{ name: string; address: string; lamports: string; musd: string; low: boolean }>; sim: { traders: number; lamports: string; musd: string } } | { error: string };
+}
+
+export async function fetchDemoStatus(): Promise<DemoStatus> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  return (await getJson("/api/operator/demo")) as unknown as DemoStatus;
+}
+
+export async function demoAction(action: DemoAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const res = await fetch("/api/operator/demo", {
     method: "POST",
     headers: { "content-type": "application/json", "x-demo-password": password },
     body: JSON.stringify({ action, round }),

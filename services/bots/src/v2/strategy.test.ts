@@ -22,6 +22,7 @@ import {
   needsRequote,
   ownComplementOk,
   planBotMarket,
+  splitNeeded,
   type BotMarketInput,
 } from "./strategy";
 
@@ -118,6 +119,16 @@ describe("requote thresholds (§8.1)", () => {
   it("splits first when a side can't cover one top size, keeping the mUSD reserve", () => {
     const acts = planBotMarket(input({ balances: { musd: 1_500n * MUSD_UNIT, yes: 0n, no: 0n } }));
     expect(acts[0]).toEqual({ kind: "split", quantity: 500n });
+  });
+
+  it("the inventory multiple caps one-sided split inventory; free mUSD still bounds every split", () => {
+    // A sold all its YES and holds NO at the default cap: (200 + 2,000) × 2 = 4,400.
+    const capped = { musd: 100_000n * MUSD_UNIT, yes: 0n, no: 4_400n };
+    expect(splitNeeded(input({ balances: capped }))).toBe(0n);
+    const wider = { ...DEFAULT_BOT_CONFIG, inventoryMult: 4n };
+    expect(splitNeeded(input({ balances: capped, config: wider }))).toBe(2_000n);
+    expect(splitNeeded(input({ balances: { ...capped, no: 8_800n }, config: wider }))).toBe(0n);
+    expect(splitNeeded(input({ balances: { ...capped, musd: 1_300n * MUSD_UNIT }, config: wider }))).toBe(300n);
   });
 
   it("quotes in the same plan as the split, on the post-split balances", () => {

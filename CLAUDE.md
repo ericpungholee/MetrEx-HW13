@@ -13,6 +13,7 @@ The multi-peril exchange is the active product, at `/`. YES offers parametric pr
 | File | Role |
 |---|---|
 | `docs/spec-multiperil.md` | Multi-peril addendum to spec-v2 (four hazards, concurrent rounds, catalog, coverage mode). Wins over spec-v2 where it says so |
+| `docs/spec-simulation.md` | V7 addendum: simulated trader population, adaptive maker quoting, fast-forward settlement, chain-derived ledger. Wins over spec-v2 §8.2 step 1 and spec-multiperil §6 where it says so |
 | `docs/spec-v2.md` | **The specification for all new work.** Section 0 lists the design flaws found in the v2 draft and how they were fixed. Section numbers (§) below refer to it unless marked v1 |
 | `docs/spec.md` | v1.1 spec. Governs `programs/metrex`, `packages/shared` and existing v1 code only |
 | `docs/build-plan-v2.md` | v2 gates, workstreams, agent briefs, acceptance |
@@ -46,7 +47,8 @@ packages/geo/                 trigger evaluation + evidence (v2 builder is addit
 packages/server/              oracle, evidence, faucet, routes, stats
 data/                         palisades-2025.geojson, scenarios.json, DATASET.md, raw/
 app/                          Next.js; v2 chain access via app/lib/exchange-client.ts
-services/bots/                market-maker bots
+services/bots/                market-maker bots (adaptive references, docs/spec-simulation.md §3)
+services/sim/                 V7 simulated traders (one process, ~100 wallets, sponsored fees)
 services/indexer/             stats; v2 book, trades, keeper
 scripts/                      setup-devnet(-v2), prepare-demo-v2, fund-bots, fund-wallet, find-properties
 docs/                         spec-v2.md, build-plan-v2.md, STATUS.md, v2-build-log.md, spec.md (v1), build-plan.md (v1), v1-build-log.md, archive/

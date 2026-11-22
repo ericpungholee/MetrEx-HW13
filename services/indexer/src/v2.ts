@@ -16,6 +16,7 @@ import {
   loadKeypair,
   lockWorker,
   redactUrl,
+  surviveTransientRpcErrors,
   TradeIndex,
   connectionTradeSource,
   writeHeartbeat,
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   if (envOrUndefined("METREX_ORACLE_DATA_DIR")) {
     throw new Error("METREX_ORACLE_DATA_DIR is set. The keeper never has access to settlement data (spec-v2 §8.4).");
   }
+  surviveTransientRpcErrors("keeper");
   const pollMs = Number(envOrUndefined("KEEPER_POLL_MS") ?? 2_000);
   const disabled = envOrUndefined("KEEPER_DISABLED") === "1";
   const rpc = getRpc();

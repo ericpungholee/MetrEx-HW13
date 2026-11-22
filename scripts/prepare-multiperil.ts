@@ -2,6 +2,9 @@
 // starting workers, or run without it to also check the live executable books and heartbeats.
 // Startup reuses open rounds. --advance-expired handles elapsed deadlines, --replace-retired
 // rotates a superseded property, and --new-round explicitly rotates selected hazards.
+// --keep-settled (the demo launcher, docs/spec-simulation.md §6) never rotates: a settled or
+// expired catalog round stays featured until the operator resets it. New rounds trade for
+// --hours (default DEMO_TRADING_HOURS = 168) from creation, an on-chain deadline restarts never move.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,6 +39,7 @@ import {
   type RoundView,
 } from "@metrex/server/exchange";
 import { dataDir, loadCommittedDataset, settleRound } from "@metrex/server";
+import { DEMO_TRADING_HOURS } from "@metrex/server/exchange";
 import { args, DRY_RUN, flagValue, log } from "./lib/common";
 import { DEVNET_GENESIS, checkBotsQuoting, checkDepthGuarantee, isLoopback, type BotMakers } from "./lib/v2";
 
@@ -109,7 +113,8 @@ async function main(): Promise<void> {
   const hazard = flagValue("--hazard");
   const targets = CATALOG.filter((c) => !hazard || c.hazard === hazard);
   if (!targets.length) throw new Error("Unknown --hazard");
-  const hours = BigInt(flagValue("--hours") ?? "24");
+  const hours = BigInt(flagValue("--hours") ?? String(DEMO_TRADING_HOURS));
+  const keepSettled = args.includes("--keep-settled");
   if (hours < 1n || hours > 720n) throw new Error("--hours must be between 1 and 720");
   const loader = new ExchangeStateLoader();
 
@@ -155,7 +160,16 @@ async function main(): Promise<void> {
     if (list.length > 1) throw new Error(`Multiple open rounds for ${c.hazard}. Resolve the operator policy conflict explicitly.`);
     const latest = list[0];
     let reuse: RoundView | null = null;
-    if (latest) {
+    const newest = discovered.snapshots.filter((s) => s.market.propertyId === c.propertyId && s.round.scenarioId === c.scenarioId).at(-1)?.round;
+    if (keepSettled && newest && (!latest || newest.roundId > latest.roundId || newest.address.equals(latest.address))) {
+      const sameHash = Buffer.from(newest.datasetSha256).toString("hex") === scenario.sha256;
+      if (!sameHash) throw new Error(`Round ${newest.roundId} committed a different dataset hash`);
+      reuse = newest;
+      const ends = new Date(Number(newest.tradingEndsAt) * 1000).toISOString();
+      log.ok(newest.status === "open"
+        ? `reusing round ${newest.roundId} (trading ${newest.tradingEndsAt > discovered.now ? `until ${ends}` : `ended ${ends}; settles at its deadline`})`
+        : `keeping settled round ${newest.roundId} visible until the operator resets it`);
+    } else if (latest) {
       const markets = discovered.snapshots.filter((s) => s.round.address.equals(latest.address));
       const retired = markets.length > 0 && !markets.some((s) => s.market.propertyId === c.propertyId);
       const expired = latest.tradingEndsAt <= discovered.now;
@@ -178,6 +192,10 @@ async function main(): Promise<void> {
     }
 
     let round: RoundView | null = reuse;
+    if (round && round.status !== "open") {
+      // Settled and kept visible: nothing to create or quote.
+      continue;
+    }
     if (!round) {
       if (DRY_RUN) {
         log.todo(`create_round(scenario ${c.scenarioId}, "${c.roundLabel}", dataset ${scenario.sha256.slice(0, 16)}…)`);

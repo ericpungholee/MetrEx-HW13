@@ -14,3 +14,6 @@ export * from "./oracle/exchange";
 export * from "./oracle/exchange-settle";
 export * from "./routes/rpc-proxy";
 export * from "./routes/operator";
+export * from "./routes/demo";
+export * from "./demo/lifecycle";
+export * from "./demo/operations";

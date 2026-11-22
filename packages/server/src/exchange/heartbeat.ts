@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { envOrUndefined, expandHome, repoRoot } from "../env";
 
-export type HeartbeatName = "bots" | "keeper";
+export type HeartbeatName = "bots" | "keeper" | "sim";
 
 export interface Heartbeat {
   name: HeartbeatName;
