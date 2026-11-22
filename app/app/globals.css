@@ -252,3 +252,25 @@ table.dense td.r {
 .pulse-dot {
   animation: pulse-dot 1.2s ease-in-out infinite;
 }
+/* Latest finalized fill on the price chart (spec-v2 §7.3). */
+@keyframes fill-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3.5);
+    opacity: 0;
+  }
+}
+.fill-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fill-pulse 1.6s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fill-pulse {
+    animation: none;
+    opacity: 0;
+  }
+}

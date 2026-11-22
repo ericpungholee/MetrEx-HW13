@@ -3,7 +3,7 @@
 // §7.3 chart: "Quoted midpoint" (best bid/ask midpoint after every event that moved it) and
 // "Trades" (one point per fill at its execution price). Both come from finalized events; nothing is
 // interpolated. The midpoint is drawn as steps because it only changes at events.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { OutcomeCode } from "@metrex/exchange";
 import type { ChartInfo } from "@/lib/exchange-client";
 import { formatPrice, formatShares, outcomeName } from "@/lib/exchange-format";
@@ -26,23 +26,13 @@ interface Pt {
 
 const RANGES = [["1H", 3_600], ["24H", 86_400], ["All", null]] as const;
 
+// The latest finalized fill pulses continuously; keying the ring on the fill's signature restarts
+// the pulse the moment a new fill lands. Reduced-motion users get a static dot (globals.css).
 function LatestFill({ point, y }: { point: Pt; y: number }) {
-  const ring = useRef<SVGCircleElement>(null);
-  const previous = useRef(point.signature);
-  useEffect(() => {
-    const changed = previous.current !== point.signature;
-    previous.current = point.signature;
-    if (!changed || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const pulse = ring.current?.animate(
-      [{ transform: "scale(1)", opacity: 0.6 }, { transform: "scale(3)", opacity: 0 }],
-      { duration: 850, easing: "ease-out" },
-    );
-    return () => pulse?.cancel();
-  }, [point.signature]);
   return (
     <g transform={`translate(${W - PAD.r} ${y})`} fill={TRADE}>
       <title>Latest finalized trade</title>
-      <circle ref={ring} r={4} opacity={0} />
+      <circle key={point.signature} className="fill-pulse" r={4} />
       <circle r={4} />
     </g>
   );
