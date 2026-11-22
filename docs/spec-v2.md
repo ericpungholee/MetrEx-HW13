@@ -107,7 +107,7 @@ Every market page shows, verbatim: *"Pays the full amount if the final mapped fo
 
 **In scope:** binary YES/NO markets; fungible 0-decimal outcome tokens; split, merge, redeem; YES, NO and Invalid settlement; escrowed BUY and SELL limit orders; partial fills; market orders against resting depth; cancel; expiry and sweep; atomic round closure; a keeper and order-book indexer; three market-making bots; an exchange homepage, market page, portfolio and protected operator view; one historical scenario (Palisades 2025); Devnet only.
 
-**Out of scope:** leverage, margin, liquidation; AMMs and pools; on-chain order-book enforcement of price-time priority; complementary "mint/merge" matching across the YES and NO books; trading fees; gasless or session keys; actuarial or ML pricing; live fire data; decentralized oracles; mainnet and real money; P&L and tax accounting; migrating v1.1 positions; token metadata (Phantom may show the shares as unknown tokens; the app shows labels); a database (on-chain reads plus an in-memory cache only); other fires; damage-based triggers; KYC; mobile apps.
+**Out of scope:** leverage, margin, liquidation; AMMs and pools; on-chain order-book enforcement of price-time priority; complementary "mint/merge" matching across the YES and NO books; trading fees; gasless or session keys; actuarial or ML pricing; live fire data; decentralized oracles; mainnet and real money; P&L and tax accounting; migrating v1.1 positions; token metadata (Phantom may show the shares as unknown tokens; the app shows labels); a database (on-chain reads, in-memory views and a replayable local journal of finalized program receipts); other fires; damage-based triggers; KYC; mobile apps.
 
 ---
 
@@ -482,8 +482,8 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 
 ### 7.2 Trades
 
-- Parse `OrderFilled` and other events from finalized signatures by market address, or by program address for the worker index. Page through all available history and deduplicate by `(signature, instruction index, event index)`. Missing receipts are retried on later passes.
-- The chart, trade list and volume use **finalized** fills. The app labels history as indexing during its initial backfill.
+- The keeper/indexer is the sole writer of a local, persistent journal of finalized exchange transactions. A program log subscription provides live receipts. Finalized signature pages supply canonical ordering and timestamps, backfill older history and recover stream gaps. The indexer retries missing receipts and consumes each signature once.
+- The app reads the journal for fills, charts and volume. It exposes verified fills during backfill and labels their aggregate as indexed volume until history is complete. Quoted midpoint history and the reconciled settlement ledger require the complete event stream. Resting orders still come from current on-chain accounts.
 
 ### 7.3 Chart (flaw #11)
 
@@ -498,7 +498,7 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 - After a round closes, sweep remaining orders in batches. For an operator rehearsal, defer sweeping in the selected round while the closure proof holds the orders (§10.6).
 - Uses a dedicated `keeper` keypair with no authority, kept in `~/.config/metrex/keeper.json`.
 
-### 7.5 API (Next.js route handlers, reading the chain directly with a short in-memory cache)
+### 7.5 API (Next.js route handlers, cached chain reads and indexed finalized history)
 
 `GET /api/rounds/latest`, `GET /api/rounds/:id`, `GET /api/markets?round=`, `GET /api/markets/:id`, `GET /api/markets/:id/book?outcome=yes|no|both`, `GET /api/markets/:id/trades`, `GET /api/markets/:id/chart`, `GET /api/health` (keeper heartbeat, bots heartbeat, RPC), plus `GET /api/markets?all=1`, `GET /api/orders?maker=`, `POST /api/faucet` and `GET /api/evidence/:market`. The operator uses `POST /api/operator/settle-round` with the password header and selected round (§10.6).
 

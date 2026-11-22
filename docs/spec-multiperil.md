@@ -122,7 +122,7 @@ A refused market stays unresolved. The existing recovery paths apply: `invalidat
 | Earthquake #9 | 10 ± 1 | 10 ± 2 | 11 ± 4 | 60k / 40k / 30k | 60k |
 | Tornado #6 | 30 ± 2 | 34 ± 4 | 38 ± 7 | 60k / 40k / 30k | 60k |
 
-At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) mUSD, mostly NO-bid escrow and split collateral. `fund-bots.ts` tops each bot up to 600k mUSD.
+At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) mUSD, mostly NO-bid escrow and split collateral. See [the V7 capital rules](spec-simulation.md#3-adaptive-maker-quoting-replaces-spec-v2-82-step-1-and-spec-multiperil-6-skew-off) for current maker funding and inventory policy.
 
 ## 7. Frontend
 
