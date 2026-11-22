@@ -149,10 +149,8 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
           {busy === "reset" ? "Resetting…" : "Reset market"}
         </button>
       </div>
-      {busy && (
-        <p aria-live="polite" className="mt-2 text-xs text-dim">
-          {busy === "settle" ? "Trading stops within seconds. Finalizing, publishing evidence and sweeping orders takes up to a minute." : progress}
-        </p>
+      {busy === "reset" && progress && (
+        <p aria-live="polite" className="mt-2 text-xs text-dim">{progress}</p>
       )}
       {error && <p role="alert" className="mt-2 text-xs text-down">{error}</p>}
       {result && (
