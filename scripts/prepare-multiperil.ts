@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { PublicKey } from "@solana/web3.js";
 import {
   CATALOG,
+  LISTINGS,
   BPS_DENOMINATOR,
   MUSD_UNIT,
   PAYOUT_PER_SHARE,
@@ -56,12 +57,15 @@ interface HazardPropertyRow {
   trigger_distance_m: number;
 }
 
-/** Property rows from data/market-properties.json, checked against the catalog and the trigger convention (§3). */
-function hazardProperties(registry: ScenarioRegistry): Map<number, HazardPropertyRow> {
-  const rows = JSON.parse(readFileSync(join(dataDir(), "market-properties.json"), "utf8")) as HazardPropertyRow[];
+/**
+ * Property rows from data/market-properties.json (featured) or data/listing-properties.json
+ * (listings, spec-multiperil §7.7), checked against the catalog and the trigger convention (§3).
+ */
+function hazardProperties(registry: ScenarioRegistry, file = "market-properties.json", entries: readonly CatalogMarket[] = CATALOG): Map<number, HazardPropertyRow> {
+  const rows = JSON.parse(readFileSync(join(dataDir(), file), "utf8")) as HazardPropertyRow[];
   const out = new Map<number, HazardPropertyRow>();
   for (const r of rows) {
-    const c = CATALOG.find((x) => x.propertyId === r.property_id);
+    const c = entries.find((x) => x.propertyId === r.property_id);
     if (!c) throw new Error(`hazard property ${r.property_id} is not in the catalog`);
     if (c.scenarioId !== r.scenario_id) throw new Error(`property ${r.property_id}: scenario ${r.scenario_id} ≠ catalog ${c.scenarioId}`);
     if (c.address !== r.label) throw new Error(`property ${r.property_id}: label "${r.label}" ≠ catalog address "${c.address}"`);
@@ -118,11 +122,15 @@ async function main(): Promise<void> {
   if (hours < 1n || hours > 720n) throw new Error("--hours must be between 1 and 720");
   const loader = new ExchangeStateLoader();
 
-  // 1. Catalog properties (admin). Registered data never changes; a mismatch is a failure, never an overwrite.
-  log.step("catalog properties (data/market-properties.json)");
-  for (const c of targets) {
-    const r = props.get(c.propertyId);
-    if (!r) throw new Error(`property ${c.propertyId} missing from data/market-properties.json`);
+  // 1. Catalog and listing properties (admin). Registered data never changes; a mismatch is a
+  // failure, never an overwrite. Listings are only registered here; "New market" lists them.
+  const listingProps = hazardProperties(registry, "listing-properties.json", LISTINGS);
+  for (const l of LISTINGS) if (!listingProps.has(l.propertyId)) throw new Error(`listing ${l.propertyId} missing from data/listing-properties.json`);
+  const listingTargets = LISTINGS.filter((c) => !hazard || c.hazard === hazard);
+  log.step("catalog and listing properties (data/market-properties.json, data/listing-properties.json)");
+  for (const c of [...targets, ...listingTargets]) {
+    const r = props.get(c.propertyId) ?? listingProps.get(c.propertyId);
+    if (!r) throw new Error(`property ${c.propertyId} missing from the property files`);
     const existing = await fetchProperty(p, r.property_id);
     if (existing) {
       const same =

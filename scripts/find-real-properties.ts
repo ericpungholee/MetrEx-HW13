@@ -3,6 +3,18 @@
 //   pnpm tsx scripts/find-real-properties.ts --fetch   # download raw OSM address points (Overpass API)
 //   pnpm tsx scripts/find-real-properties.ts           # select offline from the saved raw files
 //   pnpm tsx scripts/find-real-properties.ts --write   # also write data/market-properties.json
+//                                                       # and data/listing-properties.json
+//
+// Home pool (spec-multiperil §7.7, "list your home"): every residential candidate in each window
+// that the hazard dataset covers, minus the featured and listing addresses, written to
+// data/home-addresses.json with stable ids from HOME_PROPERTY_BASE (1000) in area order, then OSM
+// type/id order. No outcome margin applies: a homeowner lists the house they live in. Registered
+// on-chain only when a homeowner lists it.
+//
+// Listing properties (spec-multiperil §7.7, "New market"): after each featured pick, the next
+// LISTINGS_PER_AREA (at least one) qualifying addresses in the same window under the same margin, each at least
+// LISTING_SPACING_M from every earlier pick. They get ids 10 + 2·area (+1) and are registered so the
+// round controller can list them in a hazard's open round.
 //
 // Raw responses are saved under data/raw/osm-addresses/ and pinned by SHA-256 in
 // data/DATASET-hazards.md, so the selection is reproducible offline. Each candidate is a residential
@@ -51,6 +63,8 @@ interface Area {
   anchor: { lat: number; lon: number };
   expectTriggered: boolean;
   accept: (lat_e6: number, lon_e6: number) => { ok: boolean; computed: unknown; triggered: boolean };
+  /** Listing margin when it differs from `accept` (either outcome allowed). */
+  listingAccept?: (lat_e6: number, lon_e6: number) => { ok: boolean; computed: unknown; triggered: boolean };
 }
 
 const palisades = loadScenarioGeometry(registry, 1, DATA).geometry;
@@ -108,6 +122,18 @@ const AREAS: Area[] = [
       }
       if (!("mmi_x10" in r.computed) || r.computed.mmi_x10 < 81) return { ok: false, computed: r.computed, triggered: r.triggered };
       return { ok: r.triggered, computed: r.computed, triggered: r.triggered };
+    },
+    // Listings: YES under the featured margin, or NO at least half a Mercalli step below VIII.
+    listingAccept: (lat_e6, lon_e6) => {
+      let r;
+      try {
+        r = evaluateHazard(quake, { lat_e6, lon_e6, trigger_distance_m: 0 });
+      } catch {
+        return { ok: false, computed: null, triggered: false };
+      }
+      if (!("mmi_x10" in r.computed)) return { ok: false, computed: r.computed, triggered: r.triggered };
+      const v = r.computed.mmi_x10;
+      return { ok: (r.triggered && v >= 81) || (!r.triggered && v <= 74), computed: r.computed, triggered: r.triggered };
     },
   },
   {
@@ -208,6 +234,20 @@ function napaResidentialAddresses(): Set<string> {
   ));
 }
 
+const HOME_PROPERTY_BASE = 1000;
+const LISTINGS_PER_AREA = 2;
+const LISTING_SPACING_M = 120;
+/** True when the hazard dataset covers the point (a home outside it could never settle, §4.3). */
+function covered(a: Area, lat_e6: number, lon_e6: number): boolean {
+  if (a.scenarioId !== 3) return true;
+  try {
+    evaluateHazard(quake, { lat_e6, lon_e6, trigger_distance_m: 0 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const e6 = (v: number) => Math.round(v * 1e6);
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -220,6 +260,10 @@ async function main(): Promise<void> {
     }
   }
   const napaAddresses = napaResidentialAddresses();
+  type Row = { property_id: number; label: string; lat_e6: number; lon_e6: number; scenario_id: number; trigger_distance_m: number; place: string; osm: string };
+  const listings: Row[] = [];
+  const homes: Row[] = [];
+  const homeCandidates: Array<{ a: Area; c: { el: OsmElement; label: string; lat_e6: number; lon_e6: number } }> = [];
   const out: { property_id: number; label: string; lat_e6: number; lon_e6: number; scenario_id: number; trigger_distance_m: number; place: string; osm: string }[] = [];
   for (const a of AREAS) {
     const path = join(RAW, `${a.key}.json`);
@@ -257,6 +301,28 @@ async function main(): Promise<void> {
       throw new Error(`${a.key}: no residential address meets the margin among ${considered} (${triggered} have the expected outcome)`);
     }
     if (best.triggered !== a.expectTriggered) throw new Error(`${a.key}: evaluates to ${best.triggered}`);
+    const placeOf = (el: OsmElement) => (el.tags?.["addr:city"] ? `${el.tags["addr:city"]}, ${a.state}` : a.place);
+    const picked = [best];
+    const area = AREAS.indexOf(a);
+    for (const c of candidates) {
+      if (picked.length > LISTINGS_PER_AREA) break;
+      if (picked.some((p) => p.label === c.label || geodesicMeters(p.lat_e6 / 1e6, p.lon_e6 / 1e6, c.lat_e6 / 1e6, c.lon_e6 / 1e6) < LISTING_SPACING_M)) continue;
+      const r = (a.listingAccept ?? a.accept)(c.lat_e6, c.lon_e6);
+      if (!r.ok || (!a.listingAccept && r.triggered !== a.expectTriggered)) continue;
+      picked.push({ ...c, computed: r.computed, triggered: r.triggered });
+      const id = 10 + 2 * area + (picked.length - 2);
+      console.log(`  listing ${id} ${c.label}  ${c.el.type}/${c.el.id}  (${c.lat_e6 / 1e6}, ${c.lon_e6 / 1e6})  ${r.triggered ? "YES" : "NO"}  ${JSON.stringify(r.computed)}`);
+      listings.push({ property_id: id, label: c.label, lat_e6: c.lat_e6, lon_e6: c.lon_e6, scenario_id: a.scenarioId, trigger_distance_m: a.triggerDistanceM, place: placeOf(c.el), osm: `${c.el.type}/${c.el.id}` });
+    }
+    const taken = new Set(picked.map((x) => `${x.el.type}/${x.el.id}`));
+    const seenLabels = new Set(picked.map((x) => x.label));
+    for (const c of [...candidates].sort((x, y) => (key(x.el) < key(y.el) ? -1 : 1))) {
+      if (taken.has(`${c.el.type}/${c.el.id}`) || seenLabels.has(c.label)) continue;
+      if (!covered(a, c.lat_e6, c.lon_e6)) continue;
+      seenLabels.add(c.label);
+      homeCandidates.push({ a, c });
+    }
+    if (picked.length < 2) throw new Error(`${a.key}: no listing address meets the margin among ${considered} residential candidates`);
     console.log(
       `${a.propertyId} ${best.label} (${a.place})  ${best.el.type}/${best.el.id}  (${best.lat_e6 / 1e6}, ${best.lon_e6 / 1e6})  ` +
         `${best.triggered ? "YES" : "NO"}  ${JSON.stringify(best.computed)}  [${considered} residential candidates, raw sha256 ${sha.slice(0, 16)}…]`,
@@ -272,9 +338,23 @@ async function main(): Promise<void> {
       osm: `${best.el.type}/${best.el.id}`,
     });
   }
+  homeCandidates.forEach(({ a, c }, i) => {
+    homes.push({
+      property_id: HOME_PROPERTY_BASE + i,
+      label: c.label, lat_e6: c.lat_e6, lon_e6: c.lon_e6, scenario_id: a.scenarioId, trigger_distance_m: a.triggerDistanceM,
+      place: c.el.tags?.["addr:city"] ? `${c.el.tags["addr:city"]}, ${a.state}` : a.place, osm: `${c.el.type}/${c.el.id}`,
+    });
+  });
+  if (HOME_PROPERTY_BASE + homes.length > 65_535) throw new Error("home pool exceeds the u16 property id range");
+  const perArea = AREAS.map((a) => `${a.key} ${homes.filter((h) => h.scenario_id === a.scenarioId).length}`).join(", ");
+  console.log(`home pool: ${homes.length} addresses (${perArea})`);
   if (process.argv.includes("--write")) {
     writeFileSync(join(DATA, "market-properties.json"), JSON.stringify(out, null, 2) + "\n");
     console.log("wrote data/market-properties.json");
+    writeFileSync(join(DATA, "listing-properties.json"), JSON.stringify(listings, null, 2) + "\n");
+    console.log("wrote data/listing-properties.json");
+    writeFileSync(join(DATA, "home-addresses.json"), JSON.stringify(homes) + "\n");
+    console.log("wrote data/home-addresses.json");
   }
 }
 
