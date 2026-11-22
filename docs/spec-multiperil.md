@@ -70,6 +70,18 @@ Rounds of different hazards may be Open at the same time, each with its own `tra
 
 The residential audit retired properties 4 and 5 from the featured catalog. The University of Miami identifies 1111 Memorial Drive as a classroom building. Napa County parcel GIS maps the 909 Stanly Way OSM point to a vacant parcel. New property IDs 8 and 9 preserve the old accounts and positions. The pinned raw parcel export contains location and land-use fields only. See [source records](../data/DATASET-hazards.md#real-property-addresses-openstreetmap).
 
+**Listing properties (§7.7).** The same script picks up to two more addresses per window after the featured one, under the same rules and margins, each at least 120 m from every earlier pick. They go to `data/listing-properties.json` and `scripts/prepare-multiperil.ts` registers them. Earthquake listings also accept NO at MMI ≤ 7.4, though none qualify in the pinned data. Wildfire has one qualifying address, so ID 11 is unused.
+
+| ID | Address (on-chain label) | Place | OSM element | Scenario | Outcome margin |
+|---|---|---|---|---|---|
+| 10 | 17058 Avenida de Santa Ynez | Pacific Palisades, California | way/414612749 | 1 | inside the final footprint |
+| 12 | 1433 Mendavia Avenue | Coral Gables, Florida | way/637745186 | 2 | 18,229 m outside the nearest 64-kt swath |
+| 13 | 5363 Orduna Drive | Coral Gables, Florida | way/637379550 | 2 | 19,603 m outside |
+| 14 | 308 Vine Row Court | Napa, California | node/11686888520 | 3 | MMI 8.1, node 427 m away |
+| 15 | 112 Vintners Court | Napa, California | node/11686888515 | 3 | MMI 8.1, node 382 m away |
+| 16 | 9293 Northwest 70th Avenue | Johnston, Iowa | way/1098704007 | 4 | 104 m from an EF2+ centerline |
+| 17 | 6911 Northwest 93rd Street | Johnston, Iowa | way/1229199332 | 4 | 4 m from an EF2+ centerline |
+
 Every market pays on hazard proximity or measured intensity. Map data © OpenStreetMap contributors, under the ODbL. Historical properties 1–5 stay registered for recovery and verification.
 
 ## 4. Hazard datasets and oracle adapters
@@ -143,7 +155,7 @@ The market detail page shows the live asks, with labelled midpoint or last-trade
 
 ### 7.3 Imagery
 
-Cards and market headers show area photos without on-page credits (owner decision, 2026-11-21; see §7.1). The images show the surrounding regions. [Photo credits](market-photo-credits.md) lists the local WebP assets, authors and licenses.
+Featured cards and market headers show area photos without on-page credits (owner decision, 2026-11-21, see §7.1). Each listing address has its own local illustration of a fictional house inspired by the region. The address picker, homepage card and market header show the same illustration and label it as illustrative. The property keeps its assigned image when listed in a new round. [Photo credits](market-photo-credits.md) lists the sources and the listing image bank.
 
 ### 7.4 Trade ticket
 
@@ -159,11 +171,23 @@ The portfolio shows available mUSD, estimated sale proceeds for available shares
 
 There is no `/operator` page (removed 2026-11-21). Each market page settles its own round with Settle market (spec-simulation §7.1). The step-by-step close → reject proof → resolve → sweep → status sequence stays available as `POST /api/operator/settle-round` on one round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
 
+### 7.7 List your home
+
+`/new` lets a homeowner in one of the replay areas open a market on their own house. The homepage links to it with a **List your home** button. The homeowner picks a hazard, then their address from a dropdown, then the coverage and the price per share they offer. No free-form location is offered. Flood would need a new scenario ID, which `register_property` rejects (frozen interface), so it is out of scope.
+
+- **Home pool.** `scripts/find-real-properties.ts` also writes `data/home-addresses.json`: every residential OSM candidate in each hazard window that the hazard dataset covers, minus the featured and listing picks, deduplicated by label. It has 2,150 homes: Palisades 9, Miami 1,767, Napa 21 and Johnston 353. IDs start at 1000 (`HOME_PROPERTY_BASE`). No outcome margin is applied, because the homeowner chooses the address and the selection must not be steered by outcome. Damage tags and DINS are never read, as for every property.
+- `GET /api/homes?hazard=` returns the hazard's current catalog round (§7.2), its trigger and month, the suggested price (the hazard's first ladder reference) and each home with its market in that round or null. `GET /api/listings` still serves the seven listing addresses (§3).
+- `POST /api/operator/create-market { propertyId }` is unauthenticated like the other operator routes. For a home without a `Property` account, the server's admin signs `register_property` and the round controller signs `create_market` in the same transaction. The user signs neither. An existing property must match the pool row. The request is refused unless the round is Open before `trading_ends_at` and its committed dataset loads. An existing market is returned without a transaction. The program enforces one market per (round, property).
+- **Opening bid.** The homeowner's wallet then places a YES limit buy for the coverage at the chosen price: the premium, fully escrowed (§5.2). If the wallet declines, the market exists without a bid and can be bid on from its page.
+- **Makers.** Makers do not quote a home market until a non-maker YES bid rests on it. They then quote the hazard ladder scaled so its first reference equals the oldest such bid (`openingBidBps`, `anchorLadder`), at a quarter of the size. After a restart they fall back to their own resting mid. Each home's capital cap is one fortieth of a maker's capital (`makerCapitalFor`).
+- **Underwriters.** Simulated traders value a home at the hazard's starting reference, not at the homeowner's bid. When the best YES bid is above a risk investor's belief by more than its edge, it splits pairs, sells YES into the bid and keeps NO ("underwrite"). Other archetypes trade home markets like listings.
+- Listed and home markets appear on the homepage as normal market cards while their round is open, and use the normal market page. Their payout rule, month and source are the hazard's. Settle market and Reset market act on the whole hazard round. A reset opens the next round with only the featured market, and a home can be listed again there.
+
 ## 8. Tests
 
 - Anchor: a "multi-peril" block covers registration conventions, three concurrent rounds of different scenarios, scenario binding, a 1 bps quote, and closing one round while the others keep trading. The old "second Open round is rejected" test was removed, because the rule is now policy (§2.2). On 2026-11-21: 149 passing (v1 and v2).
 - `packages/geo`: dataset rules and hashes, the three demo properties' margins, refusal of uncovered points, evidence v3 determinism.
-- `packages/exchange`: catalog ladders (12 levels, no crosses, no complement arbitrage, labels ≤ 32 bytes) and `ladderFor` fallback.
+- `packages/exchange`: catalog ladders (12 levels, no crosses, no complement arbitrage, labels ≤ 32 bytes), `ladderFor` fallback, listing properties (unique IDs, hazard rules, smaller ladders) and maker capital caps.
 - `scripts/normalize-hazards.ts --check` rebuilds all three files from pinned raw bytes and compares hashes.
 
 ## 9. Out of scope

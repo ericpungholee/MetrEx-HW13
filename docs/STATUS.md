@@ -13,6 +13,14 @@ Reset Demo opened rounds 29–32. The final V7 Phantom rehearsal settled wildfir
 
 Program [metrex_exchange](https://explorer.solana.com/address/BrHisWF8aXQzrCvvDPMsPXJyMXwVrWQTB479jtvB6Fko?cluster=devnet) · [Config](https://explorer.solana.com/address/786Mr9aEboyAe26Q91mPXpWA92KmsdtGivCkG15aaY2E?cluster=devnet) · [mUSD](https://explorer.solana.com/address/6cb8kKLX9hSfAeLGYxutmbadSckUfZ5cD8KyYZGNbTQC?cluster=devnet)
 
+## List your home (2026-11-21, spec-multiperil §7.7)
+
+`/new` lets a homeowner pick their address from a dropdown of 2,150 real homes in the four replay areas (`data/home-addresses.json`, IDs from 1000) and open the market with a YES bid, which is the premium. The server registers the home and creates the market in one transaction. Makers wait for the bid, then quote the hazard ladder around it. Simulated risk investors underwrite bids above their belief by splitting pairs and selling YES. The seven listing addresses (IDs 10 and 12–17) remain listable.
+
+- Devnet test: home 2797 (6620 Peckham Street, tornado) became [market 3EuDX6](https://explorer.solana.com/address/3EuDX6NPuAury9YwwUd3NyzDcaiUgjVFnwBfcaD4Hj24?cluster=devnet) with an empty book. A throwaway wallet bid 20,000 YES at 0.60¢ (120 mUSD premium). Makers B and C then quoted 0.62/0.60¢ bids and 0.76/0.90¢ asks.
+- Found during the test: seven wildfire resets (rounds 34–40) pushed the hurricane, earthquake and tornado rounds 30–32 out of the sim's newest-8-rounds window. The sim had stopped trading those hazards. It now widens its window to the oldest Open round, rechecked every minute.
+- Flood was not added: it needs a new scenario ID, which is a frozen-interface change.
+
 ## Verification
 
 - **Consolidation and data.** The active RFQ application, routes and workers are retired. Fresh property IDs replace the classroom and vacant parcel. All normalized datasets and residential sources reproduce from pinned inputs.
