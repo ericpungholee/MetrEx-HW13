@@ -63,16 +63,12 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
   const sy = (bps: number) => PAD.t + (1 - (bps - lo) / (hi - lo || 1)) * (H - PAD.t - PAD.b);
   const ticks = [lo, Math.round((lo + hi) / 2), hi];
 
-  let path = "";
-  let prevY: number | null = null;
-  pts.forEach((p, i) => {
-    if (p.kind !== "mid") return;
+  const path = pts.map((p, i) => {
     const x = sx(i);
     const y = sy(p.priceBps);
-    path += prevY === null ? `M${x},${y}` : `H${x}V${y}`;
-    prevY = y;
-  });
-  if (prevY !== null) path += `H${sx(pts.length - 1)}`;
+    if (i === 0) return `M${x},${y}`;
+    return series === "trade" ? `L${x},${y}` : `H${x}V${y}`;
+  }).join(" ");
 
   return (
     <section aria-label={`${outcomeName(outcome)} price history`} className="rounded-md border border-line px-3 pt-3 sm:px-4">
@@ -135,11 +131,11 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
                 </text>
               </g>
             ))}
-            {path && <path d={path} fill="none" stroke={MID} strokeWidth={2} strokeLinejoin="round" />}
+            {path && <path d={path} fill="none" stroke={series === "trade" ? TRADE : MID} strokeWidth={2} strokeLinejoin="round" />}
             {pts.map((p, i) => p.kind === "trade" && (
               <g key={`t${p.x}`}>
                 {p.quantity !== undefined && maxQty > 0n && <rect x={sx(i) - 2} y={H - PAD.b - Number(p.quantity * 18n / maxQty)} width={4} height={Number(p.quantity * 18n / maxQty)} fill={TRADE} opacity={0.25} />}
-                <circle cx={sx(i)} cy={sy(p.priceBps)} r={4.5} fill={TRADE} stroke="#fff" strokeWidth={2} />
+                {pts.length <= 30 && <circle cx={sx(i)} cy={sy(p.priceBps)} r={3} fill={TRADE} />}
               </g>
             ))}
             {hover && hoverIndex !== null && (

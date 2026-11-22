@@ -487,7 +487,7 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 
 ### 7.3 Chart (flaw #11)
 
-- **Fills:** points at finalized execution prices, with a quantity bar per point.
+- **Fills:** a line connecting successive finalized execution prices in event order, with a quantity bar per fill. A single fill appears as a point.
 - **Quote history:** best bid, best ask and midpoint series rebuilt by replaying `OrderPlaced`, `OrderFilled` and `OrderCancelled` events through a pure reducer in `@metrex/exchange`. These are real commitments, rebuilt from chain data, and restart-safe.
 - Labels: "Trades" and "Quoted midpoint". If neither exists, show "No quotes or trades yet". Never interpolate or invent points. The quote-history series can be cut (§14).
 
