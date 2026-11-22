@@ -3,15 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/v2/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "start:v2": "tsx src/v2/index.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@metrex/exchange": "workspace:*",
     "@metrex/server": "workspace:*",
-    "@metrex/shared": "workspace:*",
     "@solana/web3.js": "^1.98.0"
   },
   "devDependencies": {

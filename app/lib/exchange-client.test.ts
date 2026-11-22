@@ -36,7 +36,7 @@ const exchangeIxNames = (ixs: { programId: PublicKey; data: Buffer }[]) => {
 describe("trade building (one transaction each)", () => {
   it("market buy: takes the best asks in a single transaction within the size limit", async () => {
     const { market, book } = await fixtureMarket();
-    const preview = c.previewTrade(book, { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "market", quantity: 300n, slippageBps: 200 }, wallet.toBase58(), plenty);
+    const preview = c.previewTrade(book, { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "market", quantity: 300n, slippageBps: 5000 }, wallet.toBase58(), plenty);
     expect(preview.problems).toEqual([]);
     expect(preview.fills.length).toBeGreaterThan(1); // crosses more than one level
     const { ixs } = await c.buildTrade(wallet, market, book, preview);
@@ -80,7 +80,7 @@ describe("simulation failures in plain words", () => {
       },
     });
     const { market, book } = await fixtureMarket();
-    const preview = c.previewTrade(book, { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "market", quantity: 10n, slippageBps: 200 }, wallet.toBase58(), plenty);
+    const preview = c.previewTrade(book, { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "market", quantity: 10n, slippageBps: 5000 }, wallet.toBase58(), plenty);
     const { ixs } = await c.buildTrade(wallet, market, book, preview);
     const err = await c.simulate(ixs, wallet).catch((e: unknown) => e);
     expect(sim).toHaveBeenCalledWith(expect.any(VersionedTransaction), expect.objectContaining({ sigVerify: false }));
@@ -106,5 +106,50 @@ describe("price text", () => {
     expect(f.parsePriceToBps("0")).toBeNull();
     expect(f.parsePriceToBps("100")).toBeNull();
     expect(f.parsePriceToBps("0.001")).toBeNull();
+  });
+});
+
+describe("coverage execution integrity", () => {
+  it("keeps fractional-cent slippage relative and caps the sum of signed prices", async () => {
+    const { market } = await fixtureMarket();
+    const orders = [25, 27, 30].map((priceBps, i) => ({
+      id: Keypair.generate().publicKey.toBase58(), maker: Keypair.generate().publicKey.toBase58(),
+      outcome: Outcome.Yes, side: OrderSide.Sell, priceBps, remaining: 50_000n, seq: BigInt(i + 1),
+    }));
+    const ticket = { outcome: Outcome.Yes, side: OrderSide.Buy, kind: "market", quantity: 125_000n, slippageBps: 1_000 } as const;
+    const preview = c.previewTrade(orders, ticket, wallet.toBase58(), plenty);
+    expect(preview.limitPriceBps).toBe(27);
+    expect(preview.maxSpend).toBe(260_000_000n);
+    expect(preview.filledQty).toBe(100_000n);
+    expect(preview.restQty).toBe(25_000n);
+    expect(c.previewTrade(orders, ticket, wallet.toBase58(), { shares: 0n, musd: preview.maxSpend - 1n }).problems).toContain("Not enough mUSD in your wallet.");
+    const built = await c.buildTrade(wallet, market, orders, preview);
+    expect(exchangeIxNames(built.ixs)).toEqual(["takeOrder", "takeOrder"]);
+    expect(built.ixs.filter((ix) => ix.programId.equals(c.EXCHANGE_PROGRAM_ID)).map((ix) => ix.data.readUInt16LE(16))).toEqual([25, 27]);
+    const changed = orders.map((o, i) => i === 0 ? { ...o, priceBps: 26 } : o);
+    await expect(c.buildTrade(wallet, market, changed, preview)).rejects.toThrow(/book changed/i);
+  });
+
+  it("packs oversized claims into sweeps and rebuilds redemption from the resulting balances", async () => {
+    const { market } = await fixtureMarket();
+    const resolved = { ...market, outcome: "invalid" } as const;
+    const orders = Array.from({ length: 12 }, (_, i): import("./exchange-client").WalletOrder => ({
+      address: Keypair.generate().publicKey.toBase58(), market: market.address, maker: wallet.toBase58(),
+      clientNonce: BigInt(i), outcome: Outcome.Yes, side: OrderSide.Sell, priceBps: 50,
+      originalQty: 1n, remainingQty: 1n, seq: BigInt(i), expiresAt: 0n, createdAt: 1n,
+      tradingOpen: false, marketOutcome: "invalid",
+    }));
+    const plan = await c.buildRedeem(wallet, resolved, orders, { yes: 2n, no: 1n });
+    expect(plan.readAfterSweeps).toBe(true);
+    expect(plan.batches.length).toBeGreaterThan(1);
+    expect(plan.batches.flatMap(exchangeIxNames)).toEqual(Array(12).fill("sweepOrder"));
+    for (const instructions of plan.batches) {
+      expect(measureTransactionSize(instructions, wallet, PublicKey.default.toBase58())).toBeLessThanOrEqual(MAX_TX_BYTES);
+    }
+    const final = await c.buildRedeem(wallet, resolved, [], { yes: 14n, no: 1n });
+    expect(final.batches.flatMap(exchangeIxNames)).toEqual(["redeem", "redeem"]);
+    expect(c.redemptionValue("invalid", 14n, 1n)).toBe(7_500_000n);
+    const done = await c.buildRedeem(wallet, resolved, [], { yes: 0n, no: 0n });
+    expect(done.batches).toEqual([]);
   });
 });

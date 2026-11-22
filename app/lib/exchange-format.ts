@@ -74,3 +74,15 @@ export const coverageToShares = (dollars: bigint): bigint => dollars;
 
 /** Shares are integers with 0 decimals. */
 export const formatShares = (q: bigint): string => q.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+/** Remaining trading time to an on-chain deadline: "6d 23h", "4h 12m", "3m 20s", or null once passed. */
+export function formatRemaining(endsAtUnix: bigint, nowMs = Date.now()): string | null {
+  const s = Number(endsAtUnix) - Math.floor(nowMs / 1000);
+  if (s <= 0) return null;
+  const d = Math.floor(s / 86_400);
+  const h = Math.floor((s % 86_400) / 3_600);
+  const m = Math.floor((s % 3_600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${s % 60}s`;
+}

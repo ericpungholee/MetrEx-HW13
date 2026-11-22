@@ -40,7 +40,7 @@ As with the wildfire file, the private oracle copy lives in `METREX_ORACLE_DATA_
 
 ## Earthquake: South Napa M6.0, 24 August 2014
 
-- **Source:** USGS ShakeMap for event `nc72282711` (atlas version), `https://earthquake.usgs.gov/product/shakemap/nc72282711/atlas/1624995941193/download/grid.xml`. The dataset also lists the FDSN event-catalog query for M4+ events within 150 km during the window. It is recorded as a source only. The script doesn't check it, and the rule uses only this ShakeMap: `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2014-07-31&endtime=2014-09-02&latitude=38.225&longitude=-122.308&maxradiuskm=150&minmagnitude=4`.
+- **Source:** USGS ShakeMap for event `nc72282711` (atlas version), `https://earthquake.usgs.gov/product/shakemap/nc72282711/atlas/1624995941193/download/grid.xml`. The dataset also lists the FDSN event-catalog query for M4+ events within 150 km during the window. It is recorded as a source only. The rule is explicitly scoped to this single ShakeMap. The catalog query is supplementary: `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2014-07-31&endtime=2014-09-02&latitude=38.225&longitude=-122.308&maxradiuskm=150&minmagnitude=4`.
 - **Raw file:**
   - `usgs-napa-2014/grid.xml`, SHA-256 `f78b652c0de85368d43dc80c43c394973c6e5462c46e331d7df033a5e22c06ec`;
   - 10 MB, gitignored. Download it to `data/raw/usgs-napa-2014/grid.xml` before running the script.
@@ -57,6 +57,12 @@ As with the wildfire file, the private oracle copy lives in `METREX_ORACLE_DATA_
 - **Rule:** the geodesic distance from the property to any centerline is at most `trigger_distance_m` (500 m) (`track_proximity`). Coverage is 2024-05-01T05:00Z → 2024-06-01T05:00Z (America/Chicago).
 
 ## Real property addresses: OpenStreetMap
+
+Coral Gables uses OSM way 1046022736 at 4835 University Drive, tagged as a house. The previous address was the University of Miami Dooly Memorial Classroom Building. [University building inventory](https://space.miami.edu/_assets/pdf/documents/bldg_list.pdf).
+
+Napa uses OSM node 11686888530 at 214 Auberge Path. Napa County’s parcel query returned 047420014000 at that coordinate with residential use and one dwelling. The previous coordinate fell on a vacant parcel. [Napa County Public Parcels](https://www.arcgis.com/home/item.html?id=eef5363332e04774a6f52dfd40a04062&sublayer=1).
+
+`raw/napa-residential-parcels.json` pins the county query, SHA-256 `3eeebc23a5109c8587c9b78724134dce17a51d8867b39808a9790b6d0d6f3bda`. The query requested only parcel IDs, situs and use fields, and dwelling counts. It selected positive dwelling counts in the Napa OSM bounding box using `inSR=4326`. The selector joins canonicalized street addresses and independently checks the ShakeMap threshold.
 
 - **Source:** the OpenStreetMap Overpass API, `nwr["addr:housenumber"]["addr:street"](bbox); out tags center;`, retrieved 2026-11-21. Map data © OpenStreetMap contributors, under the Open Database License (ODbL).
 - **Selection:** `scripts/find-real-properties.ts` (rules in [docs/spec-multiperil.md](../docs/spec-multiperil.md) §3), output to `data/market-properties.json`.

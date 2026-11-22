@@ -2,16 +2,10 @@
 // app/app/api/** are one-liners over these, so this layer is unit-testable.
 
 import type { PublicKey } from "@solana/web3.js";
-import { exchangeProgramId } from "../exchange/program";
 import { getExchangeEvidence, getExchangeSettledOverlay, getExchangeSettledPerimeter } from "../oracle/exchange";
-import { getRpc } from "../rpc";
 import { parsePublicKey } from "../env";
-import { getEvidence, getSettledPerimeter, type EvidenceDeps } from "../oracle/evidence";
-import { resolveMarket } from "../oracle/resolve";
-import { getStats } from "../stats";
 import { TxError } from "../tx";
-import { closeMarket } from "./close";
-import { badRequest, forbidden, HttpError, notFound, tooMany, unavailable } from "./errors";
+import { badRequest, forbidden, HttpError, tooMany } from "./errors";
 import { faucet } from "./faucet";
 import { DEMO_PASSWORD_HEADER, OperatorPasswordBudget } from "./password";
 
@@ -33,7 +27,7 @@ export function errorResponse(e: unknown): Response {
   return json({ error: "Internal error", code: "internal" }, 500);
 }
 
-function marketParam(value: string | undefined): PublicKey {
+export function marketParam(value: string | undefined): PublicKey {
   try {
     return parsePublicKey(value ?? "", "market address");
   } catch {
@@ -51,34 +45,12 @@ export function requirePassword(req: Request): void {
   if (result === "wrong") throw forbidden("Wrong or missing demo password");
 }
 
-async function run(fn: () => Promise<Response>): Promise<Response> {
+export async function run(fn: () => Promise<Response>): Promise<Response> {
   try {
     return await fn();
   } catch (e) {
     return errorResponse(e);
   }
-}
-
-/** POST /api/demo/close/:market */
-export function handleClose(req: Request, market: string | undefined): Promise<Response> {
-  return run(async () => {
-    requirePassword(req);
-    return json(await closeMarket(marketParam(market)));
-  });
-}
-
-/** POST /api/oracle/resolve/:market */
-export function handleResolve(req: Request, market: string | undefined): Promise<Response> {
-  return run(async () => {
-    requirePassword(req);
-    const key = marketParam(market);
-    try {
-      return json(await resolveMarket(key));
-    } catch {
-      // Failed submissions can include signed instruction data and simulation logs.
-      throw unavailable("Settlement could not be verified. Check market status and retry.");
-    }
-  });
 }
 
 /** POST /api/faucet { wallet } */
@@ -107,20 +79,14 @@ export function handleFaucet(req: Request): Promise<Response> {
  * `?raw=1` returns the canonical file bytes exactly as hashed.
  * `?overlay=1` returns the verified historical map layer for an exchange market.
  */
-export function handleEvidence(req: Request, market: string | undefined, deps?: EvidenceDeps): Promise<Response> {
+export function handleEvidence(req: Request, market: string | undefined): Promise<Response> {
   return run(async () => {
     const pk = marketParam(market);
     const params = new URL(req.url).searchParams;
-    const v2 = deps?.readMarket ? false : await isExchangeMarket(pk);
-    if (params.get("overlay") === "1") {
-      if (!v2) throw notFound("No exchange overlay for this market");
-      return json(await getExchangeSettledOverlay(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }));
-    }
-    if (params.get("perimeter") === "1") {
-      return json(v2 ? await getExchangeSettledPerimeter(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }) : await getSettledPerimeter(pk, deps));
-    }
+    if (params.get("overlay") === "1") return json(await getExchangeSettledOverlay(pk));
+    if (params.get("perimeter") === "1") return json(await getExchangeSettledPerimeter(pk));
     const raw = params.get("raw") === "1";
-    const ev = v2 ? await getExchangeEvidence(pk, { rpc: deps?.rpc, dataDir: deps?.dataDir }) : await getEvidence(pk, deps);
+    const ev = await getExchangeEvidence(pk);
     if (raw) {
       return new Response(ev.canonical, {
         status: 200,
@@ -128,34 +94,5 @@ export function handleEvidence(req: Request, market: string | undefined, deps?: 
       });
     }
     return json(ev);
-  });
-}
-
-/** Owner of an account never changes, so the v1/v2 dispatch is cached per address. */
-const ownerIsExchange = new Map<string, boolean>();
-async function isExchangeMarket(pk: PublicKey): Promise<boolean> {
-  const k = pk.toBase58();
-  const hit = ownerIsExchange.get(k);
-  if (hit !== undefined) return hit;
-  const info = await getRpc()
-    .run((c) => c.getAccountInfo(pk, "confirmed"))
-    .catch(() => {
-      throw unavailable("Evidence temporarily unavailable");
-    });
-  if (!info) return false;
-  const v2 = info.owner.equals(exchangeProgramId());
-  ownerIsExchange.set(k, v2);
-  return v2;
-}
-
-/** GET /api/stats */
-export function handleStats(): Promise<Response> {
-  return run(async () => {
-    const stats = await getStats();
-    return json({
-      ...stats,
-      txTotal: stats.totalTransactions,
-      txLast10Min: stats.last10Minutes,
-    });
   });
 }

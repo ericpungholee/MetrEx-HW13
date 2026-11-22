@@ -36,7 +36,7 @@ import {
   type RoundView,
 } from "@metrex/server/exchange";
 import { dataDir, loadCommittedDataset, settleRound } from "@metrex/server";
-import { TradeIndex, connectionTradeSource } from "@metrex/server/exchange";
+import { TradeStore, tradeDecoder, tradeStorePath } from "@metrex/server/exchange";
 import { args, flagValue, log } from "./lib/common";
 import { DEVNET_GENESIS, checkBotsQuoting, checkDepthGuarantee, isLoopback, type BotMakers } from "./lib/v2";
 
@@ -100,8 +100,14 @@ async function main(): Promise<void> {
     const markets = await fetchMarketsOfRound(p, latest.address);
     const unresolved = markets.filter((m) => m.outcome === "unresolved");
     if (latest.status === "open") {
-      const idx = new TradeIndex(connectionTradeSource(() => conn, p.programId));
-      await idx.refresh();
+      const idx = new TradeStore(tradeStorePath(p.programId.toBase58()), tradeDecoder(getRpc()));
+      for (let attempt = 0; !idx.backfilled && attempt < 15; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        idx.reload();
+      }
+      if (!idx.backfilled && !args.includes("--new-round")) {
+        throw new Error("Trade history is still indexing. Wait for the keeper/indexer before deciding whether to reuse this legacy round.");
+      }
       const outsiders = new Set<string>();
       for (const m of markets) {
         for (const t of idx.trades(m.address.toBase58())) for (const w of [t.fill.buyer, t.fill.seller]) if (!bots[w]) outsiders.add(w);
@@ -177,7 +183,7 @@ async function main(): Promise<void> {
   for (const [name, pk, sol, mUsd] of need) {
     const [s, u] = [await getSolLamports(conn, pk), await tokenBalance(conn, ataOf(config.collateralMint, pk))];
     if (s < sol || u < mUsd) {
-      log.fail(`${name} ${pk.toBase58()} is short (SOL ${s}, mUSD ${u}); run scripts/fund-bots.ts`);
+      log.fail(`${name} ${pk.toBase58()} is short (SOL ${s}, mUSD ${u}); see docs/operations.md for funding`);
       problems++;
     } else log.ok(`${name} funded`);
   }

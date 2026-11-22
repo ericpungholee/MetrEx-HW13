@@ -10,7 +10,7 @@ import { explorerAddress, shortKey } from "@/lib/format";
 import { MakersContext } from "./Labels";
 
 function makersOf(l: LevelInfo, makers: Map<string, string>, me: string | null): string {
-  const names = l.orders.map((o) => (o.maker === me ? "You" : makers.has(o.maker) ? makers.get(o.maker)! : "User"));
+  const names = l.orders.map((o) => (o.maker === me ? "You" : makers.has(o.maker) ? (makers.get(o.maker)!.startsWith("sim:") ? "Sim" : makers.get(o.maker)!) : "User"));
   return [...new Set(names)].join(" · ");
 }
 

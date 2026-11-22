@@ -6,6 +6,7 @@ import type { Keypair, PublicKey } from "@solana/web3.js";
 import { planKeeperMatches, type OrderAccount } from "@metrex/exchange";
 import { ExchangeStateLoader, type MarketBookSnapshot } from "./book";
 import { matchOrdersIx, sweepOrderIx } from "./ix";
+import { isClosureHeld } from "./closure-hold";
 import { getExchangeProgram } from "./program";
 import { explorerTx } from "../explorer";
 import type { RpcPool } from "../rpc";
@@ -59,11 +60,12 @@ export class Keeper {
   async tick(): Promise<void> {
     this.stats.ticks++;
     // One batched read of every book (a fixed handful of RPC calls), then act market by market.
-    const state = await this.o.rpc.run((c) => this.loader.load(c, { roundsBack: this.o.roundsBack ?? 8 }));
+    const state = await this.o.rpc.run((c) => this.loader.load(c, { roundsBack: this.o.roundsBack }));
     if (!state) return;
     const collateral = state.config.collateralMint;
     for (const snap of state.snapshots) {
-      if (snap.tradingOpen && snap.market.outcome === "unresolved") await this.matchMarket(snap, collateral);
+      if (isClosureHeld(snap.round.address)) continue;
+      if (snap.tradingOpen && !state.orderDiscoveryPending.has(snap.market.address.toBase58())) await this.matchMarket(snap, collateral);
       await this.sweepMarket(snap, collateral);
     }
   }
@@ -105,7 +107,7 @@ export class Keeper {
   /** Permissionless sweeps in batches; a failed batch is retried one order at a time. */
   async sweepMarket(snap: MarketBookSnapshot, collateral: PublicKey, batch = 2): Promise<number> {
     const open = snap.tradingOpen && snap.market.outcome === "unresolved";
-    const todo = snap.orders.filter((o) => sweepable(o, snap) && (!open || this.o.sweepFilledWhileOpen || o.expiresAt !== 0n));
+    const todo = snap.orders.filter((o) => sweepable(o, snap) && (!open || this.o.sweepFilledWhileOpen || (o.expiresAt !== 0n && snap.now >= o.expiresAt)));
     if (!todo.length) return 0;
     const prog = getExchangeProgram(this.o.rpc.connection);
     let done = 0;
@@ -124,6 +126,7 @@ export class Keeper {
       }
     };
     for (let i = 0; i < todo.length; i += batch) {
+      if (isClosureHeld(snap.round.address)) break;
       const chunk = todo.slice(i, i + batch);
       if (!(await one(chunk)) && chunk.length > 1) for (const o of chunk) await one([o]);
     }

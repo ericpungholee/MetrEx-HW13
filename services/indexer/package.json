@@ -3,14 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "tsx src/index.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start:v2": "tsx src/v2.ts"
+    "start": "tsx src/v2.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@metrex/exchange": "workspace:*",
-    "@metrex/server": "workspace:*",
-    "@metrex/shared": "workspace:*"
+    "@metrex/server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

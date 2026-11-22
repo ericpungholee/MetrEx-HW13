@@ -1,0 +1,16 @@
+{
+  "name": "@metrex/legacy-regression",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "0.32.3",
+    "@metrex/shared": "workspace:*",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

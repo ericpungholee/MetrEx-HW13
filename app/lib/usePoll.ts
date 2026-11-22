@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { describeError } from "./client";
+import { describeError } from "./transactions";
 import { POLL_MS } from "./env";
 
 export interface Poll<T> {

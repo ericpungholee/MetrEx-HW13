@@ -10,27 +10,19 @@ import { catalogByProperty, OrderSide, Outcome, PAYOUT_PER_SHARE } from "@metrex
 import {
   bookOrders,
   fetchBook,
-  fetchFeatured,
+  fetchAllRounds,
   fetchHoldings,
-  fetchLatestRound,
-  fetchRound,
   fetchTrades,
   fetchWalletOrders,
   previewTrade,
   redemptionValue,
   reservedOf,
-  TradeIndexingError,
-  type RoundInfo,
-  type RoundWithMarkets,
 } from "@/lib/exchange-client";
 import { formatPrice, formatShares, marketState, marketTitle, outcomeName, sideName } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat, TxLink } from "@/components/ui";
 import { StateLabel, Unavailable } from "@/components/exchange/Labels";
-
-// Multi-peril: one Open round per hazard, so look further back (docs/spec-multiperil.md §7.5).
-const ROUNDS_BACK = 8n;
 
 export default function PortfolioPage() {
   const { publicKey } = useWallet();
@@ -50,45 +42,28 @@ export default function PortfolioPage() {
 
 function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
   const me = publicKey.toBase58();
-  const featured = usePoll(fetchFeatured, [], 12_000);
-  const history = usePoll(async () => {
-    const latest = await fetchLatestRound();
-    if (!latest) return [];
-    const ids: bigint[] = [];
-    for (let id = latest.roundId - 1n; id >= 0n && id > latest.roundId - ROUNDS_BACK; id--) ids.push(id);
-    const older = await Promise.all(ids.map((id) => fetchRound(id)));
-    return [latest, ...older.filter((r): r is RoundWithMarkets => r !== null)];
-  }, [], 30_000);
-  type PortfolioRound = Pick<RoundInfo, "address" | "state"> & Pick<RoundWithMarkets, "markets">;
-  const discovered = new Map<string, PortfolioRound>((history.data ?? []).map((r) => [r.address, r]));
-  for (const { round, market } of featured.data ?? []) {
-    if (!round || !market) continue;
-    const siblings = (discovered.get(round.address)?.markets ?? []).filter((m) => m.address !== market.address);
-    discovered.set(round.address, { ...round, markets: [...siblings, market] });
-  }
-  const loaded = !!(featured.data || history.data);
-  const discoveryKey = [...discovered.values()].flatMap((r) => r.markets.map((m) => m.address)).sort().join(",");
+  const history = usePoll(fetchAllRounds, [], 15_000);
   const data = usePoll(
     async () => {
-      if (!loaded) return null;
-      const rounds = [...discovered.values()];
+      if (!history.data) return null;
+      const rounds = history.data;
       const markets = rounds.flatMap((r) => r.markets);
-      const [holdings, orders, trades] = await Promise.all([
+      const [holdings, orders] = await Promise.all([
         fetchHoldings(publicKey, markets),
         fetchWalletOrders(publicKey),
-        Promise.all(
-          markets.map((m) =>
-            fetchTrades(m.address)
-              .then((t) => t.map((x) => ({ ...x, market: m })))
-              .catch((e: unknown) => {
-                if (e instanceof TradeIndexingError) return null;
-                throw e;
-              }),
-          ),
-        ),
       ]);
-      const indexing = trades.some((t) => t === null);
-      const mine = trades.flatMap((t) => t ?? []).filter((t) => t.buyer === me || t.seller === me);
+      const active = new Set(rounds.filter((r) => r.state === "open").map((r) => r.address));
+      const ordered = new Set(orders.map((o) => o.market));
+      const trades = await Promise.all(
+        markets.filter((m) => active.has(m.round) || ordered.has(m.address) ||
+          (holdings.yes.get(m.address) ?? 0n) > 0n || (holdings.no.get(m.address) ?? 0n) > 0n).map((m) =>
+          fetchTrades(m.address, publicKey).then((feed) => ({
+            indexing: feed.indexing, trades: feed.trades.map((x) => ({ ...x, market: m })),
+          })),
+        ),
+      );
+      const indexing = trades.some((t) => t.indexing);
+      const mine = trades.flatMap((t) => t.trades).filter((t) => t.buyer === me || t.seller === me);
       const premium = new Map<string, bigint>();
       const buys = new Map<string, { quantity: bigint; quote: bigint }>();
       for (const t of mine) {
@@ -112,7 +87,7 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
         const rows = bookOrders(book);
         return [Outcome.Yes, Outcome.No].map((outcome) => {
           const quantity = (outcome === Outcome.Yes ? holdings.yes : holdings.no).get(m.address) ?? 0n;
-          return previewTrade(rows, { outcome, side: OrderSide.Sell, kind: "market", quantity, slippageBps: 9_999 }, me, { shares: quantity, musd: holdings.musd });
+          return previewTrade(rows, { outcome, side: OrderSide.Sell, kind: "market", quantity, slippageBps: 10_000 }, me, { shares: quantity, musd: holdings.musd });
         });
       }));
       const sellable = estimates.flatMap((estimate) => estimate ?? []);
@@ -121,12 +96,12 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
       const fills = [...mine].sort((a, b) => b.slot - a.slot).slice(0, 20);
       return { rounds, holdings, orders, fills, indexing, premium, buys, quoteValue, incompleteValue };
     },
-    [loaded, discoveryKey],
+    [history.data?.map((r) => r.address + r.state + r.markets.map((m) => m.address + m.outcome).join()).join()],
     6_000,
   );
 
   if (!data.data) {
-    const reason = data.error ?? (featured.error && history.error ? featured.error : null);
+    const reason = data.error ?? history.error;
     return reason ? <Unavailable>Portfolio unavailable: {reason}</Unavailable> : <div className="h-96 animate-pulse bg-bg-soft" aria-label="Loading portfolio" />;
   }
   const { rounds, holdings, orders, fills, indexing, premium, buys, quoteValue, incompleteValue } = data.data;
@@ -292,7 +267,7 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
           <div className="overflow-x-auto"><table className="w-full min-w-[28rem] text-sm">
             <tbody>
               {fills.map((t) => (
-                <tr key={`${t.signature}-${t.quantity}-${t.priceBps}`} className="border-t border-line">
+                <tr key={t.eventId} className="border-t border-line">
                   <td className="py-2.5">
                     {t.buyer === me ? "Bought" : "Sold"} {formatShares(t.quantity)} {outcomeName(t.outcome)} · {marketTitle(t.market)}
                   </td>

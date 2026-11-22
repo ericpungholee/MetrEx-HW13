@@ -33,6 +33,8 @@ export interface CatalogMarket {
   trigger: string;
   /** Contract month as shown, e.g. "January 2025". */
   month: string;
+  coverageStart: string;
+  coverageEndExclusive: string;
   /** Required plain-text payout rule (§7.1), shown on every market page. */
   payoutRule: string;
   /** Which real event the replay uses. Shown next to the historical-replay disclosure. */
@@ -67,11 +69,13 @@ export const CATALOG: readonly CatalogMarket[] = [
     hazard: "wildfire",
     address: "16185 Sunset Boulevard",
     place: "Pacific Palisades, California",
-    question: "Will 16185 Sunset Boulevard be affected by a wildfire this January?",
+    question: "Will the Palisades Fire come within 500 m of 16185 Sunset Boulevard?",
     trigger: "Wildfire within 500 metres",
     month: "January 2025",
+    coverageStart: "2025-01-01T08:00:00Z",
+    coverageEndExclusive: "2025-02-01T08:00:00Z",
     payoutRule:
-      "Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage.",
+      "Pays the full amount if the final mapped footprint of the January 2025 Palisades Fire came within 500 m of this property. Pays on fire proximity, not on damage.",
     replayOf: "the Palisades Fire, January 2025",
     source: "NIFC WFIGS Interagency Perimeters (final mapped perimeter)",
     roundLabel: "Wildfire · Jan 2025 replay",
@@ -86,16 +90,18 @@ export const CATALOG: readonly CatalogMarket[] = [
     splitPairs: 60_000n,
   },
   {
-    propertyId: 4,
+    propertyId: 8,
     scenarioId: SCENARIO_HURRICANES_2017_09,
     hazard: "hurricane",
-    address: "1111 Memorial Drive",
+    address: "4835 University Drive",
     place: "Coral Gables, Florida",
-    question: "Will 1111 Memorial Drive experience hurricane-force winds this September?",
+    question: "Will 4835 University Drive experience hurricane-force winds this September?",
     trigger: "Inside a 64-knot (74 mph) sustained wind swath",
     month: "September 2017",
+    coverageStart: "2017-09-01T04:00:00Z",
+    coverageEndExclusive: "2017-10-01T04:00:00Z",
     payoutRule:
-      "Pays the full amount if this property lies inside the National Hurricane Center best-track 64-knot (hurricane-force) wind swath of any Atlantic hurricane during the coverage month. Pays on wind exposure, not on damage.",
+      "Pays the full amount if this property lies inside the National Hurricane Center best-track 64-knot (hurricane-force) wind swaths for the September 2017 replay (Irma, Jose, Katia, Lee and Maria). Pays on wind exposure, not on damage.",
     replayOf: "the September 2017 Atlantic hurricane season (Irma, Jose, Katia, Lee and Maria)",
     source: "NOAA National Hurricane Center best-track GIS wind swaths",
     roundLabel: "Hurricane · Sep 2017 replay",
@@ -110,16 +116,18 @@ export const CATALOG: readonly CatalogMarket[] = [
     splitPairs: 60_000n,
   },
   {
-    propertyId: 5,
+    propertyId: 9,
     scenarioId: SCENARIO_SOUTH_NAPA_2014_08,
     hazard: "earthquake",
-    address: "909 Stanly Way",
+    address: "214 Auberge Path",
     place: "Napa, California",
-    question: "Will 909 Stanly Way experience severe earthquake shaking this August?",
+    question: "Will the South Napa earthquake reach MMI VIII at 214 Auberge Path?",
     trigger: "Modified Mercalli Intensity VIII or higher",
     month: "August 2014",
+    coverageStart: "2014-08-01T07:00:00Z",
+    coverageEndExclusive: "2014-09-01T07:00:00Z",
     payoutRule:
-      "Pays the full amount if the USGS ShakeMap intensity at the grid point nearest this property reached Modified Mercalli VIII or higher during the coverage month. Pays on measured shaking, not on damage.",
+      "Pays the full amount if the USGS ShakeMap for the August 24, 2014 South Napa earthquake records Modified Mercalli VIII or higher at the grid point nearest this property. Pays on measured shaking, not on damage.",
     replayOf: "the M6.0 South Napa earthquake, August 2014",
     source: "USGS ShakeMap (event nc72282711)",
     roundLabel: "Earthquake · Aug 2014 replay",
@@ -142,8 +150,10 @@ export const CATALOG: readonly CatalogMarket[] = [
     question: "Will 7007 Peckham Street be affected by a tornado this May?",
     trigger: "EF2+ tornado within 500 metres",
     month: "May 2024",
+    coverageStart: "2024-05-01T05:00:00Z",
+    coverageEndExclusive: "2024-06-01T05:00:00Z",
     payoutRule:
-      "Pays the full amount if the surveyed centerline of an EF2-or-stronger tornado passed within 500 m of this property during the coverage month. Pays on tornado proximity, not on damage.",
+      "Pays the full amount if the surveyed centerline of a qualifying EF2-or-stronger central Iowa tornado starting in May 2024 passed within 500 m of this property. Pays on tornado proximity, not on damage.",
     replayOf: "the central Iowa tornado outbreak, May 2024 (EF2+ tracks of 21 May)",
     source: "NOAA NWS Damage Assessment Toolkit surveyed tracks",
     roundLabel: "Tornado · May 2024 replay",

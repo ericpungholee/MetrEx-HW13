@@ -6,6 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "demo": "node --env-file-if-exists=app/.env.local --import tsx scripts/start-demo.ts",
     "lint:ts": "pnpm -r --if-present run typecheck",
     "test:ts": "pnpm -r --if-present run test"
   },

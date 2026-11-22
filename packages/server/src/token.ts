@@ -29,7 +29,7 @@ export function musdMint(): PublicKey {
   if (fromEnv) return new PublicKey(fromEnv);
   const fromFile = readMintFile();
   if (fromFile) return fromFile;
-  throw new Error("mUSD mint unknown: set MUSD_MINT or run scripts/setup-devnet.ts");
+  throw new Error("mUSD mint unknown: set MUSD_MINT or run scripts/setup-devnet-v2.ts");
 }
 
 /** Classic SPL Token ATA (the program uses `Tokenkeg…` only). */

@@ -10,7 +10,9 @@ import {
   MAX_ABS_LON_E6,
   type ScenarioRegistry,
 } from "@metrex/shared";
-import { dataDir, explorerAddress, explorerTx, formatSol, getRpc, programId, redactUrl } from "@metrex/server";
+import { dataDir, explorerAddress, explorerTx, formatSol, getRpc, redactUrl } from "@metrex/server";
+
+import { exchangeProgramId } from "@metrex/server/exchange";
 
 export const args = process.argv.slice(2);
 export const DRY_RUN = args.includes("--dry-run");
@@ -33,7 +35,7 @@ export const log = {
 export function banner(name: string): void {
   const rpc = getRpc();
   console.log(`${name}${DRY_RUN ? " (dry run: no transactions)" : ""}`);
-  console.log(`  program ${programId().toBase58()}`);
+  console.log(`  program ${exchangeProgramId().toBase58()}`);
   console.log(`  rpc     ${rpc.endpoints.map((c) => redactUrl(c.rpcEndpoint)).join(", ")}`);
 }
 

@@ -45,7 +45,7 @@ function snapshotOf(
   orders: OrderAccount[],
   receiveAtaExists: (o: OrderAccount) => boolean,
 ): MarketBookSnapshot {
-  const tradingOpen = round.status === "open" && now < round.tradingEndsAt;
+  const tradingOpen = round.status === "open" && now < round.tradingEndsAt && market.outcome === "unresolved";
   const book = projectBook(orders, { tradingOpen, unresolved: market.outcome === "unresolved", now, receiveAtaExists });
   return { market, round, now, tradingOpen, orders, book, fetchedAt: Date.now() };
 }
@@ -73,7 +73,7 @@ export async function loadMarketBook(
 
 export interface ExchangeState {
   config: ConfigView;
-  /** The selected rounds (the last `roundsBack`), oldest first. */
+  /** The selected rounds, oldest first. */
   rounds: RoundView[];
   /** One snapshot per market of the selected rounds, by round then property. */
   snapshots: MarketBookSnapshot[];
@@ -95,7 +95,7 @@ export interface ExchangeStateOptions {
 const ORDER_SCAN_RETRIES = 3;
 
 /**
- * Every book of the last `roundsBack` rounds, for pollers (bots, keeper). Hosted RPC tiers allow
+ * Every book (or the last `roundsBack` rounds when configured), for pollers (bots, keeper). Hosted RPC tiers allow
  * plenty of getMultipleAccounts but only about one getProgramAccounts a second, so steady state
  * uses no scans at all: three batched reads per load (Config + Clock; Rounds at their PDAs from
  * `next_round_id`, each round's Markets at their PDAs from the registered property ids, and the
@@ -114,6 +114,7 @@ export class ExchangeStateLoader {
   private readonly ordersOfMarket = new Map<string, { seq: bigint; keys: PublicKey[]; retries: number }>();
   /** getProgramAccounts scans made so far. */
   scans = 0;
+  private bootstrapped = false;
 
   async load(conn: Connection, opts: ExchangeStateOptions = {}): Promise<ExchangeState | null> {
     const commitment = opts.commitment ?? "confirmed";
@@ -140,7 +141,7 @@ export class ExchangeStateLoader {
     const now = clockUnixTimestamp(clock.data);
 
     // 2. Rounds, their Markets and the cached Orders at their PDAs, in one batch.
-    const back = BigInt(opts.roundsBack ?? 3);
+    const back = opts.roundsBack === undefined ? config.nextRoundId : BigInt(opts.roundsBack);
     const roundKeys: PublicKey[] = [];
     for (let id = config.nextRoundId - back; id < config.nextRoundId; id++) if (id >= 0n) roundKeys.push(findRoundPda(p.programId, id)[0]);
     if (!this.propertyIds) {
@@ -191,8 +192,29 @@ export class ExchangeStateLoader {
     const requested = new Set(cachedOrders.map((k) => k.toBase58()));
     const byMarket = new Map<string, OrderAccount[]>();
     const orderDiscoveryPending = new Set<string>();
+    const cold = !this.bootstrapped;
+    if (cold) {
+      // One indexed Order scan seeds all markets on startup, including older claimable positions.
+      this.scans++;
+      for (const o of await fetchOrders(p, {})) {
+        const orders = byMarket.get(o.market) ?? [];
+        orders.push(o);
+        byMarket.set(o.market, orders);
+      }
+      for (const m of markets) {
+        const mk = m.address.toBase58();
+        const orders = byMarket.get(mk) ?? [];
+        const round = roundOf.get(m.round.toBase58())!;
+        const live = round.status === "open" && now < round.tradingEndsAt;
+        const current = !live || m.nextOrderSeq <= 1n || orders.some((o) => o.seq === m.nextOrderSeq - 1n);
+        if (!current) orderDiscoveryPending.add(mk);
+        this.ordersOfMarket.set(mk, { seq: current ? m.nextOrderSeq : -1n, keys: orders.map((o) => new PublicKey(o.address)), retries: 0 });
+      }
+      this.bootstrapped = true;
+    }
     for (const m of markets) {
       const mk = m.address.toBase58();
+      if (cold) continue;
       let cached = this.ordersOfMarket.get(mk);
       if (!cached && m.nextOrderSeq <= 1n) {
         cached = { seq: m.nextOrderSeq, keys: [], retries: 0 };

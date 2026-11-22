@@ -1,10 +1,13 @@
 // §7.5 read API for the v2 exchange, framework-agnostic (standard Request/Response). Reads the chain
-// directly with a short in-memory cache and never depends on the keeper process. When the chain
-// can't be read, the response says "unavailable"; cached data is never presented as live.
+// directly with a short in-memory cache for books, and reads finalized receipts from the shared
+// local trade journal.
 
 import { PublicKey } from "@solana/web3.js";
-import { CATALOG, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type OutcomeBook } from "@metrex/exchange";
-import { loadKeypair, parsePublicKey, type KeypairName } from "../env";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { BN } from "@anchor-lang/core";
+import { CATALOG, buildLedger, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
+import { keyDir, loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { getRpc } from "../rpc";
 import {
   decodeMarketAccount,
@@ -12,8 +15,10 @@ import {
   fetchExchangeConfig,
   fetchExchangeMarket,
   fetchMarketsOfRound,
+  fetchOrders,
   fetchProperty,
   fetchRound,
+  tokenBalance,
   type ConfigView,
   type MarketView,
   type PropertyView,
@@ -21,8 +26,9 @@ import {
 } from "../exchange/accounts";
 import { BookCache, ExchangeStateLoader, type ExchangeState, type MarketBookSnapshot } from "../exchange/book";
 import { readHeartbeat } from "../exchange/heartbeat";
-import { getExchangeProgram } from "../exchange/program";
-import { connectionTradeSource, TradeIndex } from "../exchange/trades";
+import { exchangeProgramId, getExchangeProgram } from "../exchange/program";
+import { TradeStore, tradeStorePath } from "../exchange/trade-store";
+import { tradeDecoder } from "../exchange/trades";
 import { badRequest, HttpError, notFound, unavailable } from "./errors";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
@@ -68,9 +74,11 @@ const loader = new ExchangeStateLoader();
 let stateCache: { at: number; value: Promise<ExchangeState | null> } | undefined;
 function liveState(): Promise<ExchangeState | null> {
   if (!stateCache || Date.now() - stateCache.at > STATE_TTL_MS) {
-    // Multi-peril: one Open round per hazard, so read further back (docs/spec-multiperil.md §2.2).
-    const value = getRpc().run((c) => loader.load(c, { roundsBack: 8 }));
-    stateCache = { at: Date.now(), value };
+    const value = getRpc().run((c) => loader.load(c));
+    stateCache = { at: Infinity, value };
+    void value.then(() => {
+      if (stateCache?.value === value) stateCache.at = Date.now();
+    }, () => undefined);
     value.catch(() => {
       if (stateCache?.value === value) stateCache = undefined;
     });
@@ -93,43 +101,11 @@ async function snapshotFor(mk: PublicKey): Promise<MarketBookSnapshot | null> {
   return (await bookCache()).get(mk);
 }
 
-const tradeIndexes = new Map<string, TradeIndex>();
-const backfilling = new Map<string, Promise<void>>();
-/**
- * One trade index per market (signatures for the market's address, a few hundred at most),
- * refreshed at most every 2 s. Until its initial backfill is fully decoded it is returned as
- * `null` after a short wait instead of holding the request: callers then report "indexing", never
- * a made-up volume or an empty history presented as complete. The backfill keeps going in the
- * background without waiting for the next request.
- */
-async function tradeIndex(mk: PublicKey, waitMs = 1_500): Promise<TradeIndex | null> {
-  const key = mk.toBase58();
-  let idx = tradeIndexes.get(key);
-  if (!idx) {
-    idx = new TradeIndex(connectionTradeSource(() => getRpc().connection, mk), { pageSize: 200, maxBackfill: 2_000, txPerRefresh: 25 });
-    tradeIndexes.set(key, idx);
-  }
-  const index = idx;
-  if (index.lastRefresh === undefined || Date.now() - index.lastRefresh > 2_000) {
-    const backfill = async () => {
-      do {
-        try {
-          await index.refresh();
-        } catch (e: unknown) {
-          console.error(`[api] trade index ${key.slice(0, 8)} refresh failed:`, e instanceof Error ? e.message : String(e));
-          await new Promise((r) => setTimeout(r, 2_000));
-        }
-      } while (!index.backfilled);
-    };
-    let refreshing: Promise<void>;
-    if (index.backfilled) refreshing = index.refresh().catch(() => undefined);
-    else {
-      refreshing = backfilling.get(key) ?? backfill().finally(() => backfilling.delete(key));
-      backfilling.set(key, refreshing);
-    }
-    if (!index.backfilled) await Promise.race([refreshing, new Promise((r) => setTimeout(r, waitMs))]);
-  }
-  return index.backfilled ? index : null;
+let tradeStore: TradeStore | undefined;
+function tradeIndex(): TradeStore {
+  tradeStore ??= new TradeStore(tradeStorePath(exchangeProgramId().toBase58()), tradeDecoder(getRpc()));
+  tradeStore.reload();
+  return tradeStore;
 }
 
 /** Properties never change once registered. */
@@ -237,7 +213,7 @@ export const handleFeatured = (): Promise<Response> =>
           if (r.scenarioId !== c.scenarioId) continue;
           const snap = state.snapshots.find((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId);
           if (!snap) continue;
-          const { yes } = marketBooks(snap.book);
+          const { yes, no } = marketBooks(snap.book);
           return {
             propertyId: c.propertyId,
             round: { address: r.address, roundId: r.roundId, label: r.label, state: roundState(r, Date.now()), tradingEndsAt: r.tradingEndsAt, closedAt: r.closedAt },
@@ -245,9 +221,10 @@ export const handleFeatured = (): Promise<Response> =>
             yesBestBidBps: yes.bestBidBps,
             yesBestAskBps: yes.bestAskBps,
             yesAskDepth: yes.askDepth,
+            noBestAskBps: no.bestAskBps,
           };
         }
-        return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n };
+        return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n, noBestAskBps: null };
       }),
     );
     return { markets };
@@ -266,7 +243,17 @@ export const handleRound = (id: string | undefined): Promise<Response> =>
 /** GET /api/markets?round= — defaults to the latest round. */
 export const handleMarkets = (req: Request): Promise<Response> =>
   run(async () => {
-    const q = new URL(req.url).searchParams.get("round");
+    const query = new URL(req.url).searchParams;
+    if (query.get("all") === "1") {
+      const state = await liveState();
+      if (!state) throw unavailable("Exchange is not configured on this cluster");
+      return { rounds: await Promise.all(state.rounds.map(async (round) => ({
+        ...round,
+        state: roundState(round, Date.now()),
+        markets: await Promise.all(state.snapshots.filter((s) => s.round.address.equals(round.address)).map((s) => marketSummary(s.market))),
+      }))) };
+    }
+    const q = query.get("round");
     const round = q ? key(q, "round") : (await config()).latestRound;
     const markets = await marketsOf(round);
     return { round, markets: await Promise.all(markets.map(marketSummary)) };
@@ -286,20 +273,20 @@ export const handleMarket = (id: string | undefined): Promise<Response> =>
     const mk = key(id, "market address");
     const snap = await snapshotFor(mk);
     if (!snap) throw notFound("Market not found");
-    const idx = await tradeIndex(mk);
-    const fills = idx ? idx.trades(mk.toBase58()) : [];
-    const finalized = fills.filter((t) => t.finalized);
-    const last = (o: number) => [...finalized].reverse().find((t) => t.fill.outcome === o)?.fill.priceBps ?? null;
+    const idx = tradeIndex();
+    const fills = idx.trades(mk.toBase58());
+    const last = (o: number) => [...fills].reverse().find((t) => t.fill.outcome === o)?.fill.priceBps ?? null;
     const { yes, no } = marketBooks(snap.book);
     return {
       market: await marketSummary(snap.market),
       round: { ...snap.round, state: roundState(snap.round, Date.now()) },
       tradingOpen: snap.tradingOpen,
       headline: { yes: headlinePrice(yes, last(Outcome.Yes)), no: headlinePrice(no, last(Outcome.No)) },
-      volume: idx ? finalized.reduce((a, t) => a + t.fill.quoteAmount, 0n) : null,
-      indexing: !idx,
-      confirmingFills: fills.length - finalized.length,
+      volume: fills.length || idx.backfilled ? fills.reduce((a, t) => a + t.fill.quoteAmount, 0n) : null,
+      indexing: !idx.backfilled,
+      confirmingFills: 0,
       bookFetchedAt: new Date(snap.fetchedAt).toISOString(),
+      settlementDeadline: snap.round.closedAt > 0n ? snap.round.closedAt + (await config()).resolutionTimeoutS : null,
     };
   });
 
@@ -308,29 +295,36 @@ export const handleBook = (req: Request, id: string | undefined): Promise<Respon
   run(async () => {
     const mk = key(id, "market address");
     const o = new URL(req.url).searchParams.get("outcome") ?? "yes";
-    if (o !== "yes" && o !== "no") throw badRequest("outcome must be yes or no");
+    if (o !== "yes" && o !== "no" && o !== "both") throw badRequest("outcome must be yes, no or both");
     const snap = await snapshotFor(mk);
     if (!snap) throw notFound("Market not found");
     const books = marketBooks(snap.book);
-    return { market: mk, outcome: o, tradingOpen: snap.tradingOpen, fetchedAt: new Date(snap.fetchedAt).toISOString(), book: bookBody(o === "yes" ? books.yes : books.no) };
+    const state = { market: mk, tradingOpen: snap.tradingOpen, fetchedAt: new Date(snap.fetchedAt).toISOString() };
+    return o === "both"
+      ? { ...state, yes: bookBody(books.yes), no: bookBody(books.no) }
+      : { ...state, outcome: o, book: bookBody(o === "yes" ? books.yes : books.no) };
   });
 
 /** GET /api/markets/:id/trades — fills, each finalized or confirming (§7.2). */
-export const handleTrades = (id: string | undefined): Promise<Response> =>
+export const handleTrades = (id: string | undefined, req?: Request): Promise<Response> =>
   run(async () => {
     const mk = key(id, "market address");
-    const idx = await tradeIndex(mk);
-    return { market: mk, indexing: !idx, trades: idx ? idx.trades(mk.toBase58()).reverse().slice(0, 200) : [] };
+    const idx = tradeIndex();
+    const wallet = req && new URL(req.url).searchParams.get("wallet");
+    const rows = idx.trades(mk.toBase58()).reverse();
+    const trades = wallet ? rows.filter((t) => t.fill.buyer === wallet || t.fill.seller === wallet) : rows.slice(0, 200);
+    return { market: mk, indexing: !idx.backfilled, trades };
   });
 
 /** GET /api/markets/:id/chart — "Trades" and "Quoted midpoint" from finalized events (§7.3). */
 export const handleChart = (id: string | undefined): Promise<Response> =>
   run(async () => {
     const mk = key(id, "market address");
-    const idx = await tradeIndex(mk);
-    if (!idx) return { market: mk, indexing: true, trades: [], quotes: [], empty: false };
+    const idx = tradeIndex();
     const c = idx.chart(mk.toBase58());
-    return { market: mk, indexing: false, trades: c.trades, quotes: c.quotes, empty: c.trades.length === 0 && c.quotes.length === 0 };
+    // An incomplete order-event stream cannot reconstruct historical quote levels.
+    const quotes = idx.backfilled ? c.quotes : [];
+    return { market: mk, indexing: !idx.backfilled, trades: c.trades, quotes, empty: idx.backfilled && !c.trades.length && !quotes.length };
   });
 
 /**
@@ -340,7 +334,21 @@ export const handleChart = (id: string | undefined): Promise<Response> =>
  */
 export const handleOrders = (req: Request): Promise<Response> =>
   run(async () => {
-    const maker = key(new URL(req.url).searchParams.get("maker") ?? undefined, "maker");
+    const query = new URL(req.url).searchParams;
+    const maker = key(query.get("maker") ?? undefined, "maker");
+    const marketParam = query.get("market");
+    if (marketParam) {
+      const market = key(marketParam, "market");
+      return getRpc().run(async (c) => {
+        const p = getExchangeProgram(c);
+        const m = await fetchExchangeMarket(p, market);
+        if (!m) throw notFound("Market not found");
+        const r = await fetchRound(p, m.round);
+        if (!r) throw notFound("Round not found");
+        const orders = await fetchOrders(p, { market, maker });
+        return { orders: orders.map((o) => ({ ...o, marketOutcome: m.outcome, tradingOpen: roundState(r, Date.now()) === "open" })) };
+      });
+    }
     const state = await liveState();
     if (!state) throw unavailable("Exchange is not configured on this cluster");
     const m = maker.toBase58();
@@ -367,6 +375,65 @@ function marketMakers(): { name: string; address: string }[] {
   return makersCache;
 }
 
+/**
+ * Public records of the simulated traders (docs/spec-simulation.md §2), for the "Simulated trader"
+ * labels. Wallets and archetypes only; written by scripts/provision-sim.ts. Re-read every minute.
+ */
+let simCache: { at: number; rows: { address: string; id: string; archetype: string }[] } | undefined;
+function simulatedTraders(): { address: string; id: string; archetype: string }[] {
+  if (!simCache || Date.now() - simCache.at > 60_000) {
+    let rows: { address: string; id: string; archetype: string }[] = [];
+    try {
+      const raw = JSON.parse(readFileSync(join(keyDir(), "sim", "population.json"), "utf8")) as Array<Record<string, unknown>>;
+      rows = raw.map((r) => ({ address: String(r.address), id: String(r.id), archetype: String(r.archetype) }));
+    } catch {
+      /* no simulation on this host */
+    }
+    simCache = { at: Date.now(), rows };
+  }
+  return simCache.rows;
+}
+
+const pk = (v: unknown): string => (v as PublicKey).toBase58();
+const big = (v: unknown): bigint => BigInt((v as BN).toString());
+
+/**
+ * GET /api/markets/:id/ledger — trade and settlement ledger rebuilt from the market's finalized
+ * program events and its vault balance (docs/spec-simulation.md §8). Never from the simulator.
+ */
+export const handleLedger = (id: string | undefined): Promise<Response> =>
+  run(async () => {
+    const mk = key(id, "market address");
+    const rpc = getRpc();
+    const market = await rpc.run((c) => fetchExchangeMarket(getExchangeProgram(c), mk, "finalized"));
+    if (!market) throw notFound("Market not found");
+    const idx = tradeIndex();
+    if (!idx.backfilled) return { market: mk, indexing: true };
+    const events: LedgerEvent[] = [];
+    for (const e of idx.events(mk.toBase58())) {
+      const at = { signature: e.pos.signature, blockTime: e.pos.blockTime };
+      if (e.name === "OrderFilled") {
+        events.push({ ...at, kind: "fill", outcome: e.outcome, buyer: e.buyer, seller: e.seller, quantity: e.quantity, priceBps: e.priceBps, quoteAmount: e.quoteAmount });
+      } else if (e.name === "SharesSplit" || e.name === "SharesMerged") {
+        events.push({ ...at, kind: e.name === "SharesSplit" ? "split" : "merge", holder: pk(e.data.holder), quantity: big(e.data.quantity), amount: big(e.data.amount) });
+      } else if (e.name === "SharesRedeemed") {
+        events.push({ ...at, kind: "redeem", holder: pk(e.data.holder), outcome: Number(e.data.outcome), quantity: big(e.data.quantity), payout: big(e.data.payout) });
+      }
+    }
+    const vaultBalance = await rpc.run((c) => tokenBalance(c, market.vault, "finalized"));
+    const ledger = buildLedger(events, { outcome: market.outcome, pairsOutstanding: market.pairsOutstanding, vaultBalance });
+    return {
+      market: mk,
+      indexing: false,
+      propertyId: market.propertyId,
+      vault: market.vault,
+      resolvedAt: market.resolvedAt,
+      makers: marketMakers(),
+      simulatedTraders: simulatedTraders(),
+      ...ledger,
+    };
+  });
+
 /** GET /api/health — keeper and bot heartbeats, RPC. */
 export const handleHealth = (): Promise<Response> =>
   run(async () => {
@@ -377,7 +444,7 @@ export const handleHealth = (): Promise<Response> =>
       /* reported as not ok */
     }
     const keeper = readHeartbeat("keeper");
-    return { rpc, keeper, bots: readHeartbeat("bots"), matching: keeper.alive ? "running" : "paused", marketMakers: marketMakers() };
+    return { rpc, keeper, bots: readHeartbeat("bots"), sim: readHeartbeat("sim"), matching: keeper.alive && keeper.heartbeat?.status.matching === true ? "running" : "paused", marketMakers: marketMakers(), simulatedTraders: simulatedTraders() };
   });
 
 /** Lookup helper for scripts and the operator page. */

@@ -47,8 +47,8 @@ import {
 } from "@metrex/server/exchange/browser";
 import idlJson from "../../target/idl/metrex_exchange.json";
 import type { MetrexExchange } from "../../target/types/metrex_exchange";
-import { measureTransactionSize, MAX_TX_BYTES } from "./batch";
-import { FixtureModeError, type TxResult, type WalletSigner, type WriteOptions } from "./client";
+import { measureTransactionSize, MAX_TX_BYTES, packInstructionGroups } from "./batch";
+import { FixtureModeError, PartialBatchError, type TxResult, type WalletSigner, type WriteOptions } from "./transactions";
 import { USE_FIXTURES } from "./env";
 import { fixtureApi } from "./exchange-fixtures";
 import { explorerTx } from "./format";
@@ -109,8 +109,10 @@ export interface MarketInfo {
   headline: { yes: Headline; no: Headline };
   /** Finalized volume; null while the trade index is still backfilling (never shown as 0). */
   volume: bigint | null;
+  indexing: boolean;
   confirmingFills: number;
   bookFetchedAt: string;
+  settlementDeadline: bigint | null;
 }
 
 export interface LevelInfo {
@@ -139,6 +141,7 @@ export interface BookInfo {
 }
 
 export interface TradeInfo {
+  eventId: string;
   signature: string;
   slot: number;
   blockTime: number | null;
@@ -183,8 +186,9 @@ export interface HealthInfo {
   keeperAlive: boolean;
   botsAlive: boolean;
   matching: "running" | "paused";
-  /** address → "A" | "B" | "C" */
+  /** address → "A" | "B" | "C" for MetrEx makers, "sim:T042" for simulated traders (docs/spec-simulation.md §1.4). */
   marketMakers: Map<string, string>;
+  simAlive: boolean;
 }
 
 export interface WalletOrder {
@@ -321,6 +325,19 @@ async function getJson(path: string): Promise<J> {
   return body;
 }
 
+export async function requestFaucet(wallet: PublicKey): Promise<void> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const res = await fetch("/api/faucet", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ wallet: wallet.toBase58() }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, typeof body.error === "string" ? body.error : "Devnet faucet unavailable.");
+  }
+}
+
 export async function fetchLatestRound(): Promise<RoundWithMarkets | null> {
   try {
     return parseRoundWithMarkets(await getJson("/api/rounds/latest"));
@@ -338,6 +355,7 @@ export interface FeaturedMarket {
   yesBestBidBps: number | null;
   yesBestAskBps: number | null;
   yesAskDepth: bigint;
+  noBestAskBps: number | null;
 }
 
 const optNum = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
@@ -355,8 +373,18 @@ export async function fetchFeatured(): Promise<FeaturedMarket[]> {
       yesBestBidBps: optNum(f.yesBestBidBps),
       yesBestAskBps: optNum(f.yesBestAskBps),
       yesAskDepth: big(f.yesAskDepth),
+      noBestAskBps: optNum(f.noBestAskBps),
     };
   });
+}
+
+export async function fetchAllRounds(): Promise<RoundWithMarkets[]> {
+  if (USE_FIXTURES) {
+    const round = await fetchLatestRound();
+    return round ? [round] : [];
+  }
+  const body = await getJson("/api/markets?all=1");
+  return ((body.rounds as J[]) ?? []).map(parseRoundWithMarkets);
 }
 
 export async function fetchRound(id: string | bigint): Promise<RoundWithMarkets | null> {
@@ -383,14 +411,17 @@ export async function fetchMarketInfo(market: string): Promise<MarketInfo | null
     tradingOpen: j.tradingOpen === true,
     headline: { yes: parseHeadline((h.yes as J) ?? {}), no: parseHeadline((h.no as J) ?? {}) },
     volume: j.volume === null || j.volume === undefined ? null : big(j.volume),
+    indexing: j.indexing === true,
     confirmingFills: num(j.confirmingFills),
     bookFetchedAt: str(j.bookFetchedAt),
+    settlementDeadline: j.settlementDeadline == null ? null : big(j.settlementDeadline),
   };
 }
 
 export async function fetchBook(market: string): Promise<BookInfo> {
-  const [y, n] = await Promise.all([fetchOutcomeBook(market, Outcome.Yes), fetchOutcomeBook(market, Outcome.No)]);
-  return { market, tradingOpen: y.tradingOpen, fetchedAt: y.fetchedAt, yes: y.book, no: n.book };
+  const j = await getJson(`/api/markets/${market}/book?outcome=both`);
+  return { market, tradingOpen: j.tradingOpen === true, fetchedAt: str(j.fetchedAt),
+    yes: parseBookSide(j.yes as J, Outcome.Yes), no: parseBookSide(j.no as J, Outcome.No) };
 }
 
 export async function fetchOutcomeBook(market: string, outcome: OutcomeCode) {
@@ -409,12 +440,13 @@ export class TradeIndexingError extends Error {
   }
 }
 
-export async function fetchTrades(market: string): Promise<TradeInfo[]> {
-  const j = await getJson(`/api/markets/${market}/trades`);
-  if (j.indexing === true) throw new TradeIndexingError();
-  return ((j.trades as J[]) ?? []).map((t) => {
+export async function fetchTrades(market: string, wallet?: PublicKey): Promise<{ trades: TradeInfo[]; indexing: boolean }> {
+  const j = await getJson(`/api/markets/${market}/trades${wallet && !USE_FIXTURES ? `?wallet=${wallet.toBase58()}` : ""}`);
+  const trades = ((j.trades as J[]) ?? []).map((t) => {
     const f = (t.fill as J) ?? {};
+    const pos = (f.pos as J) ?? {};
     return {
+      eventId: `${str(t.signature)}:${num(pos.ixIndex)}:${num(pos.eventIndex)}`,
       signature: str(t.signature),
       slot: num(t.slot),
       blockTime: t.blockTime === null || t.blockTime === undefined ? null : num(t.blockTime),
@@ -427,6 +459,7 @@ export async function fetchTrades(market: string): Promise<TradeInfo[]> {
       quoteAmount: big(f.quoteAmount),
     };
   });
+  return { trades, indexing: j.indexing === true };
 }
 
 export async function fetchChart(market: string): Promise<ChartInfo> {
@@ -464,12 +497,89 @@ export async function fetchHealth(): Promise<HealthInfo> {
     keeperAlive: ((j.keeper as J) ?? {}).alive === true,
     botsAlive: ((j.bots as J) ?? {}).alive === true,
     matching: j.matching === "running" ? "running" : "paused",
-    marketMakers: new Map(((j.marketMakers as J[]) ?? []).map((m) => [str(m.address), str(m.name)])),
+    marketMakers: new Map([
+      ...((j.simulatedTraders as J[]) ?? []).map((m): [string, string] => [str(m.address), `sim:${str(m.id)}`]),
+      ...((j.marketMakers as J[]) ?? []).map((m): [string, string] => [str(m.address), str(m.name)]),
+    ]),
+    simAlive: ((j.sim as J) ?? {}).alive === true,
   };
 }
 
-export async function fetchWalletOrders(owner: PublicKey): Promise<WalletOrder[]> {
-  const j = await getJson(`/api/orders?maker=${owner.toBase58()}`);
+export interface LedgerParticipant {
+  wallet: string;
+  yes: bigint;
+  no: bigint;
+  spent: bigint;
+  received: bigint;
+  redeemed: bigint;
+  claimable: bigint;
+  netPnl: bigint | null;
+  trades: number;
+  redemptions: string[];
+}
+
+export interface LedgerTrade {
+  signature: string;
+  blockTime: number | null;
+  outcome: "YES" | "NO";
+  buyer: string;
+  seller: string;
+  quantity: bigint;
+  priceBps: number;
+  quoteAmount: bigint;
+}
+
+export interface LedgerInfo {
+  market: string;
+  propertyId: number;
+  vault: string;
+  outcome: "unresolved" | "yes" | "no" | "invalid";
+  trades: LedgerTrade[];
+  participants: LedgerParticipant[];
+  totals: { volume: bigint; trades: number; participants: number; splits: bigint; merges: bigint; payouts: bigint; bookedCollateral: bigint; claimable: bigint; pnlSum: bigint | null };
+  reconciliation: { vaultBalance: bigint; pairsOutstanding: bigint; vaultCoversBooked: boolean; vaultCoversClaims: boolean; payoutsWithinDeposits: boolean; surplus: bigint };
+  labels: Map<string, string>;
+}
+
+/** Trade and settlement ledger from finalized events (docs/spec-simulation.md §8). */
+export async function fetchLedger(market: string): Promise<LedgerInfo> {
+  const j = await getJson(`/api/markets/${market}/ledger`);
+  if (j.indexing === true) throw new TradeIndexingError();
+  const nb = (v: unknown) => (v === null || v === undefined ? null : big(v));
+  const t = (j.totals as J) ?? {};
+  const r = (j.reconciliation as J) ?? {};
+  return {
+    market: str(j.market),
+    propertyId: num(j.propertyId),
+    vault: str(j.vault),
+    outcome: (str(j.outcome) || "unresolved") as LedgerInfo["outcome"],
+    trades: ((j.trades as J[]) ?? []).map((x) => ({
+      signature: str(x.signature), blockTime: x.blockTime === null || x.blockTime === undefined ? null : num(x.blockTime),
+      outcome: str(x.outcome) === "NO" ? "NO" : "YES", buyer: str(x.buyer), seller: str(x.seller),
+      quantity: big(x.quantity), priceBps: num(x.priceBps), quoteAmount: big(x.quoteAmount),
+    })),
+    participants: ((j.participants as J[]) ?? []).map((p) => ({
+      wallet: str(p.wallet), yes: big(p.yes), no: big(p.no), spent: big(p.spent), received: big(p.received),
+      redeemed: big(p.redeemed), claimable: big(p.claimable), netPnl: nb(p.netPnl), trades: num(p.trades),
+      redemptions: ((p.redemptions as unknown[]) ?? []).map(str),
+    })),
+    totals: {
+      volume: big(t.volume), trades: num(t.trades), participants: num(t.participants), splits: big(t.splits), merges: big(t.merges),
+      payouts: big(t.payouts), bookedCollateral: big(t.bookedCollateral), claimable: big(t.claimable), pnlSum: nb(t.pnlSum),
+    },
+    reconciliation: {
+      vaultBalance: big(r.vaultBalance), pairsOutstanding: big(r.pairsOutstanding), vaultCoversBooked: r.vaultCoversBooked === true,
+      vaultCoversClaims: r.vaultCoversClaims === true, payoutsWithinDeposits: r.payoutsWithinDeposits === true, surplus: big(r.surplus),
+    },
+    labels: new Map([
+      ...((j.simulatedTraders as J[]) ?? []).map((m): [string, string] => [str(m.address), `sim:${str(m.id)}`]),
+      ...((j.makers as J[]) ?? []).map((m): [string, string] => [str(m.address), str(m.name)]),
+    ]),
+  };
+}
+
+export async function fetchWalletOrders(owner: PublicKey, freshMarket?: string): Promise<WalletOrder[]> {
+  const j = await getJson(`/api/orders?maker=${owner.toBase58()}${freshMarket ? `&market=${freshMarket}` : ""}`);
   return ((j.orders as J[]) ?? []).map((o) => ({
     address: str(o.address),
     market: str(o.market),
@@ -540,13 +650,13 @@ const tokenAmount = (data: Uint8Array | undefined | null): bigint => {
 };
 
 /** mUSD, SOL and YES/NO holdings for the given markets, in one or two batched reads. */
-export async function fetchHoldings(owner: PublicKey, markets: readonly Pick<MarketSummary, "address" | "yesMint" | "noMint">[]): Promise<Holdings> {
+export async function fetchHoldings(owner: PublicKey, markets: readonly Pick<MarketSummary, "address" | "yesMint" | "noMint">[], minContextSlot?: number): Promise<Holdings> {
   if (USE_FIXTURES) return { musd: 0n, sol: 0n, yes: new Map(), no: new Map() };
   const conn = exchangeConnection();
   const usd = await collateralMint();
   const keys = [owner, ataOf(usd, owner), ...markets.flatMap((m) => [ataOf(new PublicKey(m.yesMint), owner), ataOf(new PublicKey(m.noMint), owner)])];
   const infos: (Awaited<ReturnType<Connection["getMultipleAccountsInfo"]>>[number])[] = [];
-  for (let i = 0; i < keys.length; i += 100) infos.push(...(await conn.getMultipleAccountsInfo(keys.slice(i, i + 100), "confirmed")));
+  for (let i = 0; i < keys.length; i += 100) infos.push(...(await conn.getMultipleAccountsInfo(keys.slice(i, i + 100), { commitment: "confirmed", minContextSlot })));
   const yes = new Map<string, bigint>();
   const no = new Map<string, bigint>();
   markets.forEach((m, i) => {
@@ -581,7 +691,7 @@ export interface TradeIntent {
   side: OrderSideCode;
   kind: "market" | "limit";
   quantity: bigint;
-  /** Limit price, or for a market order the slippage in bps from the best price. */
+  /** Limit price, or relative tolerance in basis points of the best executable price. */
   priceBps?: number;
   slippageBps?: number;
 }
@@ -592,8 +702,8 @@ export interface TradePreview {
   /** Filled now / quote for the fills. */
   filledQty: bigint;
   filledQuote: bigint;
-  /** Average fill price in mUSD base units per share (truncated), or null without fills. */
-  avgPerShare: bigint | null;
+  /** Maximum authorized mUSD spend, excluding network fees and token account rent. */
+  maxSpend: bigint;
   /** Market order: shares that cannot fill within the worst price (not sent). Limit: shares that rest. */
   restQty: bigint;
   /** The limit sent on-chain (market: the worst acceptable price). */
@@ -618,7 +728,8 @@ export function previewTrade(book: readonly BookOrder[], intent: TradeIntent, me
     const opposite = book
       .filter((o) => o.outcome === outcome && o.side !== side && o.maker !== me)
       .sort((a, b) => (side === OrderSide.Buy ? a.priceBps - b.priceBps : b.priceBps - a.priceBps))[0];
-    const slip = intent.slippageBps ?? 200;
+    const tolerance = intent.slippageBps ?? 500;
+    const slip = opposite ? Math.floor((opposite.priceBps * tolerance) / 10_000) : 0;
     limitPriceBps = opposite ? clampPrice(side === OrderSide.Buy ? opposite.priceBps + slip : opposite.priceBps - slip) : side === OrderSide.Buy ? MAX_PRICE_BPS : MIN_PRICE_BPS;
     if (!opposite) problems.push(`No ${side === OrderSide.Buy ? "asks" : "bids"} on this book.`);
     const r = planMarketOrder(book, { outcome, side, qty: quantity, worstPriceBps: limitPriceBps, taker: me });
@@ -631,7 +742,7 @@ export function previewTrade(book: readonly BookOrder[], intent: TradeIntent, me
     fills = r.fills;
     restQty = r.rests;
   }
-  if (quantity <= 0n) problems.push("Enter a quantity of at least 1 share.");
+  if (quantity <= 0n || quantity > (1n << 64n) - 1n) problems.push("Enter a quantity between 1 and 18,446,744,073,709,551,615 shares.");
   const filledQty = fills.reduce((a, f) => a + f.qty, 0n);
   const filledQuote = fills.reduce((a, f) => a + f.quote, 0n);
   const escrow =
@@ -640,9 +751,12 @@ export function previewTrade(book: readonly BookOrder[], intent: TradeIntent, me
         ? { musd: quote(quantity > 0n ? quantity : 0n, clampPrice(limitPriceBps)), shares: 0n }
         : { musd: 0n, shares: quantity }
       : { musd: 0n, shares: 0n };
+  // A direct take specifies quantity, order sequence and the exact quoted resting price.
+  // The cap is the sum of those per-instruction limits, even across multiple levels.
+  const maxSpend = side === OrderSide.Buy ? (intent.kind === "limit" ? escrow.musd : filledQuote) : 0n;
   if (side === OrderSide.Buy) {
-    const need = intent.kind === "limit" ? escrow.musd : filledQuote;
-    if (need > have.musd) problems.push("Not enough mUSD in your wallet.");
+    if (maxSpend > (1n << 64n) - 1n) problems.push("The cost exceeds the maximum token amount.");
+    if (maxSpend > have.musd) problems.push("Not enough mUSD in your wallet.");
   } else {
     const need = intent.kind === "limit" ? quantity : filledQty;
     if (need > have.shares) problems.push(`You hold ${have.shares} ${outcome === Outcome.Yes ? "YES" : "NO"} shares.`);
@@ -653,7 +767,7 @@ export function previewTrade(book: readonly BookOrder[], intent: TradeIntent, me
     fills,
     filledQty,
     filledQuote,
-    avgPerShare: filledQty > 0n ? filledQuote / filledQty : null,
+    maxSpend,
     restQty,
     limitPriceBps,
     escrow,
@@ -732,7 +846,7 @@ export async function simulate(ixs: TransactionInstruction[], payer: PublicKey):
 }
 
 /** Simulate, then one wallet prompt, then confirm by polling signature status. */
-async function sendOne(wallet: WalletSigner, ixs: TransactionInstruction[], opts?: WriteOptions): Promise<TxResult[]> {
+async function sendOne(wallet: WalletSigner, ixs: TransactionInstruction[], opts?: WriteOptions, index = 0, total = 1): Promise<TxResult[]> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const conn = exchangeConnection();
   opts?.onProgress?.({ stage: "building" });
@@ -740,7 +854,7 @@ async function sendOne(wallet: WalletSigner, ixs: TransactionInstruction[], opts
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
   const tx = new Transaction({ feePayer: wallet.publicKey, recentBlockhash: blockhash });
   tx.add(...ixs);
-  opts?.onProgress?.({ stage: "signing", total: 1 });
+  opts?.onProgress?.({ stage: "signing", total });
   let signature: string;
   if (wallet.sendTransaction) {
     signature = await wallet.sendTransaction(tx, conn, { preflightCommitment: "confirmed" });
@@ -748,20 +862,31 @@ async function sendOne(wallet: WalletSigner, ixs: TransactionInstruction[], opts
     const signed = await wallet.signTransaction(tx);
     signature = await conn.sendRawTransaction(signed.serialize(), { preflightCommitment: "confirmed" });
   }
-  opts?.onProgress?.({ stage: "sending", index: 0, total: 1 });
+  opts?.onProgress?.({ stage: "sending", index, total });
   const t0 = performance.now();
+  let slot: number;
   for (;;) {
-    const st = (await conn.getSignatureStatuses([signature])).value[0];
+    const response = await conn.getSignatureStatuses([signature], { searchTransactionHistory: true }).catch(() => null);
+    const st = response?.value[0];
     if (st?.err) {
       const got = await conn.getTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }).catch(() => null);
       throw new ExchangeTxError(describeFailure(st.err, got?.meta?.logMessages ?? []), got?.meta?.logMessages ?? []);
     }
-    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) break;
-    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new ExchangeTxError("The transaction expired before it confirmed. Try again.");
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) {
+      slot = st.slot;
+      break;
+    }
+    const height = await conn.getBlockHeight("finalized").catch(() => null);
+    if (response && !st && height !== null && height > lastValidBlockHeight) {
+      throw new ExchangeTxError("The transaction expired before it confirmed. Refresh and try again.");
+    }
+    if (performance.now() - t0 > 120_000) {
+      throw new ExchangeTxError(`Confirmation is still unknown. Check Explorer before retrying: ${explorerTx(signature)}`);
+    }
     await new Promise((r) => setTimeout(r, 800));
   }
-  const result = { signature, explorerUrl: explorerTx(signature), latencyMs: Math.round(performance.now() - t0) };
-  opts?.onProgress?.({ stage: "confirmed", index: 0, total: 1, result });
+  const result = { signature, slot, explorerUrl: explorerTx(signature), latencyMs: Math.round(performance.now() - t0) };
+  opts?.onProgress?.({ stage: "confirmed", index, total, result });
   return [result];
 }
 
@@ -776,17 +901,25 @@ export async function buildTrade(
   const usd = await collateralMint();
   const m = keysOf(market);
   const { outcome, side } = preview.intent;
-  const prefix = [ataIx(wallet, usd), ataIx(wallet, m.yesMint), ataIx(wallet, m.noMint)];
+  const payoutMint = outcome === Outcome.Yes ? m.yesMint : m.noMint;
+  const receive = side === OrderSide.Sell ? ataIx(wallet, usd) : ataIx(wallet, payoutMint);
+  const fake = PublicKey.default.toBase58();
   const byId = new Map(book.map((o) => [o.id, o]));
   if (preview.intent.kind === "market") {
     const takes = await Promise.all(
       preview.fills.map((f) => {
         const o = byId.get(f.orderId);
-        if (!o) throw new ExchangeTxError("The book changed. Review the new preview.");
-        return takeOrderIx(p, m, wallet, usd, { address: o.id, maker: o.maker, outcome: o.outcome, side: o.side, seq: o.seq }, f.qty, preview.limitPriceBps);
+        if (!o || o.seq !== f.seq || o.priceBps !== f.priceBps || o.remaining < f.qty) {
+          throw new ExchangeTxError("The book changed. Review the new preview.");
+        }
+        return takeOrderIx(p, m, wallet, usd, { address: o.id, maker: o.maker, outcome: o.outcome, side: o.side, seq: o.seq }, f.qty, f.priceBps);
       }),
     );
-    return { ixs: [...prefix, ...takes], preview };
+    const ixs = [receive, ...takes];
+    if (measureTransactionSize(ixs, wallet, fake) > MAX_TX_BYTES) {
+      throw new ExchangeTxError("This fill needs too many accounts for one transaction. Reduce the quantity or price tolerance.");
+    }
+    return { ixs, preview };
   }
   const placed = await placeOrderIx(p, m, wallet, usd, { clientNonce: randomNonce(), outcome, side, priceBps: preview.limitPriceBps, quantity: preview.intent.quantity });
   const mine = { address: placed.order.toBase58(), maker: wallet.toBase58(), outcome };
@@ -797,9 +930,6 @@ export async function buildTrade(
     const resting = { address: o.id, maker: o.maker, outcome: o.outcome };
     matches.push(side === OrderSide.Sell ? await matchOrdersIx(p, m, wallet, usd, resting, mine, f.qty) : await matchOrdersIx(p, m, wallet, usd, mine, resting, f.qty));
   }
-  // Only the ATA the order receives into is needed up front (the escrowed side already exists).
-  const receive = side === OrderSide.Sell ? ataIx(wallet, usd) : ataIx(wallet, outcome === Outcome.Yes ? m.yesMint : m.noMint);
-  const fake = "11111111111111111111111111111111";
   let kept = matches.length;
   while (kept > 0 && measureTransactionSize([receive, placed.ix, ...matches.slice(0, kept).flat()], wallet, fake) > MAX_TX_BYTES) kept--;
   const droppedFills = matches.length - kept;
@@ -813,7 +943,6 @@ export async function buildTrade(
       fills: keptFills,
       filledQty,
       filledQuote,
-      avgPerShare: filledQty > 0n ? filledQuote / filledQty : null,
       restQty: preview.intent.quantity - filledQty,
       droppedFills,
     },
@@ -830,44 +959,141 @@ export async function cancelOrder(wallet: WalletSigner, market: MarketSummary, o
 }
 
 /**
- * Redeem (§10.3): one transaction sweeps the wallet's remaining orders in this market and redeems
- * every winning share it then holds (YES or NO; both at 0.50 on Invalid).
+ * Redeem (§10.3): combine sweeps and burns when they fit. Otherwise pack sweeps and rebuild
+ * the final burn from actual holdings after the sweeps confirm.
  */
 export async function buildRedeem(
   wallet: PublicKey,
   market: MarketSummary,
   orders: readonly WalletOrder[],
   holdings: { yes: bigint; no: bigint },
-): Promise<TransactionInstruction[]> {
+): Promise<{ batches: TransactionInstruction[][]; readAfterSweeps: boolean }> {
   const p = exchangeProgram();
   const usd = await collateralMint();
   const m = keysOf(market);
-  const mine = orders.filter((o) => o.market === market.address);
+  const mine = orders.filter((o) => o.market === market.address && o.maker === wallet.toBase58());
   const sweeps = await Promise.all(mine.map((o) => sweepOrderIx(p, m, wallet, usd, o)));
   // Shares coming back from swept SELL escrows count toward the redemption.
   const back = { yes: 0n, no: 0n };
   for (const o of mine) if (o.side === OrderSide.Sell) back[o.outcome === Outcome.Yes ? "yes" : "no"] += o.remainingQty;
   const yes = holdings.yes + back.yes;
   const no = holdings.no + back.no;
-  const ixs: TransactionInstruction[] = [ataIx(wallet, usd), ...sweeps];
+  const ixs: TransactionInstruction[] = [];
   if ((market.outcome === "yes" || market.outcome === "invalid") && yes > 0n) ixs.push(await redeemIx(p, m, wallet, usd, Outcome.Yes, yes));
   if ((market.outcome === "no" || market.outcome === "invalid") && no > 0n) ixs.push(await redeemIx(p, m, wallet, usd, Outcome.No, no));
-  return ixs;
+  const combined = [...sweeps, ...(ixs.length ? [ataIx(wallet, usd), ...ixs] : [])];
+  const blockhash = PublicKey.default.toBase58();
+  if (measureTransactionSize(combined, wallet, blockhash) <= MAX_TX_BYTES) {
+    return { batches: combined.length ? [combined] : [], readAfterSweeps: false };
+  }
+  return {
+    batches: packInstructionGroups(sweeps.map((ix) => [ix]), { feePayer: wallet, recentBlockhash: blockhash }),
+    readAfterSweeps: true,
+  };
 }
 
-export function sendRedeem(wallet: WalletSigner, ixs: TransactionInstruction[], opts?: WriteOptions): Promise<TxResult[]> {
-  return sendOne(wallet, ixs, opts);
+export async function sendRedeem(wallet: WalletSigner, market: MarketSummary, opts?: WriteOptions): Promise<TxResult[]> {
+  const readHoldings = async (minContextSlot?: number) => {
+    const h = await fetchHoldings(wallet.publicKey, [market], minContextSlot);
+    return { yes: h.yes.get(market.address) ?? 0n, no: h.no.get(market.address) ?? 0n };
+  };
+  const [orders, holdings] = await Promise.all([fetchWalletOrders(wallet.publicKey, market.address), readHoldings()]);
+  const { batches, readAfterSweeps } = await buildRedeem(wallet.publicKey, market, orders, holdings);
+  const confirmed: TxResult[] = [];
+  const total = batches.length + Number(readAfterSweeps);
+  try {
+    for (const ixs of batches) confirmed.push(...await sendOne(wallet, ixs, opts, confirmed.length, total));
+    if (readAfterSweeps) {
+      const final = await buildRedeem(wallet.publicKey, market, [], await readHoldings(confirmed.at(-1)?.slot));
+      for (const ixs of final.batches) confirmed.push(...await sendOne(wallet, ixs, opts, confirmed.length, total));
+    }
+    if (!confirmed.length) throw new ExchangeTxError("This wallet has no remaining order or winning share to claim.");
+    return confirmed;
+  } catch (e) {
+    if (confirmed.length) throw new PartialBatchError(confirmed, e);
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Operator (password; keys stay on the server)
 // ---------------------------------------------------------------------------
 
-export type OperatorAction = "status" | "close" | "reject" | "resolve" | "sweep";
+export type OperatorAction = "status" | "close" | "reject" | "resolve" | "sweep" | "fast_forward";
 
 export async function operatorStep(action: OperatorAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const res = await fetch("/api/operator/settle-round", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-demo-password": password },
+    body: JSON.stringify({ action, round }),
+  });
+  let body: J = {};
+  try {
+    body = (await res.json()) as J;
+  } catch {
+    /* non-JSON */
+  }
+  return { ok: res.ok, status: res.status, body };
+}
+
+// ---------------------------------------------------------------------------
+// Demo operations (docs/spec-simulation.md §9): status, pause/resume, resets.
+// ---------------------------------------------------------------------------
+
+export type DemoAction = "pause_sim" | "resume_sim" | "reset_market" | "reset_demo" | "resume_operation";
+
+export interface DemoWorker {
+  alive: boolean;
+  ageMs: number | null;
+  status: Record<string, string | number | boolean | null> | null;
+}
+
+export interface DemoRound {
+  hazard: string;
+  scenarioId: number;
+  round: string | null;
+  roundId: string | null;
+  status: string | null;
+  tradingEndsAt: string | null;
+  remainingS: string | null;
+  resolvedCount: number | null;
+  marketCount: number | null;
+}
+
+export interface DemoOperationInfo {
+  id: string;
+  action: "reset_market" | "reset_demo" | "fast_forward";
+  rounds: string[];
+  phase: string;
+  completed: boolean;
+  failed?: boolean;
+  error?: string;
+  running: boolean;
+  startedAt: string;
+  updatedAt: string;
+  replacements: Record<string, string>;
+  log: Array<{ at: string; text: string; signature: string | null }>;
+  timings: Record<string, number>;
+}
+
+export interface DemoStatus {
+  simulationPaused: boolean;
+  fullResetHeld: boolean;
+  operation: DemoOperationInfo | null;
+  workers: { bots: DemoWorker; keeper: DemoWorker; sim: DemoWorker };
+  rounds: DemoRound[];
+  funding: { wallets: Array<{ name: string; address: string; lamports: string; musd: string; low: boolean }>; sim: { traders: number; lamports: string; musd: string } } | { error: string };
+}
+
+export async function fetchDemoStatus(): Promise<DemoStatus> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  return (await getJson("/api/operator/demo")) as unknown as DemoStatus;
+}
+
+export async function demoAction(action: DemoAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
+  if (USE_FIXTURES) throw new FixtureModeError();
+  const res = await fetch("/api/operator/demo", {
     method: "POST",
     headers: { "content-type": "application/json", "x-demo-password": password },
     body: JSON.stringify({ action, round }),

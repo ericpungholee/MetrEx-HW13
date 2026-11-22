@@ -64,6 +64,22 @@ export function checkDepthGuarantee(book: readonly BookOrder[], bots: BotMakers,
   return bad;
 }
 
+/**
+ * Live-demo readiness (docs/spec-simulation.md §3): each side of each book quoted by at least one
+ * maker and no crosses. Adaptive makers legitimately pull a side while their inventory is one-sided,
+ * so a running demo does not require every maker on every side.
+ */
+export function checkBooksQuoted(book: readonly BookOrder[], bots: BotMakers): string[] {
+  const bad: string[] = [];
+  for (const outcome of [Outcome.Yes, Outcome.No] as const) {
+    for (const side of [0, 1] as const) {
+      if (!book.some((o) => o.maker in bots && o.outcome === outcome && o.side === side)) bad.push(`no maker ${outcome === 0 ? "YES" : "NO"} ${side === 0 ? "bid" : "ask"}`);
+    }
+    if (crossedPairs(book, outcome).length) bad.push(`${outcome === 0 ? "YES" : "NO"} book is crossed`);
+  }
+  return bad;
+}
+
 /** Both books of a market quoted by every bot on both sides, and no crosses. */
 export function checkBotsQuoting(book: readonly BookOrder[], bots: BotMakers): string[] {
   const bad: string[] = [];

@@ -160,3 +160,85 @@ The full `anchor test` build and validator run passed all 145 tests (78 v1 and 6
 - **Other quality items.** The portfolio still omits completed redemption history (§10.5). The production npm audit reported seven high and four moderate transitive advisories. Runtime reachability was not established. The Rust lockfile scan flagged two unmaintained crates. RustSec lists locked `borsh` 0.10.4 as patched, and the workspace leaves the logging feature required by the `rand` advisory disabled. [Borsh advisory](https://rustsec.org/advisories/RUSTSEC-2023-0033.html) · [Rand advisory](https://rustsec.org/advisories/RUSTSEC-2026-0097.html)
 
 After the two fixes, all 198 workspace tests, TypeScript checks and the production build passed again. A browser run with stubbed operator responses verified all four proof cases (verified, skipped, unrelated error and successful simulated trade). It also verified that raw evidence retries after an initial HTTP 404 and that a hash mismatch hides the evidence link.
+
+
+## Multi-peril reliability rehearsal — November 21, 2026
+
+The RFQ runtime was retired and its on-chain program and recovery regressions preserved. A residential audit replaced the former hurricane and earthquake properties. The four market rehearsals used the existing Devnet deployment. Wildfire used Chrome and Phantom, and the other hazards used automated Devnet signers against the live operator API. A separate round verified both Invalid burns. [Market addresses, evidence hashes, exact wallet deltas and receipts](multiperil-verification.md).
+
+The final supervisor restart retained all four new market addresses and their orders. The maker lease refused a second process for the same identities. [Readiness status](STATUS.md).
+
+## V7 final integration and demo readiness — November 21, 2026
+
+Devnet only, existing `metrex_exchange` deployment, no program change. Spec: [spec-simulation.md](spec-simulation.md).
+
+- **Throughput ramp.** 20 traders: about 4 fills/min with no failures. 50 traders, 7.5 min: 86 fills (11.5/min average, 21/min peak), 40,593 mUSD. 100 traders: 25–33 confirmed transactions per minute. Restarts reused every round with unchanged deadlines.
+- **Fast-forward (wildfire round 19).** The homeowner demo key, standing in for Phantom, bought 40,000 YES for 405 mUSD and 1,000 NO for 991 mUSD.
+  - Timings: redeemable after 2,172 ms (2,305 ms observed independently), finalized after 2,670 ms, done after 20,231 ms including the closure proof and sweep.
+  - The oracle resolved YES. Redemption paid exactly +40,000 mUSD.
+  - Ledger: P&L sum 0, splits = payouts = 180,609 mUSD, booked collateral 0, vault 0.
+- **Reset Market.** Round 19 became round 23 in 24 s, with a fresh 168-hour deadline. Makers quoted and simulated traders traded the new book.
+- **Reset Demo #1** (workers stopped, `scripts/reset-demo.ts`), about 2 min.
+  - Rounds 20–23 were redeemable in about 4 s each, followed by 42 redemptions.
+  - 24 wallets were minted 451,711 mUSD and 10 were burned 413,070 mUSD.
+  - Rounds 24–27 opened.
+  - Afterwards the sims held exactly 3,132,034 mUSD and 0.8250 SOL, and the makers 600,000 each. The homeowner and judge wallets were untouched.
+- **Natural expiry.** Reset Market on hurricane round 25 with `durationS=180` created round 28. At the deadline the supervisor closed and resolved it (evidence `4a16ebc1…`), opened no replacement, and kept it featured as settled.
+- **Liquidity fix.** A first warm-up drained the makers' YES asks within minutes, for two reasons:
+  - Sim exposure was valued at mid, so sub-cent YES let traders demand millions of shares. Homeowners alone targeted about 4.2M shares.
+  - Four markets' NO bids and split collateral locked nearly all of each maker's 600k mUSD.
+
+  Fixes:
+  - Per-trader share-holding caps and homeowner coverage targets of 5k–40k shares.
+  - Risk investors lean NO.
+  - Maker inventory multiple 4.
+  - `MAKER_CAPITAL` 1.5M. The raise was one journaled 900k mint per maker: [A](https://explorer.solana.com/tx/AMRPszzbyuiAXjMQruWUSi9CJFkfnoxPXecirmTAfvrLfpJTQRzLf76CBJRYYD8JyeAJ35QJ4bHgCj4Yapy4sJN?cluster=devnet) · [B](https://explorer.solana.com/tx/34PNLNGj7DS2nDQT9PfvzcsjeCxcY7QhcmXWgPb7n8DoNgp9wzrPeJ6omdCfpwpgcwLoafgnMj1asaPAzhQJk73H?cluster=devnet) · [C](https://explorer.solana.com/tx/5Qfd3ajwi1FHkH2aUbLvKKMCf1rFoi8SHZEXWd2Ukof88q3ju5zroSXSuygc3bd5mDCJTZwRUTBtMey3wf6mVaWS?cluster=devnet). A rerun returned the same signatures and minted nothing.
+- **Resilience.** A Chainstack 503 escaped as an unhandled rejection and stopped one worker, and with it the supervisor. Workers now log and survive transient RPC errors. Other errors still exit.
+- **Reset Demo #2 (final, operator API, live workers), 200 s.**
+  - The hold was acknowledged in 4 s.
+  - Rounds 24, 26 and 27 were closed and resolved, redeemable after 4,806, 5,051 and 4,894 ms. Round 28 was already settled.
+  - The keeper swept 1 order. 66 redemption transactions finalized.
+  - Capital: 33 wallets already exact, 42 minted (944,551 mUSD), 28 burned (944,551 mUSD). The totals match because only sims and makers traded those rounds.
+  - SOL floats were already sufficient.
+  - Rounds 29 (wildfire), 30 (hurricane), 31 (earthquake) and 32 (tornado) were created, trading until 2026-11-28 23:07:25–23:08:03 UTC. [Round 29 create](https://explorer.solana.com/tx/5FPUvFJn8TCzSBTfg5mjpSPx9FHabLye1PPg6QmBNDpoNcWDSxXE34rBphF9LF5ykzq49DZEDKxmMoEcERGCZYPf?cluster=devnet)
+- **Warm-up on rounds 29–32 (100 traders), 23:47–00:47 UTC.**
+  - `SIM_RATE=1.6`, 30 min: 404 fills (about 22/min for the first 10 min, then about 10–14/min) and 442k mUSD.
+  - `SIM_RATE=2.5`, 15 min: 271 fills (about 18/min), 152k mUSD, 53 of 498 attempts preflight-rejected (10.6%) and 668 retried 429s. 7 transient RPC errors were survived, each of which would previously have stopped the demo.
+  - A 50k YES market buy was fillable in 58 of 60 one-minute book samples, at 55–1,527 mUSD.
+  - Restarts reused rounds 29–32 with unchanged deadlines every time.
+- **Tests.** `anchor test`: 149 passing. 240 workspace tests, all nine package type checks and the production build passed.
+
+## V7 reliability and Phantom rehearsal
+
+On November 21, 2026 (Toronto time), Phantom signed two 25,000-share YES purchases on wildfire round 29. Finalized token balances show 317.50 and 352.50 mUSD paid. The wallet held 50,000 YES before fast-forward. Settlement became redeemable in 5.870 s and finalized in 7.170 s. Closure proof and the last sweep finished in 36.530 s. Redemption burned 50,000 YES and increased the wallet from 34,607.091 to 84,607.091 mUSD. [First buy](https://explorer.solana.com/tx/56XQo5qnYswFagYk59crGWepUTZFeQGU7FzFbnp9SHTEi6239it8BDi2VXoojTz6WxkdVPfRc8pLkj629pYnZvtQ?cluster=devnet) · [Second buy](https://explorer.solana.com/tx/5eVuYPCXoXXc3w2aBztdi5hoqzKiNC1qqBzvyb74aSrQWwwzgpLN74EEemSfZxNSKN8QsWyQUjhibTR9DkhFB245?cluster=devnet) · [Settlement](https://explorer.solana.com/tx/4fMNRWJqXsvAbuyZbtyWHL2gxV8H8mSVeSSP9UkKZjH9sLJfxueejTSPZMnt3ztkRSE7vXqtwZ4hdFvSupeh3jVK?cluster=devnet) · [Redemption](https://explorer.solana.com/tx/34N2Lb5HW5NCRjpcBUpGjbNtb2HcRp7J8ENkyWKgVQk2ZRiZsNZkxp7Y9h9WQM54bgndZtGnVv3WVwwoxSmM7GoH?cluster=devnet)
+
+Reset Market replaced only wildfire with round 33 in 36.637 s. The three other rounds retained their addresses and deadlines, and continued to produce fills. [Round creation](https://explorer.solana.com/tx/575zkuzcL5PsTruRUej9ArWGg913hGP6SriMM8gUSiS9H2BpymVmedC62SbZbzdKRnFob3VjXJPwEatTdPza6SxH?cluster=devnet) · [Market creation](https://explorer.solana.com/tx/3nvLaMUhzBx34nHTAJHuqVEzUgBLC9frLfX4BoXk8EtDoQ3QxMYfy1MnoPyvboMgPdu9nzpoQjYv6odPs592oYZn?cluster=devnet)
+
+### Maker capital
+
+Before settlement Maker A held 30,223.7712 free mUSD, with 237,942.1943 mUSD committed to bids. Its YES and NO holdings, including shares in asks, comprised 426,447 complementary pairs and 817,341 unmatched NO. A portion of the paired shares was in order escrow. Across all markets its unmatched NO represented one-sided settlement exposure. On wildfire it redeemed 108,840 winning shares. Its 363,579 NO at the baseline had zero payout after settlement. The terminal value of the NO holdings alone does not measure the cost of acquiring them. [Maker redemption](https://explorer.solana.com/tx/LcuJcnxoGHdRou9wx7gws3niJY2Me3Vgey2edBoppeujuomoZFj6YGXx6Dgyupyxt8yTL7RYsiz5TguuZciLv1p?cluster=devnet)
+
+An address-specific reconciliation matched all 3,243 successful finalized round-29 market transaction signatures to the shared journal. Maker A spent 514,099 mUSD on splits and 4,839.3734 mUSD on purchases, received 159,510.5786 mUSD from sales and 108,840 mUSD from redemption, and had zero winning shares left. Its realized wildfire result was **−250,587.7948 mUSD**, excluding SOL fees. The other three markets remained unresolved at verification.
+
+The planner budgets all four markets against the same wallet, limits new capital per market and retains a quote buffer before merging spare pairs. Maker A released 65,238 mUSD on tornado and 42,685 on earthquake. Existing maker wallets received no funding from repeated funding-script runs. A disposable validator verified the initial configured seed and the no-send rerun. Sustained demand can still consume posted inventory. The bots publish actual four-sided depth and a thin-book indicator so an operator can see when this happens. [Tornado merge](https://explorer.solana.com/tx/445HZPzuTWoQ3nMjYztTqxRaXPR1EvUQGeQJWM62kAeFEwfjnXH4BctKQfqBbpDgEL54zmQwZtPu1BXRKfnT2tik?cluster=devnet) · [Earthquake merge](https://explorer.solana.com/tx/5YWUaGT7bkQAAdo7MfQXm4Bw7aqmUydEAuXii75cTk68d6hyk9BNCJ3E9ikZmmf8AafnRPhvY2rLe9w5SoXVc6BR?cluster=devnet)
+
+### Trade history and browser verification
+
+The keeper owns a persistent journal of finalized program transactions. The application reads it incrementally. Verified fills reach the chart, trade list and indexed volume while older receipts load. Resting bids and asks come from the live book. Complete-history calculations wait for the archive. Independent finalized WebSocket observations and one-second API polling matched 29 fills by signature, event position, slot, price and quantity. The median delay was 1.121 s, the 95th percentile 1.531 s and the maximum 1.627 s from the finalized notification to API observation. Five additional observations had different provider-reported slots with identical prices and quantities. A direct finalized receipt confirmed the API's slot on the hurricane example. The chart polls every two seconds. [Hurricane slot discrepancy](https://explorer.solana.com/tx/4Y3DjSu5iSgNf2qyKDwoQ3XSnA7LWzFqLtsB7RtQLrJbJERVTqUGT1HetVANpEfiG4k1F94kjrzkETAxq71BMAeT?cluster=devnet)
+
+From 01:28:48 to 01:31:03 UTC on November 22, the index processed 1,234 transactions while it discovered 216 incoming signatures (9.15/s and 1.60/s). From 01:29 to 01:33 UTC the four markets recorded 98 finalized fills. Of those, 97 matched simulator-submitted signatures (24.25 fills/minute). No fill had the same buyer and seller. This includes 30 direct simulator fills on wildfire, 20 on hurricane, 18 on earthquake and 29 on tornado. The simulator remained at its existing rate.
+
+Chrome displayed the YES chart, trades with Explorer signatures, indexed volume and resting orders on each market. Wildfire indexed volume rose from 6,213 to 13,500 mUSD, hurricane from 19,895 to 19,934, and tornado from 47,335 to 54,419. Earthquake showed 29,348 mUSD during backfill. Four independently fetched finalized receipts matched the displayed quantities and prices.
+
+| Market | Browser fill | Executable 50,000 YES quote at 01:36 UTC |
+|---|---|---:|
+| Wildfire 33 | [3,432 YES at 83 bps](https://explorer.solana.com/tx/9mdRSSTuPLQKsEdn2Sjorrq76fWWQfPPfT7t8bF89DAKAcgCZQ6ErugrZ4WwiXPR1kj8PtmP2hCS9HMQxRyPBBt?cluster=devnet) | 619.968 mUSD |
+| Hurricane 30 | [2,031 YES at 193 bps](https://explorer.solana.com/tx/Cn3T6rQmGCNe7CaQpLe9ppFa7LKDkewyUCTUo9LjhpZxxoZxrN6v6iB2F3mvwsmjbNs21v5Fo19LhNjfYZjHw3Q?cluster=devnet) | 1,392.672 mUSD |
+| Earthquake 31 | [1,458 NO at 9,990 bps](https://explorer.solana.com/tx/65Dt24BdYaJhoTo6hfD4YWmUZUX9qPJxfZwp5tj4aQNvvvnK7gZhKuHSrSQwMZEBoiSYCjVyjSUTxkDLnzg2ZDKJ?cluster=devnet) | 55 mUSD |
+| Tornado 32 | [2,883 YES at 21 bps](https://explorer.solana.com/tx/58zGYBh9SuxaqD2Dmz3ajz4QtiW8nWQaHBTtDeMfMKFiC3UaL4ibusXfXwDMHydwEATMva5AmFZCgQzD9oCoTSYj?cluster=devnet) | 160 mUSD |
+
+All four books had YES and NO bids and asks at this sample. The operator health feed reported all three makers and 100 traders running, the keeper matching with zero failures, and the index advancing with no current error. Intermittent RPC throttling and stale quotes remain possible. Gates included 149 Anchor tests, 243 workspace tests, nine workspace type checks and the production build.
+
+The disposable-validator rehearsal passed all three phases, including an identical four-fill history after reopening the journal, reads while the keeper was stopped, matching, settlement evidence and exact redemption. The final production restart reused rounds 33, 30, 31 and 32. The keeper journal advanced from 5,926 known signatures before restart to 6,234 afterward. The app returned 103 finalized wildfire trade events while backfill continued. Its health endpoint reported matching running, RPC healthy, and fresh maker, keeper and simulator heartbeats. The live maker monitor also recorded short depth gaps followed by recovery (1.5 s on hurricane and 4.2 s on wildfire in the sampled log).
+
+The longer post-deployment window, 01:40:15–01:53:00 UTC, yielded 247 finalized fills. Of these, 245 matched simulator-submitted signatures (19.22 fills/min), with 53 on wildfire, 53 on hurricane, 74 on earthquake and 65 on tornado. Every fill had distinct buyer and seller addresses.

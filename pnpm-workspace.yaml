@@ -3,3 +3,4 @@ packages:
   - services/*
   - scripts
   - app
+  - legacy/v1

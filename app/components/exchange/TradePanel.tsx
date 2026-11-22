@@ -12,7 +12,6 @@ import {
   buildTrade,
   previewTrade,
   sendTrade,
-  simulate,
   USE_FIXTURES,
   type BookInfo,
   type MarketSummary,
@@ -76,8 +75,8 @@ export function TradePanel({
   const [kindRaw, setKind] = useState<"market" | "limit">("market");
   const [qtyText, setQtyText] = useState("100");
   const [priceText, setPriceText] = useState("");
-  const [coverageTolerance, setCoverageTolerance] = useState("100");
-  const [sharesTolerance, setSharesTolerance] = useState("200");
+  const [coverageTolerance, setCoverageTolerance] = useState("10");
+  const [sharesTolerance, setSharesTolerance] = useState("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,8 +101,8 @@ export function TradePanel({
       ? BigInt(qtyText.trim())
       : 0n;
   const priceBps = parsePriceToBps(priceText);
-  const validSlippage = /^\d{1,4}$/.test(slipText.trim());
-  const slippage = validSlippage ? Number(slipText.trim()) : coverage ? 100 : 200;
+  const validSlippage = /^\d{1,2}(?:\.\d{1,2})?$/.test(slipText.trim());
+  const slippage = validSlippage ? Math.round(Number(slipText.trim()) * 100) : 0;
   const me = publicKey?.toBase58() ?? "";
   const rows = useMemo(() => (book ? bookOrders(book) : []), [book]);
   const intent: TradeIntent = { outcome, side, kind, quantity: qty, priceBps: priceBps ?? undefined, slippageBps: slippage };
@@ -114,7 +113,7 @@ export function TradePanel({
   const preview = book ? previewTrade(rows, intent, me, balances) : null;
   const problems = [
     ...(kind === "limit" && priceBps === null ? ["Enter a limit price in cents, for example 0.86."] : []),
-    ...(kind === "market" && !validSlippage ? ["Enter a price tolerance from 0 to 9,999 steps."] : []),
+    ...(kind === "market" && !validSlippage ? ["Enter a price tolerance from 0% to 99.99%."] : []),
     ...(preview?.problems ?? []),
   ];
 
@@ -124,16 +123,16 @@ export function TradePanel({
     setBusy(true);
     setError(null);
     try {
-      const built = await buildTrade(publicKey, market, rows, preview);
-      try {
-        await simulate(built.ixs, publicKey); // before the wallet opens (§10.3)
-      } catch (e) {
-        setError((e as Error).message);
+      const fetchedAt = Date.parse(book.fetchedAt);
+      if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > 15_000) {
+        onDone();
+        setError("This quote has expired. Review the refreshed quote before trading.");
         return;
       }
+      const built = await buildTrade(publicKey, market, rows, preview);
       const label = coverage
         ? `Buy $${formatShares(preview.filledQty)} of coverage (${formatShares(preview.filledQty)} YES)`
-        : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${formatShares(qty)} ${outcomeName(outcome)}${kind === "limit" ? ` @ ${formatPrice(preview.limitPriceBps)}` : " at market"}`;
+        : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${formatShares(kind === "market" ? built.preview.filledQty : qty)} ${outcomeName(outcome)}${kind === "limit" ? ` @ ${formatPrice(preview.limitPriceBps)}` : " at market"}`;
       const res = await run(label, (opts) => sendTrade(signer, built.ixs, opts));
       if (res) onDone();
     } catch (e) {
@@ -146,6 +145,9 @@ export function TradePanel({
   const o = outcomeName(outcome);
   const positionQty = kind === "limit" ? qty : (preview?.filledQty ?? 0n);
   const cost = kind === "limit" ? preview?.escrow.musd : preview?.filledQuote;
+  const averagePriceBps = preview && preview.filledQty > 0n
+    ? Number((preview.filledQuote * 10n) / preview.filledQty) / 1_000
+    : null;
   const hasQuote = preview && qty > 0n && (kind === "market" || priceBps !== null);
   const action = coverage ? "Buy coverage" : `${side === OrderSide.Buy ? "Buy" : "Sell"} ${o}`;
 
@@ -227,17 +229,17 @@ export function TradePanel({
           <div className="mt-2 space-y-2">
             {kind === "market" && (
               <label className="block">
-                <span>Price tolerance (0.01¢ steps)</span>
-                <input className="input num mt-1 w-full" inputMode="numeric" value={slipText} onChange={(e) => (coverage ? setCoverageTolerance : setSharesTolerance)(e.target.value)} />
+                <span>Price tolerance (% from best price)</span>
+                <input className="input num mt-1 w-full" inputMode="decimal" value={slipText} onChange={(e) => (coverage ? setCoverageTolerance : setSharesTolerance)(e.target.value)} />
               </label>
             )}
             {hasQuote && (
               <>
-                <p>{formatShares(preview.filledQty)} shares estimated to fill now{preview.avgPerShare !== null ? ` at ${formatMusd(preview.avgPerShare)} mUSD/share` : ""}.</p>
+                <p>{formatShares(preview.filledQty)} shares estimated to fill now{averagePriceBps !== null ? ` at ${formatPrice(averagePriceBps)} average` : ""}.</p>
                 {kind === "market" ? (
                   <p>
                     Worst accepted price {formatPrice(preview.limitPriceBps)}.
-                    {side === OrderSide.Buy && ` Maximum cost ${formatMusd(preview.filledQty * BigInt(preview.limitPriceBps) * 100n)} mUSD.`}
+                    {side === OrderSide.Buy && ` Maximum cost ${formatMusd(preview.maxSpend)} mUSD.`}
                   </p>
                 ) : (
                   <>

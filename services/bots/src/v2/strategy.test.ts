@@ -16,12 +16,14 @@ import {
 import {
   DEFAULT_BOT_CONFIG,
   applyToSnapshot,
+  collateralSpend,
   desiredQuotes,
   inventory,
   inventoryAllows,
   needsRequote,
   ownComplementOk,
   planBotMarket,
+  splitNeeded,
   type BotMarketInput,
 } from "./strategy";
 
@@ -120,6 +122,16 @@ describe("requote thresholds (§8.1)", () => {
     expect(acts[0]).toEqual({ kind: "split", quantity: 500n });
   });
 
+  it("the inventory multiple caps one-sided split inventory; free mUSD still bounds every split", () => {
+    // A sold all its YES and holds NO at the default cap: (200 + 2,000) × 2 = 4,400.
+    const capped = { musd: 100_000n * MUSD_UNIT, yes: 0n, no: 4_400n };
+    expect(splitNeeded(input({ balances: capped }))).toBe(0n);
+    const wider = { ...DEFAULT_BOT_CONFIG, inventoryMult: 4n };
+    expect(splitNeeded(input({ balances: capped, config: wider }))).toBe(2_000n);
+    expect(splitNeeded(input({ balances: { ...capped, no: 8_800n }, config: wider }))).toBe(0n);
+    expect(splitNeeded(input({ balances: { ...capped, musd: 1_300n * MUSD_UNIT }, config: wider }))).toBe(300n);
+  });
+
   it("quotes in the same plan as the split, on the post-split balances", () => {
     const acts = planBotMarket(input({ balances: { musd: 3_000n * MUSD_UNIT, yes: 0n, no: 0n } }));
     expect(acts[0]).toEqual({ kind: "split", quantity: 2_000n });
@@ -132,6 +144,42 @@ describe("requote thresholds (§8.1)", () => {
     for (const q of placed) if (q.side === OrderSide.Sell) expect(q.size <= 2_000n).toBe(true);
     // Inside the cooldown: split only.
     expect(planBotMarket(input({ balances: { musd: 3_000n * MUSD_UNIT, yes: 0n, no: 0n }, lastRequoteMs: 9_000 }))).toEqual([{ kind: "split", quantity: 2_000n }]);
+  });
+
+  it("caps collateral in each market through repeated one-sided fills", () => {
+    const marketCapital = 5_000n * MUSD_UNIT;
+    let balances = { musd: 50_000n * MUSD_UNIT, yes: 0n, no: 0n };
+    const config = { ...DEFAULT_BOT_CONFIG, inventoryMult: 10n };
+    for (let tick = 0; tick < 40; tick++) {
+      const i = input({ marketCapital, balances, config });
+      const actions = planBotMarket(i);
+      const split = actions.find((a) => a.kind === "split")?.quantity ?? 0n;
+      expect(collateralSpend(actions) + balances.no * MUSD_UNIT).toBeLessThanOrEqual(marketCapital);
+      // A buyer takes every YES share; the maker retains NO. Ignore sale proceeds to
+      // exercise the cash budget under a worse balance than this flow would produce.
+      balances = { musd: balances.musd - split * MUSD_UNIT, yes: 0n, no: balances.no + split };
+    }
+    expect(balances.no).toBeGreaterThan(4_000n);
+    expect(balances.musd).toBeGreaterThanOrEqual(45_000n * MUSD_UNIT);
+    expect(splitNeeded(input({ balances, marketCapital, config }))).toBe(0n);
+  });
+
+  it("merges free surplus pairs while retaining one full ask on both books", () => {
+    const own = [order({ address: "ask", side: OrderSide.Sell, remainingQty: 150n })];
+    const balances = { musd: 0n, yes: 1_400n, no: 2_000n };
+    const marketCapital = 5_000n * MUSD_UNIT;
+    const config = { ...DEFAULT_BOT_CONFIG, splitPairs: 1_000n };
+    expect(planBotMarket(input({ balances, own, marketCapital, config }))).toEqual([{ kind: "merge", quantity: 850n }]);
+    expect(planBotMarket(input({
+      balances: { musd: 850n * MUSD_UNIT, yes: 550n, no: 1_150n }, own, marketCapital, config,
+    })).every((a) => a.kind === "requote")).toBe(true);
+  });
+
+  it("cannot spend one bid's escrow in a different slot or market", () => {
+    const own = [order({ address: "no-bid", outcome: Outcome.No, priceBps: 9_570 })];
+    const actions = planBotMarket(input({ balances: { musd: 0n, yes: 200n, no: 200n }, own }));
+    expect(actions.flatMap((a) => a.kind === "requote" && a.place?.side === OrderSide.Buy ? [a.place.outcome] : [])).toEqual([]);
+    expect(collateralSpend(actions)).toBe(0n);
   });
 });
 

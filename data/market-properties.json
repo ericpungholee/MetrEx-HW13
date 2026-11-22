@@ -10,24 +10,24 @@
     "osm": "relation/6181038"
   },
   {
-    "property_id": 4,
-    "label": "1111 Memorial Drive",
-    "lat_e6": 25722631,
-    "lon_e6": -80277298,
+    "property_id": 8,
+    "label": "4835 University Drive",
+    "lat_e6": 25726116,
+    "lon_e6": -80272767,
     "scenario_id": 2,
     "trigger_distance_m": 0,
     "place": "Coral Gables, Florida",
-    "osm": "node/6014195094"
+    "osm": "way/1046022736"
   },
   {
-    "property_id": 5,
-    "label": "909 Stanly Way",
-    "lat_e6": 38247952,
-    "lon_e6": -122303461,
+    "property_id": 9,
+    "label": "214 Auberge Path",
+    "lat_e6": 38244119,
+    "lon_e6": -122304341,
     "scenario_id": 3,
     "trigger_distance_m": 0,
     "place": "Napa, California",
-    "osm": "node/11689072992"
+    "osm": "node/11686888530"
   },
   {
     "property_id": 6,

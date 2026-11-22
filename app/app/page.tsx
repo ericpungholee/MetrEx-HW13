@@ -4,7 +4,7 @@
 // of its scenario. Outcome buttons use the live asks from their own on-chain books.
 import Link from "next/link";
 import { CATALOG, HAZARD_LABEL, Outcome, type CatalogMarket } from "@metrex/exchange";
-import { fetchFeatured, fetchMarketInfo, fetchOutcomeBook, type FeaturedMarket } from "@/lib/exchange-client";
+import { fetchFeatured, fetchMarketInfo, type FeaturedMarket } from "@/lib/exchange-client";
 import { formatPrice, marketState } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
@@ -28,7 +28,6 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
   const address = f?.market?.address;
   const href = address ? `/market/${address}` : undefined;
   const state = f?.market && f.round ? marketState(f.market.outcome, f.round) : null;
-  const no = usePoll(() => address && state === "Open" ? fetchOutcomeBook(address, Outcome.No) : Promise.resolve(null), [address, state], 8_000);
   const info = usePoll(() => address ? fetchMarketInfo(address) : Promise.resolve(null), [address], 20_000);
   const volume = info.error ? null : info.data?.volume;
   const body = (
@@ -61,7 +60,7 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
             </div>
             <div className="grid grid-cols-2 gap-2">
               <OutcomeLink href={href} label="YES" ask={f?.yesBestAskBps ?? null} unavailable={failed} />
-              <OutcomeLink href={href} label="NO" ask={no.data?.tradingOpen ? no.data.book.bestAskBps : null} pending={no.loading} unavailable={!!no.error} />
+              <OutcomeLink href={href} label="NO" ask={f?.noBestAskBps ?? null} unavailable={failed} />
             </div>
           </>
         ) : loading ? (

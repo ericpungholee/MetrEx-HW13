@@ -1,14 +1,10 @@
-// prepare-multiperil.ts (docs/spec-multiperil.md §2.2, §3, §6): register the four catalog properties
-// (real OpenStreetMap addresses, data/market-properties.json), then keep exactly one Open round per
-// hazard with that hazard's catalog market. Idempotent. Never evaluates or prints a settlement
-// outcome before finalized resolution.
-//   pnpm tsx scripts/prepare-multiperil.ts [--local] [--hours 24] [--wait 60] [--no-wait] [--new-round] [--dry-run]
-// Run setup-devnet-v2.ts and fund-bots.ts first, then start the v2 bots and keeper. This script owns
-// all four hazards, wildfire included; prepare-demo-v2.ts is the legacy fictional-home demo.
-//
-// One Open round per hazard is operator policy (§2.2), not a program guarantee: this script
-// settles a stale round of a hazard before it opens that hazard's next round.
-
+// Prepare the catalog rounds and validate their pinned datasets. Use --prepare-only before
+// starting workers, or run without it to also check the live executable books and heartbeats.
+// Startup reuses open rounds. --advance-expired handles elapsed deadlines, --replace-retired
+// rotates a superseded property, and --new-round explicitly rotates selected hazards.
+// --keep-settled (the demo launcher, docs/spec-simulation.md §6) never rotates: a settled or
+// expired catalog round stays featured until the operator resets it. New rounds trade for
+// --hours (default DEMO_TRADING_HOURS = 168) from creation, an on-chain deadline restarts never move.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,16 +21,12 @@ import {
 import { encodeLabel, type ScenarioRegistry } from "@metrex/shared";
 import {
   ExchangeStateLoader,
-  TradeIndex,
   ataOf,
   chainNow,
-  connectionTradeSource,
   createMarketIx,
   createRoundIx,
   exchangeProgramId,
   fetchExchangeConfig,
-  fetchMarketsOfRound,
-  fetchOrders,
   fetchProperty,
   fetchRound,
   getExchangeProgram,
@@ -47,12 +39,11 @@ import {
   type RoundView,
 } from "@metrex/server/exchange";
 import { dataDir, loadCommittedDataset, settleRound } from "@metrex/server";
+import { DEMO_TRADING_HOURS } from "@metrex/server/exchange";
 import { args, DRY_RUN, flagValue, log } from "./lib/common";
 import { DEVNET_GENESIS, checkBotsQuoting, checkDepthGuarantee, isLoopback, type BotMakers } from "./lib/v2";
 
 const LOCAL = args.includes("--local");
-const FRESH_MIN_S = 2n * 3600n;
-const ROUNDS_BACK = 8n;
 const POINT_SCENARIOS = new Set([2, 3]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -119,7 +110,13 @@ async function main(): Promise<void> {
   const registry = JSON.parse(readFileSync(join(dataDir(), "scenarios.json"), "utf8")) as ScenarioRegistry;
   const props = hazardProperties(registry);
   const bots: BotMakers = Object.fromEntries((["A", "B", "C"] as const).map((n) => [loadKeypair(`bot${n}`).publicKey.toBase58(), n]));
-  const targets = CATALOG;
+  const hazard = flagValue("--hazard");
+  const targets = CATALOG.filter((c) => !hazard || c.hazard === hazard);
+  if (!targets.length) throw new Error("Unknown --hazard");
+  const hours = BigInt(flagValue("--hours") ?? String(DEMO_TRADING_HOURS));
+  const keepSettled = args.includes("--keep-settled");
+  if (hours < 1n || hours > 720n) throw new Error("--hours must be between 1 and 720");
+  const loader = new ExchangeStateLoader();
 
   // 1. Catalog properties (admin). Registered data never changes; a mismatch is a failure, never an overwrite.
   log.step("catalog properties (data/market-properties.json)");
@@ -149,54 +146,56 @@ async function main(): Promise<void> {
     }
   }
 
-  // 2. One Open round per hazard: reuse a fresh one, settle a stale one, open a new one.
+  // Never rotate a live replay merely because someone traded or a process restarted.
+  log.step("round discovery");
+  const discovered = await loader.load(conn);
+  if (!discovered) throw new Error("Exchange Config disappeared during discovery");
   const rounds = new Map<number, RoundView>();
-  const recent: RoundView[] = [];
-  for (let id = config.nextRoundId - 1n; id >= 0n && id >= config.nextRoundId - ROUNDS_BACK; id--) {
-    const r = await fetchRound(p, findRoundPda(p.programId, id)[0], "confirmed");
-    if (r) recent.push(r);
-  }
-  const idx = new TradeIndex(connectionTradeSource(() => conn, p.programId));
-  await idx.refresh();
   for (const c of targets) {
     log.step(`${c.hazard} round (scenario ${c.scenarioId})`);
     const scenario = registry[String(c.scenarioId)]!;
     const fileHash = createHash("sha256").update(readFileSync(join(dataDir(), scenario.file))).digest("hex");
-    if (fileHash !== scenario.sha256) throw new Error(`data/${scenario.file} does not match its committed hash in scenarios.json`);
-    const latest = recent.find((r) => r.scenarioId === c.scenarioId) ?? null;
+    if (fileHash !== scenario.sha256) throw new Error(`data/${scenario.file} does not match scenarios.json`);
+    const list = discovered.rounds.filter((r) => r.scenarioId === c.scenarioId && r.status === "open");
+    if (list.length > 1) throw new Error(`Multiple open rounds for ${c.hazard}. Resolve the operator policy conflict explicitly.`);
+    const latest = list[0];
     let reuse: RoundView | null = null;
-    if (latest) {
-      const now = await chainNow(conn, "confirmed");
-      const markets = await fetchMarketsOfRound(p, latest.address);
-      if (latest.status === "open") {
-        const outsiders = new Set<string>();
-        for (const m of markets) {
-          for (const t of idx.trades(m.address.toBase58())) for (const w of [t.fill.buyer, t.fill.seller]) if (!bots[w]) outsiders.add(w);
-          for (const o of await fetchOrders(p, { market: m.address })) if (!bots[o.maker]) outsiders.add(o.maker);
+    const newest = discovered.snapshots.filter((s) => s.market.propertyId === c.propertyId && s.round.scenarioId === c.scenarioId).at(-1)?.round;
+    if (keepSettled && newest && (!latest || newest.roundId > latest.roundId || newest.address.equals(latest.address))) {
+      const sameHash = Buffer.from(newest.datasetSha256).toString("hex") === scenario.sha256;
+      if (!sameHash) throw new Error(`Round ${newest.roundId} committed a different dataset hash`);
+      reuse = newest;
+      const ends = new Date(Number(newest.tradingEndsAt) * 1000).toISOString();
+      log.ok(newest.status === "open"
+        ? `reusing round ${newest.roundId} (trading ${newest.tradingEndsAt > discovered.now ? `until ${ends}` : `ended ${ends}; settles at its deadline`})`
+        : `keeping settled round ${newest.roundId} visible until the operator resets it`);
+    } else if (latest) {
+      const markets = discovered.snapshots.filter((s) => s.round.address.equals(latest.address));
+      const retired = markets.length > 0 && !markets.some((s) => s.market.propertyId === c.propertyId);
+      const expired = latest.tradingEndsAt <= discovered.now;
+      const sameHash = Buffer.from(latest.datasetSha256).toString("hex") === scenario.sha256;
+      const rotate = args.includes("--new-round") || (retired && args.includes("--replace-retired")) ||
+        (expired && args.includes("--advance-expired"));
+      if (!rotate) {
+        if (retired || expired || !sameHash) {
+          throw new Error(`Round ${latest.roundId} needs explicit rotation (--replace-retired, --advance-expired or --new-round)`);
         }
-        const sameHash = Buffer.from(latest.datasetSha256).toString("hex") === scenario.sha256;
-        const fresh = outsiders.size === 0 && sameHash && latest.tradingEndsAt - now > FRESH_MIN_S;
-        if (fresh && !args.includes("--new-round")) {
-          reuse = latest;
-          log.ok(`round ${latest.roundId} is fresh (bots only, ${(latest.tradingEndsAt - now) / 3600n} h left): reusing it`);
-        } else log.todo(`round ${latest.roundId} is stale (${outsiders.size} non-bot wallets, ${latest.tradingEndsAt - now} s left): close, resolve, sweep`);
+        reuse = latest;
+        log.ok(`reusing open round ${latest.roundId}`);
+      } else if (DRY_RUN) log.todo(`settle round ${latest.roundId}`);
+      else {
+        await settleRound(latest.address, {
+          rpc, controller, oracle, keeper,
+          log: (s) => s.signature ? log.tx(`${s.step} ${s.target}`, s.signature) : log.ok(`${s.step} ${s.target} ${s.note ?? ""}`),
+        });
       }
-      if (!reuse && (latest.status === "open" || markets.some((m) => m.outcome === "unresolved"))) {
-        if (DRY_RUN) log.todo(`settle round ${latest.roundId}`);
-        else {
-          const steps = await settleRound(latest.address, {
-            rpc,
-            controller,
-            oracle,
-            keeper,
-            log: (s) => (s.signature ? log.tx(`${s.step} ${s.target}${s.note ? ` (${s.note})` : ""}`, s.signature) : log.ok(`${s.step} ${s.target} ${s.note ?? ""}`)),
-          });
-          log.ok(`settled round ${latest.roundId} in ${steps.length} steps`);
-        }
-      } else if (!reuse) log.ok(`round ${latest.roundId} is closed and settled`);
-    } else log.ok("no earlier round of this hazard");
+    }
 
     let round: RoundView | null = reuse;
+    if (round && round.status !== "open") {
+      // Settled and kept visible: nothing to create or quote.
+      continue;
+    }
     if (!round) {
       if (DRY_RUN) {
         log.todo(`create_round(scenario ${c.scenarioId}, "${c.roundLabel}", dataset ${scenario.sha256.slice(0, 16)}…)`);
@@ -205,7 +204,6 @@ async function main(): Promise<void> {
       const fresh = await fetchExchangeConfig(p, "confirmed");
       if (!fresh) throw new Error("Config missing");
       const now = await chainNow(conn, "confirmed");
-      const hours = BigInt(flagValue("--hours") ?? "24");
       const roundId = fresh.nextRoundId;
       const ix = await createRoundIx(p, {
         roundController: controller.publicKey,
@@ -232,6 +230,11 @@ async function main(): Promise<void> {
     log.ok(`oracle dataset matches round.dataset_sha256 ${scenario.sha256.slice(0, 16)}…`);
   }
 
+  if (args.includes("--prepare-only")) {
+    if (problems > 0) process.exitCode = 1;
+    return;
+  }
+
   // 3. Bot balances: what every catalog market commits at zero inventory (fund-bots.ts tops up).
   log.step("bot balances");
   for (const [pk, name] of Object.entries(bots)) {
@@ -246,7 +249,6 @@ async function main(): Promise<void> {
   // 4. Bots quoting each new market with that market's exact ladder.
   log.step("bots and ladders");
   const waitS = args.includes("--no-wait") || DRY_RUN ? 0 : Number(flagValue("--wait") ?? 60);
-  const loader = new ExchangeStateLoader();
   for (const c of targets) {
     const round = rounds.get(c.propertyId);
     if (!round) continue;
@@ -254,7 +256,7 @@ async function main(): Promise<void> {
     let bad: string[] = ["not checked"];
     const deadline = Date.now() + waitS * 1000;
     do {
-      const state = await loader.load(conn, { roundsBack: Number(ROUNDS_BACK) });
+      const state = await loader.load(conn);
       const snap = state?.snapshots.find((s) => s.market.address.equals(market));
       if (snap) bad = [...checkBotsQuoting(snap.book, bots), ...checkDepthGuarantee(snap.book, bots, c.ladder)];
       if (!bad.length || Date.now() > deadline) break;

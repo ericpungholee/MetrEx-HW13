@@ -14,6 +14,7 @@ export * from "./ix";
 export * from "./keeper";
 export * from "./program";
 export * from "./trades";
+export * from "./trade-store";
 
 export { envOrUndefined, expandHome, keyDir, loadKeypair, loadKeypairFile, parsePublicKey, repoRoot, type KeypairName } from "../env";
 export { explorerAddress, explorerTx } from "../explorer";
@@ -30,3 +31,9 @@ export function sendExchangeTx(
 ): Promise<string> {
   return sendTx(conn, ixs, signers, { describe: describeExchangeError, ...opts });
 }
+
+export { lockWorker } from "./worker-lock";
+export { isClosureHeld } from "./closure-hold";
+export * from "./demo-state";
+export { DemoTransactions } from "./demo-transaction";
+export { isTransientRpcError, surviveTransientRpcErrors } from "./transient";

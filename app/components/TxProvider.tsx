@@ -9,7 +9,7 @@ import {
   type TxProgress,
   type TxResult,
   type WriteOptions,
-} from "@/lib/client";
+} from "@/lib/transactions";
 import { shortKey } from "@/lib/format";
 
 type Stage = "pending" | "confirmed" | "error" | "disabled";

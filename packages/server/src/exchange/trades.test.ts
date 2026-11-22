@@ -1,79 +1,104 @@
-// Indexer (spec-v2 §13.2): event deduplication, restart rebuild, finalized vs confirming fills,
-// and the keeper's sweep rule.
-import { describe, expect, it } from "vitest";
+// Finalized trade index and keeper regressions (spec-v2 §7.2 and §5.8).
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Outcome, OrderSide, type OrderAccount, type PositionedEvent } from "@metrex/exchange";
-import { TradeIndex, type SigRow, type TradeSource, type TxRow } from "./trades";
+import { TradeIndex, type SigRow, type TxRow } from "./trades";
+import { TradeStore } from "./trade-store";
 import { sweepable } from "./keeper";
 import type { RoundView } from "./accounts";
 
-const DEFAULT = "11111111111111111111111111111111";
+const paths: string[] = [];
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const dir of paths.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
-/** A chain of transactions, newest last; each carries ready-decoded events. */
 function fakeChain() {
-  const txs: Array<{ row: SigRow; tx: TxRow; events: Omit<PositionedEvent, "pos">[] }> = [];
-  let duplicatePages = false;
-  const source: TradeSource = {
-    async signatures({ before, until, limit }) {
-      const newestFirst = [...txs].reverse().map((t) => t.row);
-      let start = before ? newestFirst.findIndex((r) => r.signature === before) + 1 : 0;
-      let end = until ? newestFirst.findIndex((r) => r.signature === until) : newestFirst.length;
-      if (end < 0) end = newestFirst.length;
-      if (duplicatePages && until) end = Math.min(newestFirst.length, end + 1); // overlap: re-send the known newest
-      if (start < 0) start = 0;
-      return newestFirst.slice(start, Math.min(end, start + limit));
-    },
-    async transactions(sigs) {
-      return sigs.map((s) => txs.find((t) => t.row.signature === s)?.tx ?? null);
-    },
-    async finalized(sigs) {
-      return sigs.map((s) => txs.find((t) => t.row.signature === s)?.row.finalized ?? false);
-    },
-    decode(tx) {
-      const t = txs.find((x) => x.row.signature === tx.signature);
-      return (t?.events ?? []).map((e, i) => ({ ...e, pos: { signature: tx.signature, slot: tx.slot, blockTime: tx.blockTime, ixIndex: 0, eventIndex: i, txOrder: tx.txOrder } }) as PositionedEvent);
-    },
-  };
-  const fill = (qty: bigint, price: number) => ({
-    name: "OrderFilled" as const, market: "M", outcome: Outcome.Yes, buyOrder: DEFAULT, sellOrder: "ask", buyer: "P", seller: "A",
-    quantity: qty, priceBps: price, quoteAmount: qty * BigInt(price) * 100n, buyerRefund: 0n, makerOrder: "ask",
+  const dir = mkdtempSync(join(tmpdir(), "metrex-trade-test-"));
+  paths.push(dir);
+  const path = join(dir, "journal.jsonl");
+  const rows: SigRow[] = [];
+  const missing = new Set<string>();
+  const signatures = vi.fn(async ({ before, until, limit }: { before?: string; until?: string; limit: number }) => {
+    const list = [...rows].reverse();
+    const start = before ? list.findIndex((r) => r.signature === before) + 1 : 0;
+    const end = until ? list.findIndex((r) => r.signature === until) : list.length;
+    return list.slice(start, Math.min(start + limit, end < 0 ? list.length : end));
   });
-  const push = (sig: string, slot: number, events: Omit<PositionedEvent, "pos">[], finalized = true, failed = false) =>
-    txs.push({ row: { signature: sig, slot, blockTime: 1_700_000_000 + slot, failed, finalized }, tx: { signature: sig, slot, blockTime: 1_700_000_000 + slot, logs: [] }, events });
-  return { source, push, fill, txs, overlap: () => (duplicatePages = true) };
+  const transactions = vi.fn(async (sigs: string[]) => sigs.map((signature) => {
+    const row = rows.find((r) => r.signature === signature);
+    return !row || missing.has(signature) ? null : { signature, slot: row.slot, blockTime: row.blockTime, logs: [] };
+  }));
+  const decode = (tx: TxRow): PositionedEvent[] => [{
+    name: "OrderFilled", market: "M", outcome: Outcome.Yes, buyOrder: "bid", sellOrder: "ask",
+    buyer: "P", seller: "A", quantity: 200n, priceBps: 430, quoteAmount: 8_600_000n, buyerRefund: 0n, makerOrder: "ask",
+    pos: { signature: tx.signature, slot: tx.slot, blockTime: tx.blockTime, ixIndex: 0, eventIndex: 0, txOrder: tx.txOrder },
+  }];
+  const push = (signature: string, slot: number, failed = false) => rows.push({ signature, slot, failed, blockTime: 1_700_000_000 + slot });
+  const open = (writer = false) => new TradeStore(path, decode, writer);
+  return { source: { signatures, transactions }, missing, push, path, open };
 }
 
-describe("trade index (§7.2)", () => {
-  it("deduplicates across overlapping refreshes and pages, skips failed transactions", async () => {
+describe("finalized trade journal", () => {
+  it("publishes live fills during backfill and fetches only gaps over HTTP", async () => {
     const c = fakeChain();
-    c.push("t1", 10, [c.fill(200n, 430), c.fill(100n, 500)]);
-    c.push("t2", 11, [c.fill(5n, 430)], true, true); // failed: no events counted
-    const idx = new TradeIndex(c.source, { pageSize: 1 });
-    await idx.refresh();
-    c.overlap();
-    c.push("t3", 12, [c.fill(100n, 410)], false);
-    await idx.refresh();
-    await idx.refresh();
-    expect(idx.trades("M").map((t) => [t.signature, t.fill.quantity, t.finalized])).toEqual([
-      ["t1", 200n, true],
-      ["t1", 100n, true],
-      ["t3", 100n, false], // confirming
-    ]);
-    expect(idx.chart("M").trades.map((t) => t.quantity)).toEqual([200n, 100n]); // chart uses finalized only
-    c.txs[2]!.row.finalized = true;
-    await idx.refresh();
-    expect(idx.trades("M").every((t) => t.finalized)).toBe(true);
+    for (let i = 0; i < 205; i++) c.push(`older${i}`, 10 + i);
+    const write = c.open(true);
+    const read = c.open();
+    const index = new TradeIndex(c.source, write, 2);
+    await index.refresh();
+    expect(read.trades("M")).toEqual([]);
+    read.reload();
+    expect(read.backfilled).toBe(false);
+    expect(read.trades("M").length).toBe(2);
+    c.push("live", 220);
+    c.push("failed", 221, true);
+    index.observe("live", 220, []);
+    await index.refresh();
+    read.reload();
+    expect(read.trades("M").at(-1)?.signature).toBe("live");
+    expect(read.chart("M").trades.at(-1)?.quantity).toBe(200n);
+    expect(c.source.transactions.mock.calls.flat(2)).not.toContain("live");
+    expect(c.source.transactions.mock.calls.flat(2)).not.toContain("failed");
   });
 
-  it("a restart rebuilds an identical index", async () => {
+  it("continues indexing around an unavailable receipt and persists pending work", async () => {
     const c = fakeChain();
-    for (let i = 0; i < 7; i++) c.push(`s${i}`, 20 + Math.floor(i / 2), [c.fill(BigInt(i + 1), 400 + i)]);
-    const a = new TradeIndex(c.source, { pageSize: 3 });
+    let now = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    c.push("older", 10);
+    c.push("missing", 11);
+    c.missing.add("missing");
+    let index = new TradeIndex(c.source, c.open(true), 1);
+    await index.refresh();
+    await index.refresh();
+    expect(c.open().trades("M").map((t) => t.signature)).toEqual(["older"]);
+    expect(index.store.backfilled).toBe(false);
+    c.missing.clear();
+    now += 6_000;
+    index = new TradeIndex(c.source, c.open(true), 1);
+    await index.refresh();
+    expect(index.store.backfilled).toBe(true);
+    expect(c.open().trades("M").map((t) => t.signature)).toEqual(["older", "missing"]);
+  });
+
+  it("reopens a journal without refetching transactions and recovers a partial tail", async () => {
+    const c = fakeChain();
+    for (let i = 0; i < 7; i++) c.push(`s${i}`, 20 + Math.floor(i / 2));
+    const a = new TradeIndex(c.source, c.open(true));
     await a.refresh();
-    const b = new TradeIndex(c.source, { pageSize: 2 });
+    appendFileSync(c.path, '{"receipts":');
+    const read = c.open();
+    expect(read.events("M")).toEqual(a.store.events("M"));
+    c.source.transactions.mockClear();
+    c.push("new", 23);
+    const b = new TradeIndex(c.source, c.open(true));
     await b.refresh();
-    const ser = (x: TradeIndex) => JSON.stringify(x.events(), (_, v) => (typeof v === "bigint" ? v.toString() : v));
-    expect(ser(b)).toBe(ser(a));
-    expect(a.events().map((e) => e.pos.signature)).toEqual(["s0", "s1", "s2", "s3", "s4", "s5", "s6"]);
+    read.reload();
+    expect(c.source.transactions).toHaveBeenCalledExactlyOnceWith(["new"]);
+    expect(read.events("M").map((e) => e.pos.signature)).toEqual(["s0", "s1", "s2", "s3", "s4", "s5", "s6", "new"]);
   });
 });
 

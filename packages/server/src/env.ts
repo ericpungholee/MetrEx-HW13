@@ -50,6 +50,8 @@ export const KEYPAIRS = {
   judge3: { env: "JUDGE_3_KEYPAIR", file: "judge-3" },
   /** v2 keeper (spec-v2 §7.4): no authority, pays match and sweep fees. */
   keeper: { env: "KEEPER_KEYPAIR", file: "keeper" },
+  /** V7 simulator fee payer (docs/spec-simulation.md §4): pays fees and ATA rent, never trades. */
+  simSponsor: { env: "SIM_SPONSOR_KEYPAIR", file: "sim-sponsor" },
 } as const;
 
 export type KeypairName = keyof typeof KEYPAIRS;

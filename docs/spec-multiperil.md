@@ -1,6 +1,6 @@
 # MetrEx multi-peril addendum
 
-_Status: merged into `main` and deployed to Devnet on 2026-11-21._
+_Active Devnet replay policy. The account and instruction contract is specified in [spec-v2.md](spec-v2.md)._
 
 This addendum extends [spec-v2.md](spec-v2.md) from one wildfire to four property markets, one per peril. Everything spec-v2 says still holds unless a section here replaces it. Section numbers (§) in code comments that cite `spec-multiperil.md` refer to this file.
 
@@ -13,9 +13,11 @@ The owner approved these choices on 2026-11-21:
 
 ## 1. Product
 
-Each market asks one yes-or-no question about one property and one calendar month. Examples: "Will 16185 Sunset Boulevard be affected by a wildfire this January?" and "Will 7007 Peckham Street be affected by a tornado this May?". YES pays 1 mUSD per share when the pinned trigger is met. Buying YES is parametric protection: it pays on the event, not on damage. NO holders supply the collateral and earn the premium.
+Each contract identifies one property, one hazard and one historical coverage month. One round account identifies one Devnet replay of that contract. A later rehearsal of the same month has independent mints, book, vault and positions. Every pair is funded by a split of exactly 1 mUSD. A purchased YES share’s winning payout is fixed at 1 mUSD, independent of subsequent prices, and buyers owe no additional premium for that share. A wallet can buy additional shares or sell existing shares while the book is open.
 
-Every market is a **historical replay**. The question is written as if the month were still ahead, but the coverage month is in the past and the settlement data already exists. The app says so on every card and market page (§7.1). The oracle's data stays private until finalized settlement (spec-v2 §9).
+A future live monthly contract would open seven days before the local coverage month, trade until a defined hazard halt or month-end, then settle. Its advance window can overlap the prior contract’s coverage. A full advance window plus a 31-day calendar month would require as many as 38 days of trading. The deployed program caps `trading_ends_at - created_at` at 30 days and accepts the four pinned scenario IDs. It supports concurrent rounds, including rounds of the same scenario at protocol level, and this replay operator limits Open rounds to one per hazard. A live monthly catalog and live halt policy would require new approved contract semantics. The demo uses accelerated Devnet rounds and supports explicit rotation into independent accounts.
+
+Every market is a **historical replay**. The historical coverage window scopes the dataset. The Devnet creation time, deadline and actual closure are separate chain times. The settlement deadline is actual closure plus the Config timeout. Redemption begins after settlement. The oracle's data stays private until finalized settlement (spec-v2 §9).
 
 Trading, collateral, the order book, portfolio and redemption are the same for every peril. Only the oracle adapter (§4), evidence (§5), bot quotes (§6) and display text (§7) differ.
 
@@ -41,18 +43,18 @@ Rounds of different hazards may be Open at the same time, each with its own `tra
 
 | Guaranteed by the program | Policy of MetrEx's operator and scripts |
 |---|---|
-| A market trades only while **its own** round is Open, before **its own** deadline, and unresolved (I6, per round) | **One Open round per hazard.** `scripts/prepare-multiperil.ts` and `prepare-demo-v2.ts` settle a hazard's stale round before opening its next one |
+| A market trades only while **its own** round is Open, before **its own** deadline, and unresolved (I6, per round) | **One Open replay round per hazard.** `scripts/prepare-multiperil.ts` reuses a tradable round. Expiry recovery or explicit rotation settles an old round before creating another |
 | A market's property scenario equals its round's scenario | Which round the homepage features for each hazard (the newest round of that scenario containing the catalog property) |
 | Every spec-v2 §5.10 guarantee, per market | The contract month, question and trigger text shown for a market (catalog display data) |
 
-`Config.latest_round` now means "the most recently created round", not "the only round". The homepage no longer reads it (§7.2). The `/rounds` list and the portfolio look back 8 rounds.
+`Config.latest_round` now means "the most recently created round", not "the only round". The app and workers discover rounds by their derived addresses, with no fixed look-back. The homepage selects the newest round of each catalog property. Historical holdings and order escrows remain accessible in the portfolio.
 
 ## 3. Properties
 
 **The owner asked for real addresses (2026-11-21).** Each catalog market is a real residential address point from OpenStreetMap, chosen by `scripts/find-real-properties.ts` and written to `data/market-properties.json`. The raw Overpass responses are saved under `data/raw/osm-addresses/` and pinned by SHA-256 in [data/DATASET-hazards.md](../data/DATASET-hazards.md), so the choice can be rerun offline.
 
 **Selection rules:**
-- A candidate needs `addr:housenumber` and `addr:street`, plus residential evidence: a house, detached, residential, terrace, bungalow or apartments building tag, or a bare address point.
+- A candidate needs `addr:housenumber` and `addr:street`, plus residential evidence: a house, detached, residential, terrace, bungalow or apartments building tag, or a matching address with a positive residential dwelling count in the assessor’s parcel records.
 - Shops, offices, amenities, named businesses and ambiguous `building=yes` are excluded.
 - **No damage data picks a property.** Any element with `damage:*` or lifecycle tags (destroyed:, razed:, …), which come from post-fire damage inspections, is excluded. DINS records are never used.
 - Each candidate is evaluated exactly as the oracle will, at its integer micro-degree point.
@@ -62,15 +64,13 @@ Rounds of different hazards may be Open at the same time, each with its own `tra
 | ID | Address (on-chain label) | Place | OSM element | Scenario | Trigger | Outcome margin |
 |---|---|---|---|---|---|---|
 | 7 | 16185 Sunset Boulevard | Pacific Palisades, California | relation/6181038 (apartments) | 1 | 500 m | inside the final footprint (125 m in). Flipping to NO needs ≥ 500 m more, since the trigger reaches 500 m past every ring |
-| 4 | 1111 Memorial Drive | Coral Gables, Florida | node/6014195094 | 2 | 0 | 18,681 m outside every 64-kt swath (rule ≥ 10 km) |
-| 5 | 909 Stanly Way | Napa, California | node/11689072992 | 3 | 0 | MMI 8.2 at the nearest node (378 m). Every node within 750 m ≥ 8.0 |
+| 8 | 4835 University Drive | Coral Gables, Florida | way/1046022736 (house) | 2 | 0 | 19,169 m outside the nearest 64-kt swath |
+| 9 | 214 Auberge Path | Napa, California | node/11686888530 (county parcel 047420014000, one dwelling) | 3 | 0 | MMI 8.1 at the nearest node, 438 m away |
 | 6 | 7007 Peckham Street | Johnston, Iowa | way/1340970761 (house) | 4 | 500 m | 64 m from an EF2+ centerline (rule ≤ 150 m) |
 
-The wildfire and Napa margins are narrower than the earlier lattice picks (≥ 300 m from every ring, and every node within 1.5 km). OSM has no damage-free Palisades home that far inside the footprint, and too few Napa address points to clear 1.5 km. The rules above are what the script enforces and the tests check.
+The residential audit retired properties 4 and 5 from the featured catalog. The University of Miami identifies 1111 Memorial Drive as a classroom building. Napa County parcel GIS maps the 909 Stanly Way OSM point to a vacant parcel. New property IDs 8 and 9 preserve the old accounts and positions. The pinned raw parcel export contains location and land-use fields only. See [source records](../data/DATASET-hazards.md#real-property-addresses-openstreetmap).
 
-Every market pays on hazard proximity or measured intensity. It says nothing about damage to the home or its residents, and the app says so on the homepage and in the footer. Map data © OpenStreetMap contributors, under the ODbL.
-
-Properties 1–3 (fictional v1/v2 wildfire points, such as "Palisades · Home #1042") stay registered and unchanged. They belong to earlier rounds and the `/v1` demo, not the catalog.
+Every market pays on hazard proximity or measured intensity. Map data © OpenStreetMap contributors, under the ODbL. Historical properties 1–5 stay registered for recovery and verification.
 
 ## 4. Hazard datasets and oracle adapters
 
@@ -87,11 +87,12 @@ Every file carries a `metrex.rule` object, so the rule is covered by the same ha
 
 | Hazard | Rule | Coverage window (UTC) |
 |---|---|---|
-| Hurricane | Inside any NHC best-track 64-kt wind swath piece whose storm overlaps the month | 2017-09-01T04Z → 2017-10-01T04Z (America/New_York) |
-| Earthquake | USGS ShakeMap MMI × 10 at the nearest grid node ≥ 80 | 2014-08-01T07Z → 2014-09-01T07Z (America/Los_Angeles) |
+| Wildfire | Final mapped footprint of the Palisades Fire within 500 m of the property | 2025-01-01T08Z → 2025-02-01T08Z (America/Los_Angeles) |
+| Hurricane | Inside the NHC best-track 64-kt wind swath of a replay storm (Irma, Jose, Katia, Lee or Maria) | 2017-09-01T04Z → 2017-10-01T04Z (America/New_York) |
+| Earthquake | South Napa event nc72282711 USGS ShakeMap MMI × 10 at the nearest grid node ≥ 80 | 2014-08-01T07Z → 2014-09-01T07Z (America/Los_Angeles) |
 | Tornado | Geodesic distance to any surveyed EF2+ centerline that started in the month ≤ `trigger_distance_m` | 2024-05-01T05Z → 2024-06-01T05Z (America/Chicago) |
 
-The wildfire scenario keeps its v1/v2 perimeter file and rule (`packages/geo`, evidence v2).
+Wildfire and earthquake are event-specific. The hurricane contract uses complete swaths for the five pinned storms, and the tornado contract uses qualifying surveyed tracks in the pinned central Iowa query window. The month labels identify the historical windows. Settlement relies on these named measurement sets.
 
 ### 4.3 Missing coverage is refused, never settled NO
 
@@ -112,16 +113,16 @@ A refused market stays unresolved. The existing recovery paths apply: `invalidat
 
 ## 6. Per-market bot ladders
 
-`packages/exchange/src/catalog.ts` holds one ladder per catalog market. These are starting quotes for MetrEx-operated makers, not premiums, forecasts or actuarial estimates. Skew is off, NO is the exact complement of YES, and the ladders never cross. The bot worker uses `ladderFor(propertyId, scenarioId, bot, fallback)`, and other markets keep the shipped `DEMO_BOTS` ladder.
+`packages/exchange/src/catalog.ts` holds one ladder per catalog market. These are starting quotes for MetrEx-operated makers, not premiums, forecasts or actuarial estimates. Starting NO quotes are exact complements of the corresponding YES quotes. On live books, makers clamp against observed external orders and sibling quotes, size by actual inventory, cap projected exposure and limit inventory growth from splits. Market-driven orders and fills can move the executable prices. The old fictional-market ladder is available only in the loopback validator rehearsal.
 
 | Market | A (ref ± half) | B | C | Sizes A/B/C | Split pairs |
 |---|---|---|---|---|---|
-| Wildfire #1 | 80 ± 6 | 90 ± 10 | 100 ± 18 | 60k / 40k / 30k | 60k |
-| Hurricane #4 | 120 ± 9 | 135 ± 15 | 150 ± 27 | 60k / 40k / 30k | 60k |
-| Earthquake #5 | 10 ± 1 | 10 ± 2 | 11 ± 4 | 60k / 40k / 30k | 60k |
+| Wildfire #7 | 80 ± 6 | 90 ± 10 | 100 ± 18 | 60k / 40k / 30k | 60k |
+| Hurricane #8 | 120 ± 9 | 135 ± 15 | 150 ± 27 | 60k / 40k / 30k | 60k |
+| Earthquake #9 | 10 ± 1 | 10 ± 2 | 11 ± 4 | 60k / 40k / 30k | 60k |
 | Tornado #6 | 30 ± 2 | 34 ± 4 | 38 ± 7 | 60k / 40k / 30k | 60k |
 
-At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) mUSD, mostly NO-bid escrow and split collateral. `fund-bots.ts` tops each bot up to 600k mUSD.
+At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) mUSD, mostly NO-bid escrow and split collateral. See [the V7 capital rules](spec-simulation.md#3-adaptive-maker-quoting-replaces-spec-v2-82-step-1-and-spec-multiperil-6-skew-off) for current maker funding and inventory policy.
 
 ## 7. Frontend
 
@@ -129,7 +130,7 @@ At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) 
 
 Every market page shows the contract details in plain text:
 
-- its payout rule. The wildfire sentence is the verbatim spec-v2 §10.1 text. Every other rule names its source and threshold and ends "…, not on damage.";
+- its payout rule. The wildfire and earthquake rules name their specific events. The remaining rules name their dataset scope and threshold;
 - the historical coverage month, the separate Devnet trading deadline, the settlement source and the invalid-outcome terms beside the ticket.
 
 This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution and each photo carries its credit.
@@ -146,15 +147,17 @@ Cards and market headers label their images as area photos and link to their sou
 
 ### 7.4 Coverage mode
 
-The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. The default tolerances remain 100 bps for coverage and 200 bps for share orders.
+The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. Tolerance is relative to the best executable price, with defaults of 10% for coverage and 5% for share orders. The planner rounds the tolerance down to a whole price tick. Each signed take carries the specific resting price, sequence and quantity. The maximum mUSD spend is the sum of the signed buy amounts.
+
+If 100,000 YES shares fill at a weighted average of 0.25¢ (25 bps), they cost 250 mUSD upfront. The other 99,750 mUSD is the complementary share of the paired collateral. The winning YES payout is 100,000 mUSD. If there is less executable depth, the preview and transaction cover the actual fill quantity.
 
 ### 7.5 Portfolio
 
-The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio looks back 8 rounds.
+The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio discovers all rounds, with historical holdings and order escrows visible.
 
 ### 7.6 Operator
 
-`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server route already takes a round address.
+`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
 
 ## 8. Tests
 

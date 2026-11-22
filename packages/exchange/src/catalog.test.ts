@@ -16,9 +16,9 @@ describe("catalog", () => {
     for (const c of CATALOG) expect(new TextEncoder().encode(c.roundLabel).length).toBeLessThanOrEqual(32);
   });
 
-  it("keeps the wildfire payout sentence verbatim and says every hazard pays without regard to damage", () => {
+  it("names the wildfire replay explicitly and says every hazard pays without regard to damage", () => {
     expect(catalogByScenario(1)?.payoutRule).toBe(
-      "Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage.",
+      "Pays the full amount if the final mapped footprint of the January 2025 Palisades Fire came within 500 m of this property. Pays on fire proximity, not on damage.",
     );
     for (const c of CATALOG) expect(c.payoutRule).toMatch(/not on damage\.$/);
   });

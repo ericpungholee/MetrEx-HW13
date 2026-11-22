@@ -22,7 +22,7 @@ import {
   type Headline,
   type MarketInfo,
 } from "@/lib/exchange-client";
-import { formatPrice, formatShares, marketState, marketTitle, outcomeName, payoutRule, question } from "@/lib/exchange-format";
+import { formatPrice, formatRemaining, formatShares, marketState, marketTitle, outcomeName, payoutRule, question } from "@/lib/exchange-format";
 import { explorerAddress, formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { Panel, TxLink } from "@/components/ui";
@@ -137,8 +137,8 @@ export function MarketView({ market, initialOutcome }: {
 
   const info = usePoll(() => fetchMarketInfo(market), [market], 3_000);
   const book = usePoll(() => fetchBook(market), [market], 2_000);
-  const trades = usePoll(() => fetchTrades(market), [market], 5_000);
-  const chart = usePoll(() => fetchChart(market), [market], 5_000);
+  const trades = usePoll(() => fetchTrades(market), [market], 2_000);
+  const chart = usePoll(() => fetchChart(market), [market], 2_000);
   const health = usePoll(() => fetchHealth(), [], 10_000);
   const m = info.data?.market;
   const siblingRound = info.data && info.data.round.marketCount > 1 ? info.data.round.address : undefined;
@@ -146,7 +146,10 @@ export function MarketView({ market, initialOutcome }: {
   const wallet = usePoll(
     async () => {
       if (!publicKey || !m) return null;
-      const [h, orders] = await Promise.all([fetchHoldings(publicKey, [m]), fetchWalletOrders(publicKey)]);
+      const [h, orders] = await Promise.all([
+        fetchHoldings(publicKey, [m]),
+        fetchWalletOrders(publicKey).catch(() => fetchWalletOrders(publicKey, m.address)),
+      ]);
       return { owner: publicKey.toBase58(), musd: h.musd, yes: h.yes.get(m.address) ?? 0n, no: h.no.get(m.address) ?? 0n, orders };
     },
     [me, m?.address],
@@ -168,6 +171,12 @@ export function MarketView({ market, initialOutcome }: {
   };
 
   const makers = useMemo(() => health.data?.marketMakers ?? new Map<string, string>(), [health.data]);
+  // Remaining time counts down to the on-chain trading_ends_at (docs/spec-simulation.md §6).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, []);
 
   if (info.data === null) return <div className="py-16 text-center text-sm text-dim">Market not found on this cluster.</div>;
   if (!info.data || !m) return info.error ? <Unavailable>Exchange data unavailable: {info.error}</Unavailable> : <div className="h-96 animate-pulse bg-bg-soft" />;
@@ -191,7 +200,8 @@ export function MarketView({ market, initialOutcome }: {
             <Link href="/" className="hover:text-ink">Markets</Link>
             <span className="text-faint">·</span>
             <StateLabel state={state} />
-            {info.data.volume !== null && <span className="num">· Vol {formatMusd(info.data.volume)} mUSD</span>}
+            {info.data.volume !== null && <span className="num">· {info.data.indexing ? "Indexed vol" : "Vol"} {formatMusd(info.data.volume)} mUSD</span>}
+            {r.state === "open" && m.outcome === "unresolved" && formatRemaining(r.tradingEndsAt, nowMs) && <span className="num">· {formatRemaining(r.tradingEndsAt, nowMs)} left</span>}
             {info.data.confirmingFills > 0 && (
               <>
                 <span className="text-faint">·</span>
@@ -278,13 +288,13 @@ export function MarketView({ market, initialOutcome }: {
               {tab === "trades" &&
                 (!trades.data ? (
                   trades.error ? <Unavailable>{trades.error}</Unavailable> : <div className="h-24 animate-pulse bg-bg-soft" />
-                ) : trades.data.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-dim">No trades yet.</div>
+                ) : trades.data.trades.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-dim">{trades.data.indexing ? "Waiting for indexed fills…" : "No trades yet."}</div>
                 ) : (
                   <table className="w-full text-sm">
                     <tbody>
-                      {trades.data.slice(0, 16).map((t) => (
-                        <tr key={`${t.signature}-${t.buyer}-${t.seller}-${t.quantity}`} className="border-t border-line">
+                      {trades.data.trades.slice(0, 16).map((t) => (
+                        <tr key={t.eventId} className="border-t border-line">
                           <td className="py-2">
                             {formatShares(t.quantity)} {outcomeName(t.outcome)} @ <span className="num">{formatPrice(t.priceBps)}</span>
                           </td>
@@ -321,7 +331,7 @@ export function MarketView({ market, initialOutcome }: {
 
         <div id="position" className="scroll-mt-20">
           <Panel title="Position">
-            <WalletPanel market={m} have={walletData} orders={walletData?.orders} trades={trades.data} onDone={refresh} />
+            <WalletPanel market={m} have={walletData} orders={walletData?.orders} trades={trades.data?.trades} onDone={refresh} />
           </Panel>
         </div>
 
@@ -329,13 +339,21 @@ export function MarketView({ market, initialOutcome }: {
           <section aria-labelledby="rules-title" className="space-y-2 border-t border-line pt-4">
             <h2 id="rules-title" className="text-lg font-semibold tracking-tight">Market rules</h2>
             <p className="text-sm text-ink-secondary">{payoutRule(m)}</p>
-            {c && <p className="text-sm text-dim">Historical coverage · {c.month}</p>}
-            {deadlines && <p className="text-sm text-dim">Devnet trading deadline {deadlines} UTC</p>}
+            {c && <p className="text-sm text-dim">Historical replay · {c.month} ({c.coverageStart.slice(0, 10)} to {c.coverageEndExclusive.slice(0, 10)}, end exclusive)</p>}
+            <p className="text-sm text-dim">Devnet trading opened {new Date(Number(r.createdAt) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC.</p>
+            {deadlines && (
+              <p className="text-sm text-dim">
+                Devnet trading deadline {deadlines} UTC
+                {r.state === "open" && m.outcome === "unresolved" && (formatRemaining(r.tradingEndsAt, nowMs) ? ` · ${formatRemaining(r.tradingEndsAt, nowMs)} left` : " · deadline passed, awaiting oracle settlement")}
+              </p>
+            )}
             {c && <p className="text-sm text-dim">Settlement source · {c.source}</p>}
           </section>
           <section id="settlement" aria-labelledby="settlement-title" className="scroll-mt-20 space-y-2 border-t border-line pt-4">
             <h2 id="settlement-title" className="text-lg font-semibold tracking-tight">Settlement</h2>
+            {info.data.settlementDeadline && <p className="text-sm text-dim">Oracle settlement deadline {new Date(Number(info.data.settlementDeadline) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC.</p>}
             <Settlement key={`${m.address}:${m.evidenceHash}`} info={info.data} />
+            <p className="text-sm"><Link href={`/market/${m.address}/ledger`} className="underline underline-offset-2">Trade and settlement ledger</Link> <span className="text-dim">· every fill, position and payout from on-chain events</span></p>
             <details className="text-xs text-dim">
               <summary className="cursor-pointer">On-chain details</summary>
               <p className="mt-2 break-all">Round #{r.roundId.toString()} · Dataset SHA-256 {r.datasetSha256}</p>

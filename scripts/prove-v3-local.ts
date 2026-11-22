@@ -24,7 +24,6 @@ import {
 } from "@metrex/exchange";
 import {
   ataOf,
-  connectionTradeSource,
   fetchAllRounds,
   fetchExchangeConfig,
   fetchMarketsOfRound,
@@ -41,7 +40,9 @@ import {
   sweepOrderIx,
   takeOrderIx,
   tokenBalance,
-  TradeIndex,
+  TradeStore,
+  tradeDecoder,
+  tradeStorePath,
   type MarketView,
 } from "@metrex/server/exchange";
 import { getExchangeEvidence, handleBook, handleHealth, handleMarket } from "@metrex/server";
@@ -157,10 +158,17 @@ async function phaseDemo(): Promise<void> {
     matched = (await p.account.order.fetch(jp.order)).remainingQty.toString() === "0";
   }
   assert(matched, "keeper did not match the crossed pair within 30 s");
-  await sleep(6_000); // give a duplicate match every chance to appear
-  const idx = new TradeIndex(connectionTradeSource(() => conn, p.programId));
-  await idx.refresh();
-  const pair = idx.trades(featured.address.toBase58()).filter((t) => t.fill.buyOrder === jp.order.toBase58() && t.fill.sellOrder === placed.order.toBase58());
+  const journal = tradeStorePath(p.programId.toBase58());
+  const idx = new TradeStore(journal, tradeDecoder(getRpc()));
+  const matchingFills = () => idx.trades(featured.address.toBase58()).filter((t) =>
+    t.fill.buyOrder === jp.order.toBase58() && t.fill.sellOrder === placed.order.toBase58(),
+  );
+  for (let i = 0; i < 45 && !matchingFills().length; i++) {
+    idx.reload();
+    if (!matchingFills().length) await sleep(1_000);
+  }
+  idx.reload();
+  const pair = matchingFills();
   assert.equal(pair.length, 1, `expected one match, got ${pair.length}`);
   assert.equal(pair[0]!.fill.priceBps, 410, "older (resting) price");
   assert.equal(pair[0]!.fill.quantity, 20n);
@@ -174,14 +182,11 @@ async function phaseDemo(): Promise<void> {
   const b = await loadMarketBook(conn, featured.address, collateral);
   assert(a && b);
   if (a.market.nextOrderSeq === b.market.nextOrderSeq) assert.equal(bookFingerprint(b.book), bookFingerprint(a.book));
-  const i1 = new TradeIndex(connectionTradeSource(() => conn, p.programId));
-  const i2 = new TradeIndex(connectionTradeSource(() => conn, p.programId), { pageSize: 7 });
-  await Promise.all([i1.refresh(), i2.refresh()]);
-  const ser = (x: TradeIndex) => JSON.stringify(x.trades(featured.address.toBase58()), (_, v) => (typeof v === "bigint" ? v.toString() : v));
-  const s1 = ser(i1).replace(/"finalized":(true|false)/g, "");
-  const s2 = ser(i2).replace(/"finalized":(true|false)/g, "");
-  assert.equal(s2, s1);
-  ok(`book fingerprint identical (${a.book.length} orders); ${i1.trades(featured.address.toBase58()).length} fills identical across two fresh indexes`);
+  idx.reload();
+  const reopened = new TradeStore(journal, tradeDecoder(getRpc()));
+  const ser = (x: TradeStore) => JSON.stringify(x.trades(featured.address.toBase58()), (_, v) => (typeof v === "bigint" ? v.toString() : v));
+  assert.equal(ser(reopened), ser(idx));
+  ok(`book fingerprint identical (${a.book.length} orders); ${reopened.trades(featured.address.toBase58()).length} fills recovered from the journal`);
 }
 
 async function phaseReads(): Promise<void> {

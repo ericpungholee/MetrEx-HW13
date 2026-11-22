@@ -68,15 +68,15 @@ describe("catalog properties: real OSM addresses (margins, §3)", () => {
     expect(r.inside).toBe(true);
   });
 
-  it("#4 1111 Memorial Drive (Coral Gables) is far outside every hurricane-force swath: NO", () => {
-    const p = prop(4);
+  it("#8 4835 University Drive (Coral Gables) is far outside every hurricane-force swath: NO", () => {
+    const p = prop(8);
     const r = evaluateHazard(load(2), p);
     expect(r.triggered).toBe(false);
     expect("inside" in r.computed && r.computed.distance_m).toBeGreaterThanOrEqual(10_000);
   });
 
-  it("#5 909 Stanly Way (Napa) reached MMI VIII at the nearest ShakeMap node: YES", () => {
-    const r = evaluateHazard(load(3), prop(5));
+  it("#9 214 Auberge Path (Napa) reached MMI VIII at the nearest ShakeMap node: YES", () => {
+    const r = evaluateHazard(load(3), prop(9));
     expect(r.triggered).toBe(true);
     expect("mmi_x10" in r.computed && r.computed.mmi_x10).toBeGreaterThanOrEqual(81);
   });
@@ -93,7 +93,7 @@ describe("catalog properties: real OSM addresses (margins, §3)", () => {
   });
 
   it("rejects a trigger distance that contradicts the method", () => {
-    expect(() => evaluateHazard(load(2), { ...prop(4), trigger_distance_m: 500 })).toThrow();
+    expect(() => evaluateHazard(load(2), { ...prop(8), trigger_distance_m: 500 })).toThrow();
     expect(() => evaluateHazard(load(4), { ...prop(6), trigger_distance_m: 0 })).toThrow();
   });
 });
@@ -101,7 +101,7 @@ describe("catalog properties: real OSM addresses (margins, §3)", () => {
 describe("evidence v3", () => {
   it("is canonical, integer-only, deterministic and hashed", () => {
     const s = registry["3"]!;
-    const p = prop(5);
+    const p = prop(9);
     const input = {
       market: MARKET,
       round: KEY,

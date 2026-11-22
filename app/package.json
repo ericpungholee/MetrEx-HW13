@@ -14,9 +14,7 @@
   "dependencies": {
     "@anchor-lang/core": "0.32.3",
     "@metrex/exchange": "workspace:*",
-    "@metrex/geo": "workspace:*",
     "@metrex/server": "workspace:*",
-    "@metrex/shared": "workspace:*",
     "@solana/spl-token": "^0.4.13",
     "@solana/wallet-adapter-base": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.40",

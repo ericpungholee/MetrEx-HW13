@@ -82,7 +82,7 @@ export async function handleRpcProxy(req: Request): Promise<Response> {
     try {
       const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text });
       // A send is never retried on another endpoint: it may already have landed.
-      if (res.status >= 500 && !methods.includes("sendTransaction") && url !== urls[urls.length - 1]) continue;
+      if ((res.status === 429 || res.status >= 500) && !methods.includes("sendTransaction") && url !== urls[urls.length - 1]) continue;
       return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
     } catch (e) {
       last = e;

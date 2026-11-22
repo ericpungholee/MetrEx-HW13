@@ -54,9 +54,8 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
 
   // Even spacing by event order: chain order is what matters, gaps in time are not data.
   const xs = pts.map((_, i) => i);
-  const prices = pts.map((p) => p.priceBps);
-  let lo = prices.length ? Math.min(...prices) : 0;
-  let hi = prices.length ? Math.max(...prices) : 10_000;
+  let lo = pts.reduce((min, p) => Math.min(min, p.priceBps), pts.length ? 10_000 : 0);
+  let hi = pts.reduce((max, p) => Math.max(max, p.priceBps), pts.length ? 0 : 10_000);
   const padBps = Math.max(20, Math.round((hi - lo) * 0.15));
   lo = Math.max(0, lo - padBps);
   hi = Math.min(10_000, hi + padBps);
@@ -89,6 +88,7 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
           {pts.length > 0 && <button type="button" aria-pressed={table} className="px-2 py-1.5 hover:text-ink" onClick={() => setTable((t) => !t)}>{table ? "Chart" : "Table"}</button>}
         </div>
       </div>
+      {pts.length > 0 && chart?.indexing && <p className="pt-2 text-xs text-dim">Earlier history is indexing.</p>}
       {change !== null && (
         <p className="num pt-2 text-xs text-dim">
           {change > 0 ? "+" : change < 0 ? "−" : ""}{formatPrice(Math.abs(change))} across shown {series === "trade" ? "trades" : "quotes"}
@@ -96,7 +96,8 @@ export function PriceChart({ chart, outcome, unavailable }: { chart: ChartInfo |
       )}
       {!pts.length ? (
         <div className="grid min-h-40 place-items-center text-center text-sm text-dim">
-          {unavailable ? "Price history unavailable." : !chart || chart.indexing ? "Loading price history…" :
+          {unavailable ? "Price history unavailable." : !chart ? "Loading price history…" : chart.indexing ?
+            (series === "trade" ? "Waiting for indexed fills…" : "Earlier quote history is indexing…") :
             series === "trade" ? (range === null ? "No finalized trades yet." : "No finalized trades in this period.") :
               (range === null ? "No quoted midpoint history yet." : "No quotes in this period.")}
         </div>
