@@ -31,17 +31,17 @@ const withLinks = (steps: SettleStep[]) => steps.map((s) => ({ ...s, explorer: s
 
 /**
  * Market-page settlement (docs/spec-simulation.md §7.1): close_round stops every member market of
- * the round, so a request naming one market is refused unless that market is the round's only
- * member. Pure so it can be tested without a cluster.
+ * the round and the fast-forward resolves all of them. By owner decision (2026-11-22) a market whose
+ * round has siblings may still be settled; the page confirms how many markets that settles. The
+ * named market must belong to the round. Pure so it can be tested without a cluster.
  */
-export function soleMarketError(market: string, roundAddress: string, members: readonly { address: string; round: string }[]): string | null {
+export function roundMemberError(market: string, roundAddress: string, members: readonly { address: string; round: string }[]): string | null {
   const target = members.find((m) => m.address === market);
   if (!target || target.round !== roundAddress) return "Market does not belong to this round";
-  if (members.length !== 1) return `This round has ${members.length} markets, so it cannot be settled one market at a time`;
   return null;
 }
 
-async function requireSoleMarket(round: RoundView, market: unknown): Promise<void> {
+async function requireRoundMember(round: RoundView, market: unknown): Promise<void> {
   if (market === undefined) return;
   if (typeof market !== "string" || !market) throw badRequest("Invalid market address");
   try {
@@ -50,7 +50,7 @@ async function requireSoleMarket(round: RoundView, market: unknown): Promise<voi
     throw badRequest("Invalid market address");
   }
   const members = await getRpc().run((c) => fetchMarketsOfRound(getExchangeProgram(c), round.address));
-  const err = soleMarketError(market, round.address.toBase58(), members.map((m) => ({ address: m.address.toBase58(), round: m.round.toBase58() })));
+  const err = roundMemberError(market, round.address.toBase58(), members.map((m) => ({ address: m.address.toBase58(), round: m.round.toBase58() })));
   if (err) throw conflict(err);
 }
 
@@ -214,7 +214,7 @@ export function handleOperatorSettle(req: Request): Promise<Response> {
       if (!OPERATOR_ACTIONS.includes(action)) throw badRequest(`action must be one of ${OPERATOR_ACTIONS.join(", ")}`);
       const round = await targetRound(body);
       if (body.market !== undefined && action !== "fast_forward" && action !== "status") throw badRequest("market applies to fast_forward and status only");
-      await requireSoleMarket(round, body.market);
+      await requireRoundMember(round, body.market);
       if (action === "status") return json(await status(round));
       return json(
         await lock.with(round.address.toBase58(), async () => {

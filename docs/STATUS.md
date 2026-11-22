@@ -21,6 +21,16 @@ Program [metrex_exchange](https://explorer.solana.com/address/BrHisWF8aXQzrCvvDP
 - Found during the test: seven wildfire resets (rounds 34–40) pushed the hurricane, earthquake and tornado rounds 30–32 out of the sim's newest-8-rounds window. The sim had stopped trading those hazards. It now widens its window to the oldest Open round, rechecked every minute.
 - Flood was not added: it needs a new scenario ID, which is a frozen-interface change.
 
+## Settle on shared rounds (2026-11-22, spec-simulation §7.1)
+
+Owner decision: Settle market works on any open market. Listed homes join their hazard's open round, so a round can hold several markets. `close_round` stops all of them and the fast-forward resolves each through the oracle. The confirmation says how many markets settle together. The server still refuses a market that is not in the named round.
+
+## Judge-flow liquidity and end-to-end test (2026-11-22)
+
+- **Partial fill diagnosed.** "1 of 10 YES can fill" came from maker A, cash-starved at its 1,000 mUSD reserve while quoting 63 markets, resting dust (347 → 1 shares) at the best ask. The fixed 5% market tolerance (spec-multiperil §7.4) stops the sweep before the next maker 46% higher. Not a matching, sizing-math or program fault. Fix: makers skip quotes under a tenth of their top size (spec-simulation §3). Every top level now carries 30,000–40,000 funded shares from makers B and C. Maker A still has only ~1,000 mUSD free; seeding is one-time, so a top-up is an owner decision.
+- **Devnet E2E (`scripts/e2e-judge-flow.ts`, stand-in signer, not Phantom)** on wildfire round 42: buy 10 YES, buy 100 YES, sell 10 YES, a 2-order NO take (40,000 @ 99.05¢ + 1 @ 99.11¢). Each mUSD and share delta equalled the planned fills exactly. Settle market: atomic CloseRound + ResolveMarket in [one transaction](https://explorer.solana.com/tx/3Q6VjAnGgReNYCfD1vQFnacznTfwMGE2Qx2R1RTDBcxc3Gzr1VuMfpSMur4rBmcypET8V4jC4MDdcaZzgsBJc2ck?cluster=devnet), redeemable in 1.8 s, oracle YES. [Redeem](https://explorer.solana.com/tx/3jByMLSkvPSWR24XH6ZYo5awB8CVF69RfBP7PWPrzPqf4hEimdH1JSg5feYAZWjV9LAWycYhsTPC1rQKrgWUVQiH?cluster=devnet) of 100 YES paid exactly +100 mUSD. Reset market opened untouched round 44 ([market DPmHyS](https://explorer.solana.com/address/DPmHySaetiEabxVBJqUtehd3gg4oTthWYGdADfFYikSB?cluster=devnet)).
+- **Not yet verified:** the same sequence signed in Phantom.
+
 ## Verification
 
 - **Consolidation and data.** The active RFQ application, routes and workers are retired. Fresh property IDs replace the classroom and vacant parcel. All normalized datasets and residential sources reproduce from pinned inputs.

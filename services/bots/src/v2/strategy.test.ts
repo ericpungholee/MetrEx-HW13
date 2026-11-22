@@ -244,3 +244,21 @@ describe("three bots, sequential ticks against a shared snapshot", () => {
     expect(Math.max(...b.filter((r) => r.isBot && r.outcome === Outcome.Yes && r.side === OrderSide.Buy).map((r) => r.priceBps))).toBe(409);
   });
 });
+
+describe("minimum quote size (spec-simulation §3)", () => {
+  it("a cash-starved maker posts no dust quote, and cancels one that has shrunk", () => {
+    // Live wildfire round 42, 2026-11-22: maker A held 347 YES and 1,000 mUSD (its reserve).
+    const starved = { musd: DEFAULT_BOT_CONFIG.musdReserve, yes: 15n, no: 15n };
+    const q = desiredQuotes(input({ balances: starved, marketCapital: 375_000n * MUSD_UNIT }));
+    expect(q.every((x) => x.size * DEFAULT_BOT_CONFIG.minQuoteFraction >= A.topSize)).toBe(true);
+    expect(q.some((x) => x.side === OrderSide.Sell)).toBe(false);
+
+    const dust = order({ address: "dust", side: OrderSide.Sell, priceBps: 430, originalQty: 200n, remainingQty: 1n });
+    const actions = planBotMarket(input({ balances: { ...starved, yes: 14n }, own: [dust], marketCapital: 375_000n * MUSD_UNIT }));
+    expect(actions).toContainEqual({ kind: "requote", cancel: dust, place: null, reason: "extra" });
+  });
+
+  it("a funded maker still quotes its full top size", () => {
+    expect(desiredQuotes(input()).map((x) => x.size)).toEqual([200n, 200n, 200n, 200n]);
+  });
+});

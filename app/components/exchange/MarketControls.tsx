@@ -2,8 +2,9 @@
 
 // Market-page Settle market and Reset market (docs/spec-simulation.md §7.1), side by side under
 // the trade ticket. Neither has logic of its own; both call the existing /api/operator endpoints:
-// - Settle runs the §7 fast-forward scoped to this market (POST /api/operator/settle-round). The
-//   server refuses unless the market is its round's only member, so no other market is touched.
+// - Settle runs the §7 fast-forward for this market's round (POST /api/operator/settle-round).
+//   close_round stops every market of the round, so when the round has siblings the confirmation
+//   says how many markets settle together (owner decision 2026-11-22).
 // - Reset runs the §9 Reset Market operation (POST /api/operator/demo): the oracle settles the round
 //   (history and every claim stay redeemable), then a fresh round opens for the same property.
 //   Human wallets and the other markets are never touched. When it completes the page moves to the
@@ -45,7 +46,7 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
   const m = info.market;
   const r = info.round;
   const resolved = m.outcome !== "unresolved";
-  const shared = r.marketCount !== 1;
+  const others = Math.max(0, r.marketCount - 1);
 
   useEffect(() => {
     alive.current = true;
@@ -57,8 +58,11 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
   if (USE_FIXTURES) return null;
 
   async function settle() {
-    if (inFlight.current || resolved || shared) return;
-    if (!window.confirm("Settle this market now?\n\nTrading closes on this market only, and the oracle resolves it from the dataset committed on-chain. Winning shares become redeemable. This cannot be undone.")) return;
+    if (inFlight.current || resolved) return;
+    const scope = others === 0
+      ? "Trading closes on this market only"
+      : `This market shares its round with ${others} other market${others === 1 ? "" : "s"}. Trading closes on all ${others + 1}`;
+    if (!window.confirm(`Settle this market now?\n\n${scope}, and the oracle resolves ${others === 0 ? "it" : "each of them"} from the dataset committed on-chain. Winning shares become redeemable. This cannot be undone.`)) return;
     inFlight.current = true;
     setBusy("settle");
     setError(null);
@@ -138,9 +142,9 @@ export function MarketControls({ info, onSettled }: { info: MarketInfo; onSettle
         <button
           type="button"
           className="btn btn-primary"
-          disabled={busy !== null || resolved || shared}
+          disabled={busy !== null || resolved}
           aria-busy={busy === "settle"}
-          title={shared ? `This round has ${r.marketCount} markets, so it cannot be settled one market at a time.` : undefined}
+          title={others > 0 ? `Settles all ${others + 1} markets of this round.` : undefined}
           onClick={settle}
         >
           {busy === "settle" ? "Settling…" : resolved ? "Settled" : "Settle market"}
