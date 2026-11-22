@@ -7,6 +7,11 @@ import { createAssociatedTokenAccountIdempotentInstruction, createCloseAccountIn
 import { PublicKey, Transaction, type Keypair, type TransactionInstruction } from "@solana/web3.js";
 import {
   CATALOG,
+  LISTINGS,
+  bpsToLogit,
+  findRoundPda,
+  homeMarket,
+  isHomeProperty,
   OrderSide,
   Outcome,
   planMarketOrder,
@@ -19,7 +24,10 @@ import {
 import {
   ataOf,
   cancelOrderIx,
+  decodeConfigAccount,
+  decodeRoundAccount,
   escrowMintOf,
+  exchangeConfigPda,
   explorerTx,
   getExchangeProgram,
   ExchangeStateLoader,
@@ -68,6 +76,8 @@ export interface SimWorkerOptions {
 }
 
 const MAX_TX_BYTES = 1232;
+const MIN_ROUNDS_BACK = 8;
+const ROUND_WINDOW_MS = 60_000;
 
 /** Whether `ixs` fit one transaction with `signers` signatures. */
 export function fits(ixs: TransactionInstruction[], payer: PublicKey, signers: number): boolean {
@@ -97,6 +107,8 @@ export class SimWorker {
   private readonly cooldownUntil = new Map<string, number>();
   private readonly rng: Rng;
   private lastTickMs = Date.now();
+  /** Rounds to load, widened to reach the oldest Open round; rechecked every ROUND_WINDOW_MS. */
+  private window: { back: number; at: number } | null = null;
   private rateMult = 1;
   private ticks = 0;
   private sent = 0;
@@ -138,12 +150,14 @@ export class SimWorker {
     const loadStarted = Date.now();
     const dtMs = Math.min(30_000, loadStarted - this.lastTickMs);
     this.lastTickMs = loadStarted;
-    const catalogProps = new Set(CATALOG.map((c) => c.propertyId));
+    const catalogProps = new Set([...CATALOG, ...LISTINGS].map((c) => c.propertyId));
+    const tradable = (propertyId: number) => catalogProps.has(propertyId) || isHomeProperty(propertyId);
+    const roundsBack = this.o.roundsBack ?? (await this.roundWindow(loadStarted));
     const state = await this.o.rpc.run((c) =>
       this.loader.load(c, {
-        roundsBack: this.o.roundsBack ?? 8,
+        roundsBack,
         extraKeys: (markets, config) => {
-          const mine = markets.filter((m) => catalogProps.has(m.propertyId));
+          const mine = markets.filter((m) => tradable(m.propertyId));
           return this.o.traders.flatMap((t) => {
             const me = t.keypair.publicKey;
             return [me, ataOf(config.collateralMint, me), ...mine.flatMap((m) => [ataOf(m.yesMint, me), ataOf(m.noMint, me)])];
@@ -161,11 +175,19 @@ export class SimWorker {
     const sponsorLamports = BigInt(state.extra.get(this.o.sponsor.publicKey.toBase58())?.lamports ?? 0);
     const lowFunds = sponsorLamports < (this.o.sponsorFloorLamports ?? 100_000_000n);
 
-    // Catalog markets of the loaded rounds; the newest round per scenario is the tradable one.
+    // Catalog and listed markets of the loaded rounds (docs/spec-multiperil.md §7.7); the newest
+    // round per property is the tradable one.
     const lives: Live[] = [];
-    for (const entry of CATALOG) {
+    for (const entry of [...CATALOG, ...LISTINGS]) {
       const snaps = state.snapshots.filter((s) => s.market.propertyId === entry.propertyId && s.round.scenarioId === entry.scenarioId);
       snaps.forEach((snap, i) => lives.push({ snap, entry, featured: i === snaps.length - 1 }));
+    }
+    // Homeowner markets (spec-multiperil §7.7): valued from the hazard's starting reference, not the
+    // homeowner's bid, so a premium above that baseline attracts underwriters.
+    for (const snap of state.snapshots) {
+      if (!isHomeProperty(snap.market.propertyId)) continue;
+      const entry = homeMarket(snap.market.propertyId, snap.market.scenarioId, `Property ${snap.market.propertyId}`);
+      if (entry) lives.push({ snap, entry, featured: true });
     }
     const ctxs = new Map<string, MarketCtx>();
     for (const l of lives) {
@@ -229,6 +251,37 @@ export class SimWorker {
       volumeMusd: Number(this.volume / 1_000_000n),
       lastBulletin: this.lastBulletin,
     });
+  }
+
+  /**
+   * The newest 8 rounds, widened to the oldest Open round. Resetting one hazard many times would
+   * otherwise push the other hazards' Open rounds out of the window and stop all trading on them.
+   */
+  private async roundWindow(nowMs: number): Promise<number> {
+    if (this.window && nowMs - this.window.at < ROUND_WINDOW_MS) return this.window.back;
+    const back = await this.o.rpc.run(async (c) => {
+      const p = getExchangeProgram(c);
+      const cfgKey = exchangeConfigPda(p);
+      const cfg = await c.getAccountInfo(cfgKey, "confirmed");
+      if (!cfg) return MIN_ROUNDS_BACK;
+      const nextId = decodeConfigAccount(p, cfgKey, cfg.data).nextRoundId;
+      const keys: PublicKey[] = [];
+      for (let id = 0n; id < nextId; id++) keys.push(findRoundPda(p.programId, id)[0]);
+      let oldestOpen = nextId;
+      for (let i = 0; i < keys.length; i += 100) {
+        const chunk = keys.slice(i, i + 100);
+        const infos = await c.getMultipleAccountsInfo(chunk, "confirmed");
+        infos.forEach((info, j) => {
+          if (!info) return;
+          const r = decodeRoundAccount(p, chunk[j]!, info.data);
+          if (r.status === "open" && r.roundId < oldestOpen) oldestOpen = r.roundId;
+        });
+      }
+      return Math.max(MIN_ROUNDS_BACK, Number(nextId - oldestOpen));
+    });
+    if (back !== this.window?.back) this.log(`[sim] loading the newest ${back} rounds`);
+    this.window = { back, at: nowMs };
+    return back;
   }
 
   async drain(): Promise<void> {
@@ -381,6 +434,20 @@ export class SimWorker {
         const pre = this.atas(me, [m.yesMint, m.noMint], has);
         const quote = [...y.fills, ...n.fills].reduce((s, f) => s + f.quote, 0n);
         await this.send(t, snap, [...pre, ...y.ixs, ...n.ixs, await mergeIx(prog, m, me, collateral, q)], `${a.reason}: buy ${q} YES + NO, merge`, 2, quote);
+        return;
+      }
+      case "underwrite": {
+        // Split pairs, sell the YES into the homeowner's bid, keep the NO (spec-multiperil §7.7).
+        const y = await this.takeIxs(snap, me, collateral, { outcome: Outcome.Yes, side: OrderSide.Sell, qty: a.qty, worstPriceBps: a.yesWorstBps });
+        const q = y.fills.reduce((s, f) => s + f.qty, 0n);
+        if (!y.ixs.length || q === 0n) return;
+        const pre = this.atas(me, [m.yesMint, m.noMint], has);
+        const quote = y.fills.reduce((s, f) => s + f.quote, 0n);
+        const ok = await this.send(t, snap, [...pre, await splitIx(prog, m, me, collateral, q), ...y.ixs], `${a.reason}: split ${q}, sell ${q} YES`, y.fills.length, quote);
+        if (ok) {
+          const avg = Number((quote * 1_000n) / (q * 100n)) / 1_000;
+          t.memory.set(m.address.toBase58(), { ...(t.memory.get(m.address.toBase58()) ?? {}), noEntryLogit: bpsToLogit(avg), enteredMs: Date.now() });
+        }
         return;
       }
       case "splitSell": {

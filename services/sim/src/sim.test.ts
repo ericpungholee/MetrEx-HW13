@@ -8,7 +8,7 @@ import { bulletinsBetween, signalAt, DEFAULT_INFO } from "./info";
 import { MidHistory, quotesOf, yesMidBps, type MarketCtx } from "./market";
 import { ARCHETYPES, MIX, archetypeOrder, generatePopulation, type TraderProfile } from "./population";
 import { rngFrom } from "./rng";
-import { capShares, decide, type Holdings, type SimAction } from "./strategy";
+import { capShares, decide, underwrite, type Holdings, type SimAction } from "./strategy";
 
 function catalogBook(entryIndex = 0): BookOrder[] {
   const entry = CATALOG[entryIndex]!;
@@ -208,5 +208,30 @@ describe("information isolation (spec-v2 §8.4)", () => {
   it("refuses to start with oracle data configured", () => {
     expect(() => assertNoOracleData({ METREX_ORACLE_DATA_DIR: "/x" })).toThrow(/Refusing/);
     expect(() => assertNoOracleData({})).not.toThrow();
+  });
+});
+
+describe("underwriting (spec-multiperil §7.7)", () => {
+  const risk = () => generatePopulation("metrex-v7", 100).find((p) => p.archetype === "risk")!;
+  const h: Holdings = { musd: 50_000n * MUSD_UNIT, yes: 0n, no: 0n, own: [] };
+  const bid = (priceBps: number, remaining = 20_000n): BookOrder => ({ id: "home", maker: "homeowner", outcome: Outcome.Yes, side: OrderSide.Buy, priceBps, remaining, seq: 1n });
+  const view = (book: BookOrder[]) => ({ p: risk(), q: quotesOf(book), h, ctx: ctxOf(book), rng: rngFrom("u") });
+
+  it("sells YES into a premium bid well above belief, within the bid and the holding cap", () => {
+    const L = Math.log(80 / 9_920); // belief at the 0.80¢ baseline
+    const a = underwrite(view([bid(400)]), L);
+    expect(a?.kind).toBe("underwrite");
+    if (a?.kind !== "underwrite") return;
+    expect(a.yesWorstBps).toBe(400);
+    expect(a.qty).toBeGreaterThan(0n);
+    expect(a.qty).toBeLessThanOrEqual(20_000n);
+    expect(a.qty).toBeLessThanOrEqual(risk().maxShares);
+  });
+
+  it("leaves a bid at or below belief alone", () => {
+    const L = Math.log(80 / 9_920);
+    expect(underwrite(view([bid(80)]), L)).toBeNull();
+    expect(underwrite(view([bid(60)]), L)).toBeNull();
+    expect(underwrite(view([]), L)).toBeNull();
   });
 });
