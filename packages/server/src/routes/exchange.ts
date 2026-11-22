@@ -6,7 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BN } from "@anchor-lang/core";
-import { CATALOG, buildLedger, catalogByScenario, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
+import { CATALOG, HAZARD_LABEL, LISTINGS, buildLedger, catalogByScenario, isHomeProperty, findMarketPda, findRoundPda, headlinePrice, marketBooks, Outcome, type LedgerEvent, type OutcomeBook } from "@metrex/exchange";
 import { keyDir, loadKeypair, parsePublicKey, type KeypairName } from "../env";
 import { getRpc } from "../rpc";
 import {
@@ -30,6 +30,7 @@ import { exchangeProgramId, getExchangeProgram } from "../exchange/program";
 import { TradeStore, tradeStorePath } from "../exchange/trade-store";
 import { tradeDecoder } from "../exchange/trades";
 import { badRequest, HttpError, notFound, unavailable } from "./errors";
+import { homesOfScenario } from "../demo/homes";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -84,6 +85,11 @@ function liveState(): Promise<ExchangeState | null> {
     });
   }
   return stateCache.value;
+}
+
+/** Drops the cached state so the next read sees a just-created market. */
+export function forgetState(): void {
+  stateCache = undefined;
 }
 
 let books: BookCache | undefined;
@@ -244,7 +250,95 @@ export const handleFeatured = (): Promise<Response> =>
         return { propertyId: c.propertyId, round: null, market: null, yesBestBidBps: null, yesBestAskBps: null, yesAskDepth: 0n, noBestAskBps: null };
       }),
     );
-    return { markets };
+    // Listed and homeowner markets (spec-multiperil §7.7) in the round each featured market is shown from.
+    const shownRounds = markets.flatMap((m) => (m.round ? [m.round.address] : []));
+    const userSnaps = state.snapshots.filter((s) =>
+      shownRounds.some((a) => a.equals(s.market.round)) && (isHomeProperty(s.market.propertyId) || LISTINGS.some((l) => l.propertyId === s.market.propertyId)));
+    const listed = await Promise.all(
+      userSnaps.flatMap((snap) => {
+        const r = state.rounds.find((x) => x.address.equals(snap.market.round));
+        if (!r) return [];
+        return [(async () => {
+          const { yes, no } = marketBooks(snap.book);
+          return {
+            propertyId: snap.market.propertyId,
+            round: { address: r.address, roundId: r.roundId, label: r.label, state: roundState(r, Date.now()), tradingEndsAt: r.tradingEndsAt, closedAt: r.closedAt },
+            market: await marketSummary(snap.market),
+            yesBestBidBps: yes.bestBidBps,
+            yesBestAskBps: yes.bestAskBps,
+            yesAskDepth: yes.askDepth,
+            noBestAskBps: no.bestAskBps,
+          };
+        })()];
+      }),
+    );
+    return { markets: [...markets, ...listed] };
+  });
+
+/**
+ * GET /api/listings (docs/spec-multiperil.md §7.7): per hazard, its current catalog round and every
+ * listing address with its market in that round, or null when it is not listed yet.
+ */
+export const handleListings = (): Promise<Response> =>
+  run(async () => {
+    const state = await liveState();
+    if (!state) throw unavailable("Exchange is not configured on this cluster");
+    const now = Date.now();
+    const hazards = CATALOG.map((c) => {
+      const round = [...state.rounds]
+        .filter((r) => r.scenarioId === c.scenarioId && state.snapshots.some((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId))
+        .sort((a, b) => (a.roundId < b.roundId ? 1 : -1))[0];
+      return {
+        hazard: c.hazard,
+        label: HAZARD_LABEL[c.hazard],
+        trigger: c.trigger,
+        month: c.month,
+        round: round ? { address: round.address, roundId: round.roundId, state: roundState(round, now), tradingEndsAt: round.tradingEndsAt } : null,
+        listings: LISTINGS.filter((l) => l.scenarioId === c.scenarioId).map((l) => {
+          const snap = round ? state.snapshots.find((s) => s.market.round.equals(round.address) && s.market.propertyId === l.propertyId) : undefined;
+          const books = snap ? marketBooks(snap.book) : null;
+          return {
+            propertyId: l.propertyId,
+            address: l.address,
+            place: l.place,
+            question: l.question,
+            market: snap
+              ? { address: snap.market.address, outcome: snap.market.outcome, yesBestAskBps: books!.yes.bestAskBps, noBestAskBps: books!.no.bestAskBps }
+              : null,
+          };
+        }),
+      };
+    });
+    return { hazards };
+  });
+
+/**
+ * GET /api/homes?hazard= (docs/spec-multiperil.md §7.7): the hazard's current catalog round, a
+ * suggested opening premium (maker A's starting reference) and every home in its pool with its
+ * market in that round, or null.
+ */
+export const handleHomes = (req: Request): Promise<Response> =>
+  run(async () => {
+    const hazard = new URL(req.url).searchParams.get("hazard");
+    const c = CATALOG.find((x) => x.hazard === hazard);
+    if (!c) throw badRequest("hazard must be wildfire, hurricane, earthquake or tornado");
+    const state = await liveState();
+    if (!state) throw unavailable("Exchange is not configured on this cluster");
+    const round = [...state.rounds]
+      .filter((r) => r.scenarioId === c.scenarioId && state.snapshots.some((s) => s.market.round.equals(r.address) && s.market.propertyId === c.propertyId))
+      .sort((a, b) => (a.roundId < b.roundId ? 1 : -1))[0];
+    const listed = new Map(
+      round ? state.snapshots.filter((s) => s.market.round.equals(round.address)).map((s) => [s.market.propertyId, s.market.address.toBase58()]) : [],
+    );
+    return {
+      hazard: c.hazard,
+      label: HAZARD_LABEL[c.hazard],
+      trigger: c.trigger,
+      month: c.month,
+      suggestedBps: c.ladder[0]?.refBps ?? null,
+      round: round ? { address: round.address, roundId: round.roundId, state: roundState(round, Date.now()), tradingEndsAt: round.tradingEndsAt } : null,
+      homes: homesOfScenario(c.scenarioId).map((h) => ({ propertyId: h.property_id, address: h.label, place: h.place, market: listed.get(h.property_id) ?? null })),
+    };
   });
 
 /** GET /api/rounds/:id — by numeric round id or round address. */
