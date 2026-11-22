@@ -3,7 +3,6 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { Header } from "@/components/Header";
@@ -21,9 +20,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Providers>
           <Header />
           <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
-          <footer className="mx-auto w-full max-w-6xl px-4 pb-5 text-xs text-dim sm:px-6">
-            <Link href="/rounds" className="hover:underline">Past rounds</Link>
-          </footer>
         </Providers>
       </body>
     </html>

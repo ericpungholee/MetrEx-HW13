@@ -1,7 +1,8 @@
 "use client";
 
 // Portfolio (spec-v2 §10.5): available mUSD, YES/NO holdings per market, reserved balances, open
-// orders, claimable redemptions and recent fills. P&L is not shown.
+// orders, claimable redemptions and recent fills. P&L is not shown. Only the current round of each
+// catalog market appears: a market replaced by Reset market is gone from here (spec-simulation §9).
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PublicKey } from "@solana/web3.js";
@@ -18,7 +19,7 @@ import {
   redemptionValue,
   reservedOf,
 } from "@/lib/exchange-client";
-import { formatPrice, formatShares, marketState, marketTitle, outcomeName, sideName } from "@/lib/exchange-format";
+import { currentRounds, formatPrice, formatShares, marketState, marketTitle, outcomeName, sideName } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { PageHeader, Panel, Stat, TxLink } from "@/components/ui";
@@ -46,12 +47,14 @@ function ConnectedPortfolio({ publicKey }: { publicKey: PublicKey }) {
   const data = usePoll(
     async () => {
       if (!history.data) return null;
-      const rounds = history.data;
+      const rounds = currentRounds(history.data);
       const markets = rounds.flatMap((r) => r.markets);
-      const [holdings, orders] = await Promise.all([
+      const visible = new Set(markets.map((m) => m.address));
+      const [holdings, allOrders] = await Promise.all([
         fetchHoldings(publicKey, markets),
         fetchWalletOrders(publicKey),
       ]);
+      const orders = allOrders.filter((o) => visible.has(o.market));
       const active = new Set(rounds.filter((r) => r.state === "open").map((r) => r.address));
       const ordered = new Set(orders.map((o) => o.market));
       const trades = await Promise.all(

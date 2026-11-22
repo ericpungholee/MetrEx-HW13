@@ -131,9 +131,9 @@ At zero inventory the four markets commit about 480k (A), 400k (B) and 360k (C) 
 Every market page shows the contract details in plain text:
 
 - its payout rule. The wildfire and earthquake rules name their specific events. The remaining rules name their dataset scope and threshold;
-- the historical coverage month, the separate Devnet trading deadline, the settlement source and the invalid-outcome terms beside the ticket.
+- the historical coverage month, the separate Devnet trading deadline and the settlement source.
 
-This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution and each photo carries its credit.
+This replaces the standalone replay and liquidity paragraphs from spec-v2 §10.1. Market makers retain their labels in trades. The map carries OpenStreetMap attribution. Owner decision (2026-11-21): the page shows no invalid-outcome disclaimer under the ticket, no photo credits and no risk-map jump link. Three photos are CC BY-SA, whose license asks for credit where they are shown; the owner accepted that.
 
 ### 7.2 Homepage
 
@@ -143,21 +143,21 @@ The market detail page shows the live asks, with labelled midpoint or last-trade
 
 ### 7.3 Imagery
 
-Cards and market headers label their images as area photos and link to their source and license. The images show the surrounding regions. [Photo credits](market-photo-credits.md) lists the local WebP assets, authors and licenses.
+Cards and market headers show area photos without on-page credits (owner decision, 2026-11-21; see §7.1). The images show the surrounding regions. [Photo credits](market-photo-credits.md) lists the local WebP assets, authors and licenses.
 
-### 7.4 Coverage mode
+### 7.4 Trade ticket
 
-The trade panel has **Buy coverage** and **Trade shares** modes. Coverage mode buys YES at market for a dollar coverage amount (1 share = $1 of cover, with presets of 25k, 50k, 100k and 250k). It displays estimated monthly cost, potential payout and any partial-fill warning. Trade mode displays the estimated cost or proceeds and the effect on potential payout. Execution details show the price tolerance, estimated fills, applicable escrow and the worst accepted price on a market order. Tolerance is relative to the best executable price, with defaults of 10% for coverage and 5% for share orders. The planner rounds the tolerance down to a whole price tick. Each signed take carries the specific resting price, sequence and quantity. The maximum mUSD spend is the sum of the signed buy amounts.
+Homeowners and traders use one trade ticket, and there is no separate coverage purchase path. Buying YES is the protection: one winning share pays 1 mUSD, so the share quantity is the gross coverage amount. The ticket selects **Buy / Sell**, **YES / NO** and **Market / Limit** and takes a share quantity. It displays the estimated cost (proceeds on a sale, maximum escrow on a limit buy), the potential payout (payout given up on a sale) and any partial-fill warning. There is no execution-details section. A market order accepts up to a fixed 5% from the best executable price. The planner rounds the tolerance down to a whole price tick. Each signed take carries the specific resting price, sequence and quantity. The maximum mUSD spend is the sum of the signed buy amounts.
 
 If 100,000 YES shares fill at a weighted average of 0.25¢ (25 bps), they cost 250 mUSD upfront. The other 99,750 mUSD is the complementary share of the paired collateral. The winning YES payout is 100,000 mUSD. If there is less executable depth, the preview and transaction cover the actual fill quantity.
 
 ### 7.5 Portfolio
 
-The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio discovers all rounds, with historical holdings and order escrows visible.
+The portfolio shows available mUSD, estimated sale proceeds for available shares in open markets, claimable mUSD and open orders. Estimates use the available bids within the market order fill limit and show when depth or quote coverage is partial. **Active protection** lists unresolved YES positions, their historical coverage month, potential payout and net YES cost from indexed finalized fills. Positions show the average indexed purchase price where available. The portfolio shows only the current round of each catalog market (the homepage rule, §7.2). A round replaced by Reset market disappears from it, holdings and claims included (owner decision, 2026-11-21; spec-simulation §9).
 
 ### 7.6 Operator
 
-`/operator` opens with the four catalog rounds and offers earlier rounds on demand. The operator selects a round and runs close → reject proof → resolve → sweep → status on that round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
+There is no `/operator` page (removed 2026-11-21). Each market page settles its own round with Settle market (spec-simulation §7.1). The step-by-step close → reject proof → resolve → sweep → status sequence stays available as `POST /api/operator/settle-round` on one round only. The server requires an explicit round address. Close preserves resting orders for a finalized rejected take, then sweeping resumes. See [operations](operations.md#close-verify-resolve-sweep).
 
 ## 8. Tests
 

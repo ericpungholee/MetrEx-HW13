@@ -3,7 +3,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { explorerAddress, shortKey } from "@/lib/format";
 import {
-  INVALID_DISCLOSURE,
   STATE_TONE,
   formatPrice,
   type MarketState,
@@ -36,10 +35,6 @@ export function Price({ bps, className = "" }: { bps: number | null | undefined;
 
 export function StateLabel({ state }: { state: MarketState }) {
   return <span className={`text-xs font-medium ${STATE_TONE[state]}`}>{state}</span>;
-}
-
-export function InvalidDisclosure() {
-  return <p className="text-[11px] leading-snug text-faint">{INVALID_DISCLOSURE}</p>;
 }
 
 /** Quiet "unavailable" line: the UI never shows cached or invented data as live (§7.5). */

@@ -9,7 +9,6 @@ export * from "./routes/errors";
 export * from "./routes/exchange";
 export * from "./routes/faucet";
 export * from "./routes/http";
-export * from "./routes/password";
 export * from "./oracle/exchange";
 export * from "./oracle/exchange-settle";
 export * from "./routes/rpc-proxy";

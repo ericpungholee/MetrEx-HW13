@@ -1,7 +1,7 @@
 // POST /api/operator/settle-round (spec-v2 §10.6). The Close and settle workflow, one step per
 // request so the operator page shows each verifiable transaction as it lands. Every step reads the
 // chain first and skips what is already done, so the workflow can be resumed from any point.
-// Requires the demo password header. Keys stay on the server.
+// No authentication (Phantom is the only sign-in). Keys stay on the server.
 
 import { setTimeout as delay } from "node:timers/promises";
 import { PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
@@ -19,7 +19,7 @@ import { operationRunning } from "../demo/operations";
 import { fullResetHeld } from "../exchange/demo-state";
 import { getRpc } from "../rpc";
 import { badRequest, conflict, HttpError, KeyedLock, notFound, unavailable } from "./errors";
-import { json, requirePassword } from "./http";
+import { json } from "./http";
 
 export const OPERATOR_ACTIONS = ["status", "close", "reject", "resolve", "sweep", "fast_forward"] as const;
 export type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
@@ -28,6 +28,31 @@ const BOT_KEYS: readonly KeypairName[] = ["botA", "botB", "botC"];
 const lock = new KeyedLock();
 
 const withLinks = (steps: SettleStep[]) => steps.map((s) => ({ ...s, explorer: s.signature ? explorerTx(s.signature) : null }));
+
+/**
+ * Market-page settlement (docs/spec-simulation.md §7.1): close_round stops every member market of
+ * the round, so a request naming one market is refused unless that market is the round's only
+ * member. Pure so it can be tested without a cluster.
+ */
+export function soleMarketError(market: string, roundAddress: string, members: readonly { address: string; round: string }[]): string | null {
+  const target = members.find((m) => m.address === market);
+  if (!target || target.round !== roundAddress) return "Market does not belong to this round";
+  if (members.length !== 1) return `This round has ${members.length} markets, so it cannot be settled one market at a time`;
+  return null;
+}
+
+async function requireSoleMarket(round: RoundView, market: unknown): Promise<void> {
+  if (market === undefined) return;
+  if (typeof market !== "string" || !market) throw badRequest("Invalid market address");
+  try {
+    parsePublicKey(market, "market");
+  } catch {
+    throw badRequest("Invalid market address");
+  }
+  const members = await getRpc().run((c) => fetchMarketsOfRound(getExchangeProgram(c), round.address));
+  const err = soleMarketError(market, round.address.toBase58(), members.map((m) => ({ address: m.address.toBase58(), round: m.round.toBase58() })));
+  if (err) throw conflict(err);
+}
 
 async function targetRound(body: { round?: unknown }): Promise<RoundView> {
   const rpc = getRpc();
@@ -179,16 +204,17 @@ async function fastForward(round: RoundView) {
 export function handleOperatorSettle(req: Request): Promise<Response> {
   return (async () => {
     try {
-      requirePassword(req);
-      let body: { action?: unknown; round?: unknown };
+      let body: { action?: unknown; round?: unknown; market?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {
-        throw badRequest("Body must be JSON: { action, round? }");
+        throw badRequest("Body must be JSON: { action, round?, market? }");
       }
       const action = body.action as OperatorAction;
       if (!OPERATOR_ACTIONS.includes(action)) throw badRequest(`action must be one of ${OPERATOR_ACTIONS.join(", ")}`);
       const round = await targetRound(body);
+      if (body.market !== undefined && action !== "fast_forward" && action !== "status") throw badRequest("market applies to fast_forward and status only");
+      await requireSoleMarket(round, body.market);
       if (action === "status") return json(await status(round));
       return json(
         await lock.with(round.address.toBase58(), async () => {

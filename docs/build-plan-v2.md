@@ -65,7 +65,7 @@ scripts/                        D   setup-devnet-v2.ts, prepare-demo-v2.ts; fund
 
 ### C — Frontend (fixtures at V0, live at V4)
 
-> Build §10 on the existing app shell. All chain access goes through `app/lib/exchange-client.ts`. Fixtures stay behind `NEXT_PUBLIC_USE_FIXTURES=1`, and production builds fail with it on. Required text from §10.1 appears on every market page. The trade panel previews fills and simulates before opening the wallet. `/operator` reuses the `/demo` password and lock pattern.
+> Build §10 on the existing app shell. All chain access goes through `app/lib/exchange-client.ts`. Fixtures stay behind `NEXT_PUBLIC_USE_FIXTURES=1`, and production builds fail with it on. Required text from §10.1 appears on every market page. The trade panel previews fills and simulates before opening the wallet. `/operator` reuses the `/demo` lock pattern (no authentication).
 
 **Acceptance:** every page renders against fixtures. The market buy and limit order build one transaction each. A simulated `RoundNotOpen` is shown in plain words.
 

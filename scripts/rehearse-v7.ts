@@ -4,7 +4,7 @@
 // script measures time to redeemable, redeems, checks the exact mUSD increase, and checks the
 // ledger and that the other three markets kept trading. The oracle alone decides the outcome.
 // Never run it on the final presentation markets.
-//   DEMO_PASSWORD=… pnpm tsx scripts/rehearse-v7.ts --hazard wildfire [--yes 30000] [--no 1000]
+//   pnpm tsx scripts/rehearse-v7.ts --hazard wildfire [--yes 30000] [--no 1000]
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { CATALOG, INVALID_PAYOUT_PER_SHARE, OrderSide, Outcome, PAYOUT_PER_SHARE, planMarketOrder, type OutcomeCode } from "@metrex/exchange";
@@ -21,8 +21,6 @@ async function main(): Promise<void> {
   const program = getExchangeProgram(conn);
   assert.equal(await rpc.run((c) => c.getGenesisHash()), DEVNET_GENESIS, "Devnet required");
   const root = process.env.METREX_APP_ORIGIN ?? "http://127.0.0.1:3015";
-  const password = process.env.DEMO_PASSWORD;
-  assert(password, "Set DEMO_PASSWORD");
   const hazard = flagValue("--hazard") ?? "wildfire";
   const entry = CATALOG.find((c) => c.hazard === hazard);
   assert(entry, "unknown --hazard");
@@ -78,7 +76,7 @@ async function main(): Promise<void> {
     }
   })();
   const res = await fetch(new URL("/api/operator/settle-round", root), {
-    method: "POST", headers: { "content-type": "application/json", "x-demo-password": password },
+    method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "fast_forward", round: snap.round.address.toBase58() }),
   });
   const ff = await res.json() as { timings?: Record<string, number>; proof?: { explorer: string } | null; proofNote?: string; steps?: Array<{ step: string; explorer: string | null }> };

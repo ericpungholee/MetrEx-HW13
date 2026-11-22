@@ -1016,17 +1016,18 @@ export async function sendRedeem(wallet: WalletSigner, market: MarketSummary, op
 }
 
 // ---------------------------------------------------------------------------
-// Operator (password; keys stay on the server)
+// Operator (no authentication; keys stay on the server)
 // ---------------------------------------------------------------------------
 
 export type OperatorAction = "status" | "close" | "reject" | "resolve" | "sweep" | "fast_forward";
 
-export async function operatorStep(action: OperatorAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
+/** `market` scopes fast_forward and status to a round's only market (refused otherwise). */
+export async function operatorStep(action: OperatorAction, round?: string, market?: string): Promise<{ ok: boolean; status: number; body: J }> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const res = await fetch("/api/operator/settle-round", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-demo-password": password },
-    body: JSON.stringify({ action, round }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, round, market }),
   });
   let body: J = {};
   try {
@@ -1091,11 +1092,11 @@ export async function fetchDemoStatus(): Promise<DemoStatus> {
   return (await getJson("/api/operator/demo")) as unknown as DemoStatus;
 }
 
-export async function demoAction(action: DemoAction, password: string, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
+export async function demoAction(action: DemoAction, round?: string): Promise<{ ok: boolean; status: number; body: J }> {
   if (USE_FIXTURES) throw new FixtureModeError();
   const res = await fetch("/api/operator/demo", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-demo-password": password },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ action, round }),
   });
   let body: J = {};

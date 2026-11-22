@@ -1,5 +1,5 @@
 // GET/POST /api/operator/demo (docs/spec-simulation.md §9). GET is a public status read (every
-// figure is on-chain or a worker heartbeat; no secrets). POST requires the demo password and runs
+// figure is on-chain or a worker heartbeat; no secrets). POST needs no authentication and runs
 // one operator action: pause or resume the simulated traders, reset one market, reset the demo,
 // or resume an interrupted operation. The oracle alone decides every settlement outcome.
 
@@ -18,7 +18,7 @@ import { musdMint } from "../token";
 import { currentOperation, operationRunning, startOperation } from "../demo/operations";
 import { featuredRounds } from "../demo/lifecycle";
 import { badRequest, conflict, HttpError, notFound } from "./errors";
-import { json, requirePassword } from "./http";
+import { json } from "./http";
 
 export const DEMO_ACTIONS = ["pause_sim", "resume_sim", "reset_market", "reset_demo", "resume_operation"] as const;
 export type DemoAction = (typeof DEMO_ACTIONS)[number];
@@ -114,7 +114,6 @@ export function handleDemoStatus(): Promise<Response> {
 export function handleDemoAction(req: Request): Promise<Response> {
   return (async () => {
     try {
-      requirePassword(req);
       let body: { action?: unknown; round?: unknown; durationS?: unknown };
       try {
         body = (await req.json()) as typeof body;

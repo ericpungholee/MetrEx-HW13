@@ -12,5 +12,5 @@ export default function MarketPage({ params, searchParams }: {
   const { id } = use(params);
   const { outcome } = use(searchParams);
   const initialOutcome = outcome === "yes" ? Outcome.Yes : outcome === "no" ? Outcome.No : undefined;
-  return <MarketView key={`${id}:${initialOutcome ?? "coverage"}`} market={id} initialOutcome={initialOutcome} />;
+  return <MarketView key={`${id}:${initialOutcome ?? "yes"}`} market={id} initialOutcome={initialOutcome} />;
 }

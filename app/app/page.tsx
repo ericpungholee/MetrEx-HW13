@@ -9,7 +9,7 @@ import { formatPrice, marketState } from "@/lib/exchange-format";
 import { formatMusd } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { StateLabel, Unavailable } from "@/components/exchange/Labels";
-import { MarketPhoto, MarketPhotoCredit } from "@/components/exchange/MarketPhoto";
+import { MarketPhoto } from "@/components/exchange/MarketPhoto";
 
 function OutcomeLink({ href, label, ask, pending, unavailable }: { href: string; label: "YES" | "NO"; ask: number | null; pending?: boolean; unavailable?: boolean }) {
   return (
@@ -72,7 +72,6 @@ function MarketCard({ c, f, loading, failed }: { c: CatalogMarket; f: FeaturedMa
           </div>
         )}
       </div>
-      <div className="border-t border-line px-4 py-2 sm:px-5"><MarketPhotoCredit photo={c.photo} /></div>
     </article>
   );
 }

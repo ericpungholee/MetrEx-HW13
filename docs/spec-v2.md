@@ -39,7 +39,7 @@ The draft's core model works: fungible outcome tokens, split, merge and redeem, 
 | 20 | M | Sweeping has no rule for rent | A keeper could route rent to itself, which rewards aggressive sweeping | Rent and every escrowed token always return to the maker (§5.8) |
 | 21 | M | Upgrading the v1.1 program in place | Breaks the deployed fallback and mixes two account models in one program | New program `metrex_exchange` with a new program ID. The v1.1 program stays frozen (§14) |
 | 22 | M | Repeatability with an aborted rehearsal | The prepare script finds an Open, half-used round and either reuses it or can't create a new one (fix #2) | The prepare script settles any stale Open round first: close, resolve, sweep. Only then does it create a fresh round (§12) |
-| 23 | M | Earlier rounds reveal outcomes | The homepage's "other markets" list shows Home #1042 resolved YES from last rehearsal | The homepage shows only `Config.latest_round`. Past rounds are on a separate page labelled with their outcomes (§10.2) |
+| 23 | M | Earlier rounds reveal outcomes | The homepage's "other markets" list shows Home #1042 resolved YES from last rehearsal | The homepage shows only `Config.latest_round`. Past rounds were on a separate page, since removed (§10.2) |
 | 24 | M | Mint freeze authority not checked | A collateral mint with a freeze authority could freeze vaults or escrows | `initialize_config` rejects a collateral mint with a freeze authority. Outcome mints are created with none (§6.1) |
 | 25 | L | Example arithmetic is off by 10× | §5.5 says 100 shares at 400 bps pay "40 mUSD". `100 × 400 × 100` = 4,000,000 base units = **4 mUSD** | Corrected in §5.5 |
 | 26 | L | "Current price" is undefined | Mid, last trade and best ask give three different headline numbers | Headline = book midpoint when both sides exist and the spread is ≤ 10¢. Otherwise the last fill, otherwise "—". The label says which (§10.3) |
@@ -471,7 +471,7 @@ Order:   exists(remaining>0) ──fills──▶ exists(remaining=0)
 
 ## 7. Exchange service
 
-Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `KeyedLock`, password check) and extends `services/indexer`.
+Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `KeyedLock`) and extends `services/indexer`.
 
 ### 7.1 Book
 
@@ -500,7 +500,7 @@ Reuses `packages/server` (RPC fallback, keys, Explorer links, HTTP errors, `Keye
 
 ### 7.5 API (Next.js route handlers, cached chain reads and indexed finalized history)
 
-`GET /api/rounds/latest`, `GET /api/rounds/:id`, `GET /api/markets?round=`, `GET /api/markets/:id`, `GET /api/markets/:id/book?outcome=yes|no|both`, `GET /api/markets/:id/trades`, `GET /api/markets/:id/chart`, `GET /api/health` (keeper heartbeat, bots heartbeat, RPC), plus `GET /api/markets?all=1`, `GET /api/orders?maker=`, `POST /api/faucet` and `GET /api/evidence/:market`. The operator uses `POST /api/operator/settle-round` with the password header and selected round (§10.6).
+`GET /api/rounds/latest`, `GET /api/rounds/:id`, `GET /api/markets?round=`, `GET /api/markets/:id`, `GET /api/markets/:id/book?outcome=yes|no|both`, `GET /api/markets/:id/trades`, `GET /api/markets/:id/chart`, `GET /api/health` (keeper heartbeat, bots heartbeat, RPC), plus `GET /api/markets?all=1`, `GET /api/orders?maker=`, `POST /api/faucet` and `GET /api/evidence/:market`. The operator uses `POST /api/operator/settle-round` with the selected round (§10.6).
 
 Reads don't depend on the keeper process, so the book still shows when the keeper is down. A separate notice says matching is paused. When the service is unavailable, the UI shows "unavailable" and never cached or fabricated data presented as live.
 
@@ -591,13 +591,13 @@ Reuse the v1 shell: the white and black Geist layout from the UI overhaul, walle
 
 - The trigger sentence (§1.1) on every market page.
 - "Historical replay. The real outcome is public. Prices here are not forecasts."
-- Next to the trade button: "If the market is declared invalid, every share pays 0.50 mUSD (50¢). Buying above 50¢ can lose money on invalid."
+- (Removed 2026-11-21 by owner decision: the invalid-outcome sentence next to the trade button.)
 - House liquidity: "Liquidity is provided by MetrEx-operated market makers", and bot addresses are labelled in trades.
 - Explorer links use `?cluster=devnet`. Evidence and perimeter appear only after finalized settlement with a matching hash.
 
 ### 10.2 Homepage `/`
 
-Opens the featured market of `Config.latest_round`, where `NEXT_PUBLIC_FEATURED_PROPERTY` defaults to 1. Shows the question, YES price, volume (sum of finalized `quote_amount`), round state, the round's other markets and the wallet's mUSD. Earlier rounds appear only on `/rounds`, with their outcomes labelled.
+Opens the featured market of `Config.latest_round`, where `NEXT_PUBLIC_FEATURED_PROPERTY` defaults to 1. Shows the question, YES price, volume (sum of finalized `quote_amount`), round state, the round's other markets and the wallet's mUSD. Earlier and reset rounds are not listed anywhere in the app: the `/rounds` page was removed (owner decision, 2026-11-21). Their market pages remain reachable by direct link.
 
 ### 10.3 Market page `/market/[id]`
 
@@ -621,9 +621,9 @@ Opens the featured market of `Config.latest_round`, where `NEXT_PUBLIC_FEATURED_
 
 Available mUSD; YES and NO holdings per market; reserved balances; open orders; claimable redemptions (holdings × payout per resolved market); completed redemptions and recent fills from events. P&L is not shown.
 
-### 10.6 Operator `/operator` (password, never linked from the trading UI)
+### 10.6 Operator close and settle
 
-The password-protected route covers round inspection, bot and keeper health, liquidity checks and the **Close and settle** workflow. The workflow is resumable and reads its state from the chain on every step:
+The `/operator` page was removed (2026-11-21). The **Close and settle** workflow remains as `POST /api/operator/settle-round`, and the market page runs it through Settle market (spec-simulation §7.1). The workflow is resumable and reads its state from the chain on every step:
 
 1. Hold the selected round’s resting orders in local workers, then finalize `close_round` if still Open.
 2. Submit a real signed `take_order` against a preserved order. Verify finalized `RoundNotOpen` and unchanged token balances in its receipt, then release the local hold.
@@ -707,10 +707,10 @@ Real round, markets, splits, bot depth, a market buy, a limit order with a parti
 | mUSD mint, mint authority, faucet | Devnet mint, `routes/faucet.ts`, `fund-wallet.ts` | Unchanged. Bots already hold mUSD |
 | Property registry and data | `register_property.rs`, `data/DATASET.md`, `scenarios.json` | Same three points, re-registered in the v2 program |
 | Geo and evidence | `packages/geo` | Unchanged, plus an additive evidence v2 builder |
-| Oracle, evidence gate, password, locks, RPC fallback | `packages/server` | Round gate moves on-chain. Dataset hash checked against `Round` |
+| Oracle, evidence gate, locks, RPC fallback | `packages/server` | Round gate moves on-chain. Dataset hash checked against `Round` |
 | Stats indexer | `packages/server/src/stats`, `services/indexer` | Extended with the book, trades and keeper |
 | Bot worker shell and displacement-requote experience | `services/bots` | New `strategy.ts` (§8) |
-| App shell, wallet, batching, polling, fixture guard, settlement view | `app/` | New pages. `/demo` becomes `/operator` |
+| App shell, wallet, batching, polling, fixture guard, settlement view | `app/` | New pages. `/demo` became `/operator`, since removed (spec-simulation §7.1) |
 | v1.1 program | `programs/metrex` | **Frozen. Never upgraded.** It stays the fallback demo at tag `v1.1-demo` |
 
 New: `programs/metrex-exchange/`, `tests/exchange.ts`, `packages/exchange/` (`@metrex/exchange`: constants, PDAs, account types, quote math, book, planner, chart reducer; frozen at V0 like `@metrex/shared`).

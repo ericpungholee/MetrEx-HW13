@@ -10,12 +10,3 @@ export function MarketPhoto({ photo, sizes, className }: { photo: Photo; sizes: 
     </div>
   );
 }
-
-export function MarketPhotoCredit({ photo }: { photo: Photo }) {
-  return (
-    <span className="text-xs text-dim">
-      Area photo · <a href={photo.creditUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{photo.credit}</a>
-      <span className="sr-only"> (resized and cropped for display)</span>
-    </span>
-  );
-}

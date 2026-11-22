@@ -28,10 +28,11 @@ import { usePoll } from "@/lib/usePoll";
 import { Panel, TxLink } from "@/components/ui";
 import { MakerLabel, MakersContext, StateLabel, Unavailable } from "./Labels";
 import { OrderBook } from "./OrderBook";
-import { MarketPhoto, MarketPhotoCredit } from "./MarketPhoto";
+import { MarketPhoto } from "./MarketPhoto";
 import { MarketRiskMap } from "./MarketRiskMap";
 import { PriceChart } from "./PriceChart";
-import { TradePanel, type TradeMode, type TradePick } from "./TradePanel";
+import { MarketControls } from "./MarketControls";
+import { TradePanel, type TradePick } from "./TradePanel";
 import { WalletPanel } from "./WalletPanel";
 
 function OutcomePrice({
@@ -131,7 +132,6 @@ export function MarketView({ market, initialOutcome }: {
   const { publicKey } = useWallet();
   const me = publicKey?.toBase58() ?? null;
   const [outcome, setOutcome] = useState<OutcomeCode>(initialOutcome ?? Outcome.Yes);
-  const [mode, setMode] = useState<TradeMode>(initialOutcome === undefined ? "coverage" : "shares");
   const [pick, setPick] = useState<TradePick | null>(null);
   const [tab, setTab] = useState<"book" | "trades">("book");
 
@@ -161,14 +161,11 @@ export function MarketView({ market, initialOutcome }: {
     wallet.refresh();
     trades.refresh();
   };
-  const selectOutcome = (next: OutcomeCode) => {
-    if (next === Outcome.No) setMode("shares");
-    setOutcome(next);
+  const afterSettle = () => {
+    refresh();
+    chart.refresh();
   };
-  const selectMode = (next: TradeMode) => {
-    if (next === "coverage") setOutcome(Outcome.Yes);
-    setMode(next);
-  };
+  const selectOutcome = setOutcome;
 
   const makers = useMemo(() => health.data?.marketMakers ?? new Map<string, string>(), [health.data]);
   // Remaining time counts down to the on-chain trading_ends_at (docs/spec-simulation.md §6).
@@ -208,15 +205,13 @@ export function MarketView({ market, initialOutcome }: {
                 <span className="text-warn">{info.data.confirmingFills} confirming</span>
               </>
             )}
-            <a className="ml-auto hover:text-ink" href="#risk-map">Risk map</a>
-            <a className="hover:text-ink lg:hidden" href="#trade">Trade</a>
+            <a className="ml-auto hover:text-ink lg:hidden" href="#trade">Trade</a>
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             {c && (
-              <figure className="order-1 flex shrink-0 items-center gap-2 sm:order-none sm:block sm:w-32">
-                <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 128px, 80px" className="h-12 w-20 shrink-0 rounded-md sm:h-20 sm:w-full" />
-                <figcaption className="leading-4 sm:mt-1"><MarketPhotoCredit photo={c.photo} /></figcaption>
-              </figure>
+              <div className="order-1 shrink-0 sm:order-none sm:w-32">
+                <MarketPhoto photo={c.photo} sizes="(min-width: 40rem) 128px, 80px" className="h-12 w-20 rounded-md sm:h-20 sm:w-full" />
+              </div>
             )}
             <div className="min-w-0 space-y-2">
               {c && (
@@ -236,7 +231,10 @@ export function MarketView({ market, initialOutcome }: {
           </div>
           <aside id="trade" aria-label="Trade ticket" className="scroll-mt-20 lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1">
             <div className="rounded-lg border border-line bg-bg p-4 sm:p-5">
-              <TradePanel market={m} book={activeBook} mode={mode} onMode={selectMode} outcome={outcome} onOutcome={selectOutcome} have={walletData} tradingOpen={!closed} pick={pick} onDone={refresh} />
+              <TradePanel market={m} book={activeBook} outcome={outcome} onOutcome={selectOutcome} have={walletData} tradingOpen={!closed} pick={pick} onDone={refresh} />
+            </div>
+            <div className="mt-3">
+              <MarketControls info={info.data} onSettled={afterSettle} />
             </div>
           </aside>
           <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
@@ -276,7 +274,6 @@ export function MarketView({ market, initialOutcome }: {
                     outcome={outcome}
                     onOutcome={setOutcome}
                     onPick={(priceBps: number, side: OrderSideCode) => {
-                      setMode("shares");
                       setPick({ priceBps, side, at: Date.now() });
                     }}
                     me={me}

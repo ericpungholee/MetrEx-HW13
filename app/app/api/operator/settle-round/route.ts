@@ -1,4 +1,4 @@
-// POST /api/operator/settle-round { action, round? } — requires x-demo-password (spec-v2 §10.6).
+// POST /api/operator/settle-round { action, round? } (spec-v2 §10.6). No authentication.
 import { handleOperatorSettle } from "@metrex/server";
 
 export const runtime = "nodejs";

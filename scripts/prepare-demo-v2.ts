@@ -232,7 +232,6 @@ async function main(): Promise<void> {
   const featured = markets.find((m) => m.propertyId === FEATURED);
   console.log(`  round     #${round.roundId} ${round.address.toBase58()} (${round.label})`);
   console.log(`  featured  ${app}/market/${featured?.address.toBase58()}  (Home #1042)`);
-  console.log(`  operator  ${app}/operator`);
   console.log("  checklist: Phantom funded and connected · bots and keeper running · nothing closed in advance");
   if (problems) {
     console.log(`\nIncomplete: ${problems} problem(s) above.`);

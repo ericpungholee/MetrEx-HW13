@@ -5,9 +5,8 @@ import type { PublicKey } from "@solana/web3.js";
 import { getExchangeEvidence, getExchangeSettledOverlay, getExchangeSettledPerimeter } from "../oracle/exchange";
 import { parsePublicKey } from "../env";
 import { TxError } from "../tx";
-import { badRequest, forbidden, HttpError, tooMany } from "./errors";
+import { badRequest, HttpError } from "./errors";
 import { faucet } from "./faucet";
-import { DEMO_PASSWORD_HEADER, OperatorPasswordBudget } from "./password";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -33,16 +32,6 @@ export function marketParam(value: string | undefined): PublicKey {
   } catch {
     throw badRequest("Invalid market address");
   }
-}
-
-const operatorBudget = new OperatorPasswordBudget();
-
-export function requirePassword(req: Request): void {
-  const password = process.env.DEMO_PASSWORD;
-  if (!password) throw forbidden("Demo controls are disabled (DEMO_PASSWORD unset)");
-  const result = operatorBudget.check(req.headers.get(DEMO_PASSWORD_HEADER), password);
-  if (result === "limited") throw tooMany("Too many operator authentication attempts. Retry in a minute.");
-  if (result === "wrong") throw forbidden("Wrong or missing demo password");
 }
 
 export async function run(fn: () => Promise<Response>): Promise<Response> {

@@ -1,4 +1,4 @@
-// GET /api/operator/demo (status) and POST { action, round? } with x-demo-password
+// GET /api/operator/demo (status) and POST { action, round? } (no authentication)
 // (docs/spec-simulation.md §10).
 import { handleDemoAction, handleDemoStatus } from "@metrex/server";
 

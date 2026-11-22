@@ -29,7 +29,7 @@ If code and spec disagree, the spec wins. If the spec looks wrong, **stop and re
 - `packages/shared`: v1 constants, PDAs, types, scenarios, evidence v1 (**frozen**)
 - `packages/exchange` (v2, to be created at V0): `@metrex/exchange` constants, PDAs, account types and quote math (frozen at V0), plus pure book, planner and chart functions
 - `packages/geo`: Turf.js trigger evaluation, canonical JSON, evidence builders
-- `packages/server`: RPC fallback, keys, oracle, evidence gate, faucet, password, stats
+- `packages/server`: RPC fallback, keys, oracle, evidence gate, faucet, stats
 - Frontend: Next.js (App Router) + TypeScript + Tailwind + Wallet Standard adapter in `app/`
 - Workers: `services/bots` (market makers), `services/indexer` (stats; v2 adds book cache, trade index and keeper)
 - pnpm workspace
@@ -108,9 +108,9 @@ Run the relevant tests before every commit. Never commit with failing tests, v1 
 - Never fake a transaction, fill, price, level, chart point or volume. Everything shown comes from on-chain accounts or finalized events. Optimistic rows are marked pending.
 - Never synthesize an executable NO quote from YES. Complements must be labelled "indicative".
 - Fixtures exist only behind `NEXT_PUBLIC_USE_FIXTURES=1`, and production builds must fail with it on.
-- Every market page shows the applicable payout rule, historical coverage month, Devnet trading deadline, settlement source, and invalid-outcome terms. Keep replay and liquidity boilerplate off the exchange UI, preserve maker labels in trades, and show map and photo attribution alongside the relevant media (spec-multiperil §7.1).
+- Every market page shows the applicable payout rule, historical coverage month, Devnet trading deadline, and settlement source. Keep replay and liquidity boilerplate off the exchange UI, preserve maker labels in trades, and show map attribution with the map. By owner decision (2026-11-21) the UI shows no invalid-outcome disclaimer, execution details, photo credits or risk-map jump link (spec-multiperil §7.1).
 - Evidence and the perimeter require finalized settlement and a matching on-chain hash.
-- The homepage features the four catalog markets (`packages/exchange/src/catalog.ts`), each from the newest round of its scenario (spec-multiperil §7.2). Non-wildfire payout rules end "…, not on damage." Operator controls live only at password-protected `/operator`.
+- The homepage features the four catalog markets (`packages/exchange/src/catalog.ts`), each from the newest round of its scenario (spec-multiperil §7.2). Non-wildfire payout rules end "…, not on damage." There is no authentication other than the Phantom wallet. Every market page shows Settle market and Reset market, which call `/api/operator/*` (spec-simulation §7.1). There is no `/operator` page.
 - Explorer links use `?cluster=devnet`.
 - The exchange is the sole active app. Serve historic RFQ recovery from an isolated checkout as documented in the operations guide.
 

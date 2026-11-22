@@ -56,7 +56,7 @@ Run the app with fixtures off and trading disabled. Create Home #1042 at 10,000 
 
 ### Start the demo on the configured Mac
 
-Run the bridge, app and bot worker from the repository root in three terminals. Configure the operator password separately and mount the normalized geometry and scenario registry in a writable private oracle data directory. Set `METREX_ORACLE_DATA_DIR` for the production app. Enable the operator controls on Devnet once the integrity program build is deployed.
+Run the bridge, app and bot worker from the repository root in three terminals. Mount the normalized geometry and scenario registry in a writable private oracle data directory. Set `METREX_ORACLE_DATA_DIR` for the production app. Enable the operator controls on Devnet once the integrity program build is deployed.
 
 ```sh
 node ~/.config/metrex/devnet-bridge.cjs
@@ -88,6 +88,6 @@ The replay uses the January 2025 Palisades Fire perimeter and the fictional prop
 
 - Stop the bot worker for the manual wallet check. Use a separate judge wallet to place the offer and the homeowner wallet to create, accept and claim. Run `pnpm tsx scripts/prove-lifecycle.ts --manual` for the app-client check with the demo keys.
 - Start the bot worker and run `pnpm tsx scripts/prove-lifecycle.ts` for the two core outcomes. Run `pnpm tsx scripts/prove-lifecycle.ts --tier2` once the program supports trading and the Tier 2 worker is running.
-- Record the app and wallet confirmations as they happen. Use a public view for the operator panel and hide local key paths and the demo password during recording.
+- Record the app and wallet confirmations as they happen. Hide local key paths during recording.
 - Rehearse the fallback tab. If a live bot round stalls, open the already funded fallback and continue at settlement. Keep the completed YES and NO recordings available if the RPC becomes unreliable.
 - The November 21 recording is a 34-second browser replay of the finalized Phantom payout, three-position settlement, evidence verification and Risk purchase and claim. The video is stored locally as `metrex-devnet-demo.webm`.

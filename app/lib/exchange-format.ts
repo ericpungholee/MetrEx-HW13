@@ -1,13 +1,12 @@
 // Display helpers for the v2 exchange. Integer math only on amounts; prices are bps (1–9,999) of the
 // 1 mUSD payout, shown in cents per share: 1 bps = 0.01¢, 80 bps = 0.80¢, 430 bps = 4.30¢
 // (docs/spec-multiperil.md §5: fractional-cent prices are native to the on-chain bps).
-import { catalogByProperty, OrderSide, Outcome, type MarketOutcomeName, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
+import { CATALOG, catalogByProperty, OrderSide, Outcome, type MarketOutcomeName, type OrderSideCode, type OutcomeCode } from "@metrex/exchange";
 import type { MarketSummary, RoundInfo } from "./exchange-client";
 
 /** §10.1 required text (plain text, no pills). The wildfire sentence; other hazards use `payoutRule`. */
 export const TRIGGER_SENTENCE =
   "Pays the full amount if the final mapped footprint of the fire came within 500 m of this property. Pays on fire proximity, not on damage.";
-export const INVALID_DISCLOSURE = "If the market is declared invalid, every share pays 0.50 mUSD (50¢). Buying above 50¢ can lose money on invalid.";
 
 /** Cents without the sign: 430 → "4.30", 80 → "0.80", 1 → "0.01", a half-tick midpoint 415.5 → "4.155". */
 export function formatCents(bps: number): string {
@@ -70,6 +69,24 @@ export function payoutRule(m: Pick<MarketSummary, "propertyId" | "scenarioId">):
 }
 
 /** Whole dollars of coverage → shares: one share pays 1 mUSD. */
+/**
+ * The current round of each catalog market: the newest round of its scenario holding its property,
+ * the same rule as the homepage (spec-multiperil §7.2). A round replaced by Reset market drops out,
+ * so the portfolio never shows it (docs/spec-simulation.md §9).
+ */
+export function currentRounds<R extends Pick<RoundInfo, "roundId" | "scenarioId"> & { markets: readonly Pick<MarketSummary, "propertyId">[] }>(rounds: readonly R[]): R[] {
+  const keep = new Set<R>();
+  for (const c of CATALOG) {
+    let best: R | undefined;
+    for (const r of rounds) {
+      if (r.scenarioId !== c.scenarioId || !r.markets.some((m) => m.propertyId === c.propertyId)) continue;
+      if (!best || r.roundId > best.roundId) best = r;
+    }
+    if (best) keep.add(best);
+  }
+  return rounds.filter((r) => keep.has(r));
+}
+
 export const coverageToShares = (dollars: bigint): bigint => dollars;
 
 /** Shares are integers with 0 decimals. */
